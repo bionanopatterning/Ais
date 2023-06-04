@@ -3,7 +3,7 @@
 
 This repository comprises a standalone pre-release of the scNodes _Segmentation Editor_. For the full project, see our repository at github.com/bionanopatterning/scNodes
 
-A time-lapse video of the full workflows, from reconstructed tomograms to segmented volumes showing membranes, ribosomes, phosphate crystals, and microtubuli, is available here: https://youtu.be/9z8OK8k4578
+A timelapse video of the full workflow, from reconstructed tomograms to segmented volumes showing membranes, ribosomes, phosphate crystals, and microtubuli, is available here: https://youtu.be/9z8OK8k4578
 
 Contact: m.g.f.last@lumc.nl
 
