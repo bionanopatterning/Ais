@@ -5,11 +5,11 @@ import numpy as np
 from itertools import count
 import glob
 import os
-import core.config as cfg
+import scNodes.core.config as cfg
 import importlib
 import threading
 import json
-from core.opengl_classes import Texture
+from scNodes.core.opengl_classes import Texture
 from scipy.ndimage import rotate
 import datetime
 from scipy.ndimage import zoom

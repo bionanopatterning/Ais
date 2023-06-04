@@ -1,7 +1,8 @@
 import os
 import sys
-from core.segmentation_editor import *
-from core.window import *
+import scNodes.core.config as cfg
+from scNodes.core.window import *
+from scNodes.core.segmentation_editor import *
 from imgui.integrations.glfw import GlfwRenderer
 import tkinter as tk
 
@@ -10,7 +11,7 @@ tkroot.withdraw()
 
 directory = os.path.join(os.path.dirname(__file__))
 directory = directory[:directory.rfind("\\")]
-sys.path.insert(0, os.path.abspath(".."))
+sys.path.insert(0, os.path.abspath("../.."))
 sys.path.append(directory)
 cfg.root = os.path.join(os.path.dirname(__file__))
 

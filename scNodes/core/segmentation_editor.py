@@ -1,22 +1,19 @@
 import glfw
 import imgui
-import core.config as cfg
+import scNodes.core.config as cfg
+from scNodes.core.se_frame import *
+from scNodes.core.se_model import *
+
 import numpy as np
-from itertools import count
 import mrcfile
-from core.opengl_classes import *
-import datetime
 from PIL import Image
 from copy import copy
 from tkinter import filedialog
-import threading
 import tifffile
 import time
 import dill as pickle
 from scipy.ndimage import zoom
-from core.se_models import *
-from core.se_frame import *
-import core.widgets as widgets
+import scNodes.core.widgets as widgets
 
 
 class SegmentationEditor:
@@ -378,6 +375,7 @@ class SegmentationEditor:
                     _c, new_filter_type = imgui.combo("##filtertype", 0, ["Add filter"] + Filter.TYPES)
                     if _c and not new_filter_type == 0:
                         self.filters.append(Filter(new_filter_type - 1))
+                        cfg.se_active_frame.requires_histogram_update = True
                     imgui.pop_style_var(6)
                     imgui.pop_style_color(1)
 
@@ -873,14 +871,6 @@ class SegmentationEditor:
                             print(e)
 
                     imgui.end_menu()
-                if imgui.begin_menu("Editor"):
-                    for i in range(len(cfg.editors)):
-                        select, _ = imgui.menu_item(cfg.editors[i], None, False)
-                        if select:
-                            cfg.active_editor = i
-                    imgui.end_menu()
-
-
                 imgui.end_main_menu_bar()
 
             imgui.pop_style_color(6)
@@ -1137,7 +1127,7 @@ class SegmentationEditor:
         negative = list()
 
         n_done = 0
-        target_type_dict = {np.float32: float, float: float, np.int8: np.uint8, np.int16: np.uint16}
+        target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
         for d in datasets:
             mrcf = mrcfile.mmap(d.path, mode="r")
             raw_type = mrcf.data.dtype
@@ -1613,7 +1603,7 @@ class QueuedExport:
             print(f"QueuedExport - loading dataset {self.dataset.path}")
 
             mrcd = np.array(mrcfile.open(self.dataset.path, mode='r').data[:, :, :])
-            target_type_dict = {np.float32: float, float: float, np.int8: np.uint8, np.int16: np.uint16}
+            target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
             if mrcd.dtype not in target_type_dict:
                 mrcd = mrcd.astype(float, copy=False)
             else:
