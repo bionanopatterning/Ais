@@ -8,7 +8,7 @@ license = "GNU GPL v3"
 filetype_segmentation = ".scns"
 filetype_traindata = ".scnt"
 filetype_semodel = ".scnm"
-
+frozen = False
 
 autocontrast_saturation = 0.03
 autocontrast_subsample = 8
@@ -62,3 +62,6 @@ TOOLTIP_APPEAR_DELAY = 1.0
 TOOLTIP_HOVERED_TIMER = 0.0
 TOOLTIP_HOVERED_START_TIME = 0.0
 CE_WIDGET_ROUNDING = 50.0
+
+def set_error(e, f):
+    print(f, e)
