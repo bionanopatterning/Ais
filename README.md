@@ -7,6 +7,17 @@ A timelapse video of the full workflow, from reconstructed tomograms to segmente
 
 Contact: m.g.f.last@lumc.nl
 
+### Installation ###
+Compatibility between Python, tensorflow, and CUDA versions can be an issue. The following combination was used during development and is know to work:
+
+Python 3.9
+Tensorflow 2.8.0
+CUDA 11.8
+cuDNN 8.6
+protobuf 3.20.0
+
+The software will work without CUDA, but only on the CPU. This set up is much slower but still reasonably interactive. We do recommend installing CUDA and cuDNN in order for tensorflow to be able to use the GPU. 
+
 ### Annotation ###
 ![](scNodes/res/scR_segmentation.PNG)
 
