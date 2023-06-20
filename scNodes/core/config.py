@@ -63,5 +63,6 @@ TOOLTIP_HOVERED_TIMER = 0.0
 TOOLTIP_HOVERED_START_TIME = 0.0
 CE_WIDGET_ROUNDING = 50.0
 
+
 def set_error(e, f):
     print(f, e)

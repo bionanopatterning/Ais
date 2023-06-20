@@ -162,6 +162,8 @@ class Window:
     def set_force_alpha_zero(self, force=True):
         self.force_alpha_zero = force
 
+    def is_minimized(self):
+        return glfw.get_window_attrib(self.glfw_window, glfw.ICONIFIED)
 
 class KeyEvent:
     def __init__(self, key, action, mods):

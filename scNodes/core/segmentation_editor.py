@@ -1,19 +1,24 @@
 import glfw
 import imgui
 import scNodes.core.config as cfg
-from scNodes.core.se_frame import *
-from scNodes.core.se_model import *
-
 import numpy as np
+from itertools import count
 import mrcfile
+from scNodes.core.opengl_classes import *
+import datetime
+
 from PIL import Image
 from copy import copy
 from tkinter import filedialog
+import threading
 import tifffile
 import time
 import dill as pickle
 from scipy.ndimage import zoom
+from scNodes.core.se_model import *
+from scNodes.core.se_frame import *
 import scNodes.core.widgets as widgets
+from scNodes.core.util import clamp
 
 
 class SegmentationEditor:
@@ -78,6 +83,11 @@ class SegmentationEditor:
         self.export_batch_size = 5
         self.n_export = 0
 
+        # crop handles
+        self.crop_handles = list()
+        for i in range(4):
+            self.crop_handles.append(WorldSpaceIcon(i))
+
         if True:
             icon_dir = os.path.join(cfg.root, "icons")
 
@@ -131,7 +141,7 @@ class SegmentationEditor:
             pxd_arrays = list()
             for model in cfg.se_models:
                 # launch all active models
-                if model.set_slice(cfg.se_active_frame.data, cfg.se_active_frame.pixel_size):
+                if model.set_slice(cfg.se_active_frame.data, cfg.se_active_frame.pixel_size, cfg.se_active_frame.get_roi_indices(), cfg.se_active_frame.data.shape):
                     active_models.append(model)
                     pxd_arrays.append(model.data)
             if len(active_models) > 1:
@@ -153,17 +163,20 @@ class SegmentationEditor:
                     self.queued_exports[0].start()
 
         # GUI calls
-        self.camera_control()
-        self.camera.on_update()
-        self.gui_main()
-        SegmentationEditor.renderer.render_overlay(self.camera)
-        self.input()
+        if not self.window.is_minimized():
+            self.camera_control()
+            self.camera.on_update()
+            self.gui_main()
+            SegmentationEditor.renderer.render_overlay(self.camera)
+            self.input()
 
         imgui.render()
         self.imgui_implementation.render(imgui.get_draw_data())
         imgui.CONFIG_DOCKING_ENABLE = False
 
     def input(self):
+        if self.active_tab != "Segmentation" and cfg.se_active_frame is not None and cfg.se_active_frame.crop:
+            SegmentationEditor.renderer.render_crop_handles(cfg.se_active_frame, self.camera, self.crop_handles)
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
             return
 
@@ -213,6 +226,36 @@ class SegmentationEditor:
                         active_feature.add_box(pixel_coordinate)
                     elif imgui.is_mouse_clicked(1):
                         active_feature.remove_box(pixel_coordinate)
+        else:
+            if not self.crop_handles[0].moving_entire_roi:
+                any_handle_active = False
+                for h in self.crop_handles:
+                    if not h.active and h.is_hovered(self.camera, self.window.cursor_pos) and imgui.is_mouse_clicked(0):
+                        h.active = True
+                        any_handle_active = False
+                    if h.active:
+                        any_handle_active = True
+                        world_pos = self.camera.cursor_to_world_position(self.window.cursor_pos)
+                        pixel_pos = active_frame.world_to_pixel_coordinate(world_pos)
+                        h.affect_crop(pixel_pos)
+                        if not imgui.is_mouse_down(0):
+                            h.active = False
+                            h.convert_crop_roi_to_integers()
+                            cfg.se_active_frame.slice_changed = True  # not really, but this flag is also used to trigger a model update.
+                if not any_handle_active and imgui.is_mouse_clicked(0):
+                    self.crop_handles[0].moving_entire_roi = True
+                    self.crop_handles[0].convert_crop_roi_to_integers()
+            else:
+                if not imgui.is_mouse_down(0):
+                    self.crop_handles[0].moving_entire_roi = False
+                    self.crop_handles[0].convert_crop_roi_to_integers()
+                    cfg.se_active_frame.slice_changed = True  # not really, but this flag is also used to trigger a model update.
+                else:
+                    world_pos_old = self.camera.cursor_to_world_position(self.window.cursor_pos_previous_frame)
+                    world_pos = self.camera.cursor_to_world_position(self.window.cursor_pos)
+                    world_delta = np.array([-(world_pos_old[0] - world_pos[0]), world_pos_old[1] - world_pos[1]]) / cfg.se_active_frame.pixel_size
+                    self.crop_handles[0].move_crop_roi(world_delta[0], world_delta[1])
+
 
     def import_dataset(self, filename):
         try:
@@ -220,6 +263,7 @@ class SegmentationEditor:
             if ext == ".mrc":
                 cfg.se_frames.append(SEFrame(filename))
                 SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
+                cfg.se_active_frame.requires_histogram_update = True
                 self.parse_available_features()
             elif ext == cfg.filetype_segmentation:
                 with open(filename, 'rb') as pickle_file:
@@ -228,6 +272,10 @@ class SegmentationEditor:
                     seframe.slice_changed = False
                     cfg.se_frames.append(seframe)
                     SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
+                    # compatibility:
+                    if not hasattr(seframe, 'crop'):
+                        seframe.crop = False
+                        seframe.crop_roi = [0, 0, seframe.width, seframe.height]
                 self.parse_available_features()
         except Exception as e:
             print("Error importing dataset, see details below:\n", e)
@@ -319,12 +367,13 @@ class SegmentationEditor:
                         sef.autocontrast = False
                     imgui.pop_item_width()
                     _c, sef.invert = imgui.checkbox("inverted", sef.invert)
-                    imgui.same_line(spacing=21)
+                    imgui.same_line(spacing=16)
                     _c, sef.autocontrast = imgui.checkbox("auto", sef.autocontrast)
                     if _c and sef.autocontrast:
                         sef.requires_histogram_update = True
-                    imgui.same_line(spacing=21)
+                    imgui.same_line(spacing=16)
                     _c, sef.interpolate = imgui.checkbox("interpolate", sef.interpolate)
+                    imgui.same_line(spacing=16)
                     if _c:
                         if sef.interpolate:
                             sef.texture.set_linear_interpolation()
@@ -334,7 +383,14 @@ class SegmentationEditor:
                             sef.texture.set_no_interpolation()
                             SegmentationEditor.renderer.fbo1.texture.set_no_interpolation()
                             SegmentationEditor.renderer.fbo2.texture.set_no_interpolation()
-
+                    if self.active_tab == "Segmentation":
+                        imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT_DISABLED)
+                        imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_TEXT_DISABLED)
+                    _c, sef.crop = imgui.checkbox("crop", sef.crop)
+                    if _c and not sef.crop:
+                        sef.crop_roi = [0, 0, sef.width, sef.height]
+                    if self.active_tab == "Segmentation":
+                        imgui.pop_style_color(2)
                     imgui.separator()
                     fidx = 0
                     for ftr in self.filters:
@@ -376,6 +432,7 @@ class SegmentationEditor:
                     if _c and not new_filter_type == 0:
                         self.filters.append(Filter(new_filter_type - 1))
                         cfg.se_active_frame.requires_histogram_update = True
+
                     imgui.pop_style_var(6)
                     imgui.pop_style_color(1)
 
@@ -726,7 +783,7 @@ class SegmentationEditor:
                             _, m.active = imgui.checkbox("active    ", m.active)
                             if _ and m.active:
                                 if cfg.se_active_frame is not None:
-                                    m.set_slice(cfg.se_active_frame.data, cfg.se_active_frame.pixel_size)
+                                    m.set_slice(cfg.se_active_frame.data, cfg.se_active_frame.pixel_size, cfg.se_active_frame.get_roi_indices(), cfg.se_active_frame.data.shape)
                                     cfg.se_active_frame.slice_changed = True
                             imgui.same_line()
                             _, m.blend = imgui.checkbox("blend    ", m.blend)
@@ -821,14 +878,15 @@ class SegmentationEditor:
 
                 imgui.text("Export settings")
                 imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
-                imgui.begin_child("export_settings", 0.0, 72.0, True)
+                imgui.begin_child("export_settings", 0.0, 65.0, True)
                 _, self.export_dir = widgets.select_directory("browse", self.export_dir)
                 imgui.set_next_item_width(imgui.get_content_region_available_width())
                 _, self.export_batch_size = imgui.slider_int("##batch_size", self.export_batch_size, 1, 32, f"{self.export_batch_size} batch size")
                 _, self.export_compete = imgui.checkbox("competing models", self.export_compete)
-                imgui.same_line(spacing=40)
+                imgui.same_line(spacing=62)
                 _, self.export_limit_range = imgui.checkbox("limit range", self.export_limit_range)
                 imgui.end_child()
+
 
                 if widgets.centred_button("Start export", 120, 23):
                     self.launch_export_volumes()
@@ -871,6 +929,14 @@ class SegmentationEditor:
                             print(e)
 
                     imgui.end_menu()
+                if imgui.begin_menu("Editor"):
+                    for i in range(len(cfg.editors)):
+                        select, _ = imgui.menu_item(cfg.editors[i], None, False)
+                        if select:
+                            cfg.active_editor = i
+                    imgui.end_menu()
+
+
                 imgui.end_main_menu_bar()
 
             imgui.pop_style_color(6)
@@ -947,6 +1013,7 @@ class SegmentationEditor:
 
         if cfg.se_active_frame is not None:
             pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters)
+            ## todo: save the output pxd to the corresponding frame, and render this pxd in subsequent app frames where the data is not changed instead of applying the filters on GPU every frame - which it turns out is fairly expensive
             if pxd is not None:
                 cfg.se_active_frame.compute_histogram(pxd)
                 if cfg.se_active_frame.autocontrast:
@@ -986,8 +1053,8 @@ class SegmentationEditor:
                             box_y_pos = frame_xy[1] + (box[1] - f.parent.height / 2) * f.parent.pixel_size
                             box_size = self.trainset_apix * self.trainset_boxsize / 10.0
                             SegmentationEditor.renderer.add_square((box_x_pos, box_y_pos), box_size, clr)
-            if cfg.se_active_frame.overlay is not None:
-                cfg.se_active_frame.overlay.render(self.camera)
+            #if cfg.se_active_frame.overlay is not None:  TODO
+            #    cfg.se_active_frame.overlay.render(self.camera)
 
         # MAIN WINDOW
         imgui.set_next_window_position(0, 17, imgui.ONCE)
@@ -1189,7 +1256,6 @@ class SegmentationEditor:
     def seframe_from_clemframe(clemframe):
         new_se_frame = SEFrame(clemframe.path)
         new_se_frame.pixel_size = clemframe.pixel_size
-        apix = clemframe.pixel_size * 10.0
         new_se_frame.title = clemframe.title
         new_se_frame.set_slice(clemframe.current_slice)
         cfg.se_frames.append(new_se_frame)
@@ -1199,7 +1265,6 @@ class SegmentationEditor:
     def overlay_from_clemframe(clemframe, overlay_render_function):
         if cfg.se_active_frame is not None:
             cfg.se_active_frame.overlay = Overlay(clemframe, overlay_render_function)
-
 
     def camera_control(self):
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
@@ -1276,6 +1341,7 @@ class Renderer:
         self.kernel_filter = Shader(os.path.join(cfg.root, "shaders", "se_compute_kernel_filter.glsl"))
         self.mix_filtered = Shader(os.path.join(cfg.root, "shaders", "se_compute_mix.glsl"))
         self.line_shader = Shader(os.path.join(cfg.root, "shaders", "ce_line_shader.glsl"))
+        self.icon_shader = Shader(os.path.join(cfg.root, "shaders", "se_icon_shader.glsl"))
         self.line_list = list()
         self.line_list_s = list()
         self.line_va = VertexArray(None, None, attribute_format="xyrgb")
@@ -1358,6 +1424,8 @@ class Renderer:
         self.fbo1.texture.bind(0)
         self.quad_shader.uniformmat4("cameraMatrix", camera.view_projection_matrix)
         self.quad_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
+        self.quad_shader.uniform2f("xLims", [se_frame.crop_roi[0] / se_frame.width, 1.0 - (se_frame.width - se_frame.crop_roi[2]) / se_frame.width])
+        self.quad_shader.uniform2f("yLims", [(se_frame.height - se_frame.crop_roi[3]) / se_frame.height, 1.0 - se_frame.crop_roi[1] / se_frame.height])
         self.quad_shader.uniform1f("alpha", se_frame.alpha)
         if se_frame.invert:
             self.quad_shader.uniform1f("contrastMin", se_frame.contrast_lims[1])
@@ -1465,6 +1533,19 @@ class Renderer:
         self.border_shader.unbind()
         se_frame.border_va.unbind()
 
+    def render_crop_handles(self, se_frame, camera, handles):
+        self.icon_shader.bind()
+        h_va = handles[0].get_va()
+        h_va.bind()
+        handles[0].get_texture().bind(0)
+        self.icon_shader.uniformmat4("cameraMatrix", camera.view_projection_matrix)
+        for h in handles:
+            h.compute_matrix(se_frame, camera)
+            self.icon_shader.uniformmat4("modelMatrix", h.transform.matrix)
+            self.icon_shader.uniform1i("invert", int(se_frame.invert))
+            glDrawElements(GL_TRIANGLES, h_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+        self.icon_shader.unbind()
+        h_va.unbind()
 
     def add_line(self, start_xy, stop_xy, colour, subtract=False):
         if subtract:
@@ -1601,7 +1682,7 @@ class QueuedExport:
     def do_export(self, process):
         try:
             print(f"QueuedExport - loading dataset {self.dataset.path}")
-
+            rx, ry = self.dataset.get_roi_indices()
             mrcd = np.array(mrcfile.open(self.dataset.path, mode='r').data[:, :, :])
             target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
             if mrcd.dtype not in target_type_dict:
@@ -1612,9 +1693,8 @@ class QueuedExport:
             n_slices = mrcd.shape[0]
             n_slices_total = (self.dataset.export_top - self.dataset.export_bottom) * len(self.models)
             n_slices_complete = 0
-            segmentations = np.zeros((len(self.models), *mrcd.shape), dtype=float)
+            segmentations = np.zeros((len(self.models), *mrcd.shape), dtype=np.uint8)
             m_idx = 0
-
             for m in self.models:
                 print(f"QueuedExport - applying model {m.info}")
                 self.colour = m.colour
@@ -1625,10 +1705,10 @@ class QueuedExport:
                     for i in range(self.batch_size):
                         if len(slices_to_process) > 0:
                             indices.append(slices_to_process.pop(0))
-                            images.append(mrcd[indices[-1], :, :])
+                            images.append(mrcd[indices[-1], rx[0]:rx[1], ry[0]:ry[1]])
                     seg_images = m.apply_to_multiple_slices(images, self.dataset.pixel_size)
                     for i in range(len(indices)):
-                        segmentations[m_idx, indices[i], :, :] = np.clip(seg_images[i] * 65535, 0, 65535)
+                        segmentations[m_idx, indices[i], rx[0]:rx[1], ry[0]:ry[1]] = np.clip(seg_images[i] * 255, 0, 255)
                         n_slices_complete += 1
                         self.process.set_progress(min([0.999, n_slices_complete / n_slices_total]))
 
@@ -1653,7 +1733,7 @@ class QueuedExport:
                 out_path = os.path.join(self.directory, self.dataset.title+"_"+m.title+".mrc")
                 with mrcfile.new(out_path, overwrite=True) as mrc:
                     s = segmentations[i, :, :, :].squeeze()
-                    s = np.clip(s, 0, 65535).astype(np.uint16)
+                    s = np.clip(s, 0, 255).astype(np.uint8)
                     mrc.set_data(s)
                     mrc.voxel_size = self.dataset.pixel_size * 10.0
                 n_slices_complete += n_slices
@@ -1663,8 +1743,137 @@ class QueuedExport:
         except Exception as e:
             print("An issue was encountered during export\n"
                   f"\tDataset: {self.dataset.path}\n"
-                  f"\tError:\n", e)
+                  f"\tError: ", e)
             self.process.set_progress(1.0)
 
     def start(self):
         self.process.start()
+
+
+class WorldSpaceIcon:
+    # this class is only used to render and interact with the SegmentationEditor crop handles. fairly specific implementation
+    crop_icon_va = None
+    crop_icon_texture = None
+    MIN_SIZE = 128
+
+    def __init__(self, corner_idx=0):
+        if WorldSpaceIcon.crop_icon_va is None:
+            WorldSpaceIcon.init_opengl_objs()
+
+        self.transform = Transform()
+        self.corner_idx = corner_idx
+        self.corner_positions_local = [[0, 0], [1, 0], [0, -1], [1, -1]]
+        self.corner_positions = [[0, 0], [1, 0], [0, -1], [1, -1]]
+        self.parent = None
+        self.active = False
+        self.moving_entire_roi = False
+
+    def get_va(self):
+        return WorldSpaceIcon.crop_icon_va
+
+    def get_texture(self):
+        return WorldSpaceIcon.crop_icon_texture
+
+    @staticmethod
+    def init_opengl_objs():
+        # crop icon
+        icon_vertices = [0, 0, 0, 0,
+                         1, 0, 1, 0,
+                         0, -1, 0, 1,
+                         1, -1, 1, 1]
+        icon_indices = [0, 1, 2, 2, 1, 3]
+        WorldSpaceIcon.crop_icon_va = VertexArray(VertexBuffer(icon_vertices), IndexBuffer(icon_indices),
+                                                  attribute_format="xyuv")
+        WorldSpaceIcon.crop_icon_texture = Texture(format="rgba32f")
+        pxd_icon_crop = np.asarray(Image.open(os.path.join(cfg.root, "icons", "icon_crop_256.png"))).astype(
+            np.float32) / 255.0
+        WorldSpaceIcon.crop_icon_texture.update(pxd_icon_crop)
+
+    def affect_crop(self, pixel_coordinate):
+        d = WorldSpaceIcon.MIN_SIZE
+        ## this method is called when the crop handle is moved, onto pixel_coordinate
+        if self.corner_idx == 0:
+            self.parent.crop_roi[0] = pixel_coordinate[0]
+            self.parent.crop_roi[0] = clamp(self.parent.crop_roi[0], 0, self.parent.crop_roi[2] - d)
+            self.parent.crop_roi[1] = (self.parent.height - pixel_coordinate[1])
+            self.parent.crop_roi[1] = clamp(self.parent.crop_roi[1], 0, self.parent.crop_roi[3] - d)
+        elif self.corner_idx == 1:
+            self.parent.crop_roi[2] = self.parent.width - (self.parent.width - pixel_coordinate[0])
+            self.parent.crop_roi[2] = clamp(self.parent.crop_roi[2], self.parent.crop_roi[0] + d, self.parent.width)
+            self.parent.crop_roi[1] = (self.parent.height - pixel_coordinate[1])
+            self.parent.crop_roi[1] = clamp(self.parent.crop_roi[1], 0, self.parent.crop_roi[3] - d)
+        elif self.corner_idx == 2:
+            self.parent.crop_roi[2] = self.parent.width - (self.parent.width - pixel_coordinate[0])
+            self.parent.crop_roi[2] = clamp(self.parent.crop_roi[2], self.parent.crop_roi[0] + d, self.parent.width)
+            self.parent.crop_roi[3] = (self.parent.height - pixel_coordinate[1])
+            self.parent.crop_roi[3] = clamp(self.parent.crop_roi[3], self.parent.crop_roi[1] + d, self.parent.height)
+        elif self.corner_idx == 3:
+            self.parent.crop_roi[0] = pixel_coordinate[0]
+            self.parent.crop_roi[0] = clamp(self.parent.crop_roi[0], 0, self.parent.crop_roi[2] - d)
+            self.parent.crop_roi[3] = (self.parent.height - pixel_coordinate[1])
+            self.parent.crop_roi[3] = clamp(self.parent.crop_roi[3], self.parent.crop_roi[1] + d, self.parent.height)
+
+    def move_crop_roi(self, dx, dy):
+        test_roi = copy(self.parent.crop_roi)
+        test_roi[0] += dx
+        test_roi[2] += dx
+        test_roi[1] += dy
+        test_roi[3] += dy
+
+        if test_roi[0] > 0 and test_roi[2] < self.parent.width:
+            self.parent.crop_roi[0] = test_roi[0]
+            self.parent.crop_roi[2] = test_roi[2]
+            self.parent.crop_roi[0] = clamp(self.parent.crop_roi[0], 0, self.parent.width)
+            self.parent.crop_roi[2] = clamp(self.parent.crop_roi[2], 0, self.parent.width)
+        if test_roi[1] > 0 and test_roi[3] < self.parent.height:
+            self.parent.crop_roi[1] = test_roi[1]
+            self.parent.crop_roi[3] = test_roi[3]
+            self.parent.crop_roi[1] = clamp(self.parent.crop_roi[1], 0, self.parent.height)
+            self.parent.crop_roi[3] = clamp(self.parent.crop_roi[3], 0, self.parent.height)
+
+    def convert_crop_roi_to_integers(self):
+        for i in range(4):
+            self.parent.crop_roi[i] = int(self.parent.crop_roi[i])
+
+    def compute_matrix(self, se_frame, camera):
+        self.parent = se_frame
+        fpos = se_frame.transform.translation
+        fx = [-1, 1, 1, -1]
+        fy = [1, 1, -1, -1]
+        # find position of the corner of the frame that this handle belongs to
+        dx = 0
+        dy = 0
+        if self.corner_idx == 0:
+            dx = se_frame.crop_roi[0]
+            dy = -se_frame.crop_roi[1]
+        elif self.corner_idx == 1:
+            dx = -(se_frame.width - se_frame.crop_roi[2])
+            dy = -se_frame.crop_roi[1]
+        elif self.corner_idx == 2:
+            dx = -(se_frame.width - se_frame.crop_roi[2])
+            dy = se_frame.height - se_frame.crop_roi[3]
+        elif self.corner_idx == 3:
+            dx = se_frame.crop_roi[0]
+            dy = se_frame.height - se_frame.crop_roi[3]
+        self.transform.translation[0] = fpos[0] + (0.5 * fx[self.corner_idx] * se_frame.width + dx) * se_frame.pixel_size
+        self.transform.translation[1] = fpos[1] + (0.5 * fy[self.corner_idx] * se_frame.height + dy) * se_frame.pixel_size
+        self.transform.rotation = -self.corner_idx * 90.0
+        self.transform.scale = 15.0 / camera.zoom
+        self.transform.compute_matrix()
+
+        # set icon's corner positions
+        for i in range(4):
+            local_corner_pos = tuple(self.corner_positions_local[i])
+            vec = np.matrix([*local_corner_pos, 0.0, 1.0]).T
+            world_corner_pos = self.transform.matrix * vec
+            self.corner_positions[i] = [float(world_corner_pos[0]), float(world_corner_pos[1])]
+
+    def is_hovered(self, camera, cursor_position):
+        P = camera.cursor_to_world_position(cursor_position)
+        A = self.corner_positions[0]
+        B = self.corner_positions[1]
+        D = self.corner_positions[3]
+        ap = [P[0] - A[0], P[1] - A[1]]
+        ab = [B[0] - A[0], B[1] - A[1]]
+        ad = [D[0] - A[0], D[1] - A[1]]
+        return (0 < ap[0] * ab[0] + ap[1] * ab[1] < ab[0] ** 2 + ab[1] ** 2) and (0 < ap[0] * ad[0] + ap[1] * ad[1] < ad[0] ** 2 + ad[1] ** 2)

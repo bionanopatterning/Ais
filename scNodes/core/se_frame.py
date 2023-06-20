@@ -1,9 +1,11 @@
 from itertools import count
 import numpy as np
 import mrcfile
+from scNodes.core.opengl_classes import *
 import datetime
 import scNodes.core.config as cfg
-from scNodes.core.opengl_classes import *
+
+
 
 class SEFrame:
     idgen = count(0)
@@ -31,8 +33,10 @@ class SEFrame:
         self.interpolate = False
         self.alpha = 1.0
         self.filters = list()
-        self.overlay = None
+        #self.overlay = None
         self.invert = True
+        self.crop = False
+        self.crop_roi = [0, 0, self.width, self.height]
         self.autocontrast = True
         self.sample = True
         self.export = False
@@ -40,7 +44,7 @@ class SEFrame:
         self.export_top = None
         self.hist_vals = list()
         self.hist_bins = list()
-        self.requires_histogram_update = False
+        self.requires_histogram_update = True
         self.corner_positions_local = []
         self.set_slice(0, False)
         self.setup_opengl_objects()
@@ -135,6 +139,12 @@ class SEFrame:
             out_data = np.array(out_data.astype(target_type, copy=False), dtype=float)
         return out_data
 
+    def get_roi_indices(self):
+        """Returns a tuple of tuples (x_indices, y_indices), where x_indices is (x_start, x_stop)"""
+        y_indices = (self.height - self.crop_roi[3], self.height - self.crop_roi[1])
+        x_indices = (self.crop_roi[0], self.crop_roi[2])
+        return y_indices, x_indices
+
     def update_image_texture(self):
         self.texture.update(self.data.astype(np.float32))
 
@@ -188,8 +198,8 @@ class SEFrame:
         self.setup_opengl_objects()
         for f in self.features:
             f.on_load()
-        if self.overlay is not None:
-            self.overlay.setup_opengl_objects()
+        #if self.overlay is not None:
+            #self.overlay.setup_opengl_objects()
 
     def __eq__(self, other):
         if isinstance(other, SEFrame):
