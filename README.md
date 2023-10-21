@@ -20,33 +20,33 @@ The software will work without CUDA, but only on the CPU. This set up is much sl
 
 ## Gallery ##
 ### Annotation ###
-![](Pom/res/scR_segmentation.PNG)
+![](scNodes/res/scR_segmentation.PNG)
 In this example, four features (membranes, microtubuli, mitochondrial granules, and ribosomes) are concurrently annotated. 
 
 ### Generating training sets ###
-![](Pom/res/scR_trainset.PNG)
+![](scNodes/res/scR_trainset.PNG)
 After preparing some annotations, the user in this example selects positive and negative features before compiling a training dataset for a network that will learn to recognize lipid membranes.
 
 ### Training models ###
-![](Pom/res/scR_models_2.PNG)
+![](scNodes/res/scR_models_2.PNG)
 Here, four previously prepared training datasets are used to train four segmentation models. The menu on the left shows the set-up for the four models; the first three models have already been trained, while the fourth (microtubuli, orange) is being set up for a second training run.
 
 ### Model interactions ###
-![](Pom/res/scR_interactions.PNG)
+![](scNodes/res/scR_interactions.PNG)
 Model interactions add an extra layer of nonlinear filtering to the model outputs, and can aid significantly in reducing false positive predictions. Here, competition between the single and double membrane models enhances the differentiation between these two (similar) features, and a colocalization dependency of the viral pore model conditioned on the double membrane model suppresses spurious false positives by the pore model near biologically non-relevant other features.  
 
 ## Exporting segmented volumes ###
-![](Pom/res/scR_export.PNG)
+![](scNodes/res/scR_export.PNG)
 An example of the batch processing interface, in the 'Export' tab. Only one tomogram is imported, but any number can be linked into the software and processed in one go (typically, in an overnight process). Six features are being segmented: ribosome, coronaviral replication organelle pores, double membranes, intermediate filaments, microtubuli, and actin filaments.  
 
 ## Built-in rendering to inspect results ## 
-![](Pom/res/scR_render.PNG)
+![](scNodes/res/scR_render.PNG)
 After processing a volume, the resulting segmented volume datasets are automatically available in the 'Render' tab, where the segmentation results can be interactively viewed. Opening the results in more familiar suites such as Blender or ChimeraX is facilitated in the bottommost 'Export 3D scene' tab.
 
 ## Fluorescence-guided segmentation ##
-![](Pom/res/scR_fluo_g_seg.png)
+![](scNodes/res/scR_fluo_g_seg.png)
 In [scNodes](github.com/bionanopatterning/scNodes) + Pom, data can be forwarded from the correlation editor into Pom's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localization reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
 
 ## 3D ray-traced fluorescence overlays ## 
-![](Pom/res/scR_fluo_overlay.PNG)
+![](scNodes/res/scR_fluo_overlay.PNG)
 Rendering in [scNodes](github.com/bionanopatterning/scNodes) + Pom combines the default isosurface viewer with 3D ray-traced fluorescence overlays. Here, a 2D single molecule localization map is projected into the 3D volume of the tomogram. Membranes, ribosomes, and the two vimentin filaments revealed by the fluorescence overlay are segmented and rendered.  

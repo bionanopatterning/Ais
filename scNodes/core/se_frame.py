@@ -1,12 +1,12 @@
 from itertools import count
 import numpy as np
 import mrcfile
-from Pom.core.opengl_classes import *
+from scNodes.core.opengl_classes import *
 import datetime
-import Pom.core.config as cfg
-import Pom.core.settings as settings
-from Pom.core.util import bin_2d_array#, get_maxima_3d_watershed
-from Pom.core.se_model import BackgroundProcess
+import scNodes.core.config as cfg
+import scNodes.core.settings as settings
+from scNodes.core.util import bin_2d_array#, get_maxima_3d_watershed
+from scNodes.core.se_model import BackgroundProcess
 from skimage import measure
 from scipy.ndimage import label, binary_dilation
 import tifffile

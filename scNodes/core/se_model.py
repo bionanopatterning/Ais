@@ -5,11 +5,11 @@ import numpy as np
 from itertools import count
 import glob
 import os
-import Pom.core.config as cfg
+import scNodes.core.config as cfg
 import importlib
 import threading
 import json
-from Pom.core.opengl_classes import Texture
+from scNodes.core.opengl_classes import Texture
 from scipy.ndimage import rotate, zoom, binary_dilation
 import datetime
 import time
@@ -374,7 +374,7 @@ class SEModel:
         for file in model_files:
             try:
                 module_name = os.path.basename(file)[:-3]
-                mod = importlib.import_module(("Pom." if not cfg.frozen else "")+"models."+module_name)
+                mod = importlib.import_module(("scNodes." if not cfg.frozen else "")+"models."+module_name)
                 if mod.include:
                     SEModel.MODELS[mod.title] = mod.create
             except Exception as e:

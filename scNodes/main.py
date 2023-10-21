@@ -1,8 +1,8 @@
 import os
 import sys
-import Pom.core.config as cfg
-from Pom.core.window import *
-from Pom.core.segmentation_editor import *
+import scNodes.core.config as cfg
+from scNodes.core.window import *
+from scNodes.core.segmentation_editor import *
 from imgui.integrations.glfw import GlfwRenderer
 import tkinter as tk
 

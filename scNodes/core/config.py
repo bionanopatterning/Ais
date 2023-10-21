@@ -11,10 +11,10 @@ import platform
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
-app_name = "Pom"
+app_name = "scNodes"
 version = "0.0.1"
 license = "GNU GPL v3"
-logpath = "Pom.log"
+logpath = "scNodes.log"
 
 filetype_segmentation = ".scns"
 filetype_traindata = ".scnt"

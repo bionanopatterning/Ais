@@ -4,10 +4,10 @@ from PIL import Image
 from copy import copy
 from tkinter import filedialog
 import dill as pickle
-from Pom.core.se_model import *
-from Pom.core.se_frame import *
-import Pom.core.widgets as widgets
-from Pom.core.util import clamp, bin_mrc#, get_maxima_3d_watershed
+from scNodes.core.se_model import *
+from scNodes.core.se_frame import *
+import scNodes.core.widgets as widgets
+from scNodes.core.util import clamp, bin_mrc#, get_maxima_3d_watershed
 import pyperclip
 import os
 import subprocess
@@ -852,7 +852,7 @@ class SegmentationEditor:
                             imgui.pop_style_var()
                             imgui.same_line()
                             if imgui.button("browse", 56, 19):
-                                selected_file = filedialog.askopenfilename(filetypes=[("Pom traindata", f"{cfg.filetype_traindata}")])
+                                selected_file = filedialog.askopenfilename(filetypes=[("scNodes traindata", f"{cfg.filetype_traindata}")])
                                 if selected_file is not None:
                                     m.train_data_path = selected_file
 
@@ -884,7 +884,7 @@ class SegmentationEditor:
                                 block_buttons = True
                             if imgui.button("load", (cw - 16) / 3, 20):
                                 if not block_buttons:
-                                    model_path = filedialog.askopenfilename(filetypes=[("Pom CNN", f"{cfg.filetype_semodel}")])
+                                    model_path = filedialog.askopenfilename(filetypes=[("scNodes CNN", f"{cfg.filetype_semodel}")])
                                     if model_path != "":
                                         m.load(model_path)
                             imgui.same_line(spacing=8)
@@ -898,7 +898,7 @@ class SegmentationEditor:
                             if imgui.button("save", (cw - 16) / 3, 20):
                                 if not block_buttons and not block_save_button:
                                     proposed_filename = f"{m.apix:.2f}_{m.box_size}_{m.loss:.4f}_{m.title}"
-                                    model_path = filedialog.asksaveasfilename(filetypes=[("Pom model", f"{cfg.filetype_semodel}")], initialfile=proposed_filename)
+                                    model_path = filedialog.asksaveasfilename(filetypes=[("scNodes model", f"{cfg.filetype_semodel}")], initialfile=proposed_filename)
                                     if model_path != "":
                                         if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
                                             model_path += cfg.filetype_semodel
@@ -1468,14 +1468,14 @@ class SegmentationEditor:
                 if imgui.begin_menu("File"):
                     if imgui.menu_item("Import dataset")[0]:
                         try:
-                            filename = filedialog.askopenfilename(filetypes=[("Pom segmentable", f".mrc {cfg.filetype_segmentation}")])
+                            filename = filedialog.askopenfilename(filetypes=[("scNodes segmentable", f".mrc {cfg.filetype_segmentation}")])
                             if filename != '':
                                 self.import_dataset(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not import dataset, see details below.")
                     if imgui.menu_item("Import model group")[0]:
                         try:
-                            filename = filedialog.askopenfilename(filetypes=[("Pom model group", cfg.filetype_semodel_group)])
+                            filename = filedialog.askopenfilename(filetypes=[("scNodes model group", cfg.filetype_semodel_group)])
                             if filename != '':
                                 SegmentationEditor.load_model_group(filename)
                         except Exception as e:
@@ -1489,7 +1489,7 @@ class SegmentationEditor:
                     #         cfg.set_error(e, "Could not import SPA dataset, see details below")
                     if imgui.menu_item("Save dataset")[0]:
                         try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("Pom segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
+                            filename = filedialog.asksaveasfilename(filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
                             if filename != '':
                                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                                     filename += cfg.filetype_segmentation
@@ -1499,7 +1499,7 @@ class SegmentationEditor:
                             cfg.set_error(e, "Could not save dataset, see details below.")
                     if imgui.menu_item("Save dataset w. map")[0]:
                         try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("Pom segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
+                            filename = filedialog.asksaveasfilename(filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
                             if filename != '':
                                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                                     filename += cfg.filetype_segmentation
@@ -1510,7 +1510,7 @@ class SegmentationEditor:
                             cfg.set_error(e, "Could not save dataset (including map), see details below.")
                     if imgui.menu_item("Save model group")[0]:
                         try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("Pom model group", f"{cfg.filetype_semodel_group}")])
+                            filename = filedialog.asksaveasfilename(filetypes=[("scNodes model group", f"{cfg.filetype_semodel_group}")])
                             if filename != '':
                                 if filename[-len(cfg.filetype_semodel_group):] != cfg.filetype_semodel_group:
                                     filename += cfg.filetype_semodel_group
@@ -1711,7 +1711,7 @@ class SegmentationEditor:
                 copy_error, _ = imgui.menu_item("Copy to clipboard")
                 if copy_error:
                     pyperclip.copy(cfg.error_msg)
-                copy_path_to_log, _ = imgui.menu_item("Copy path to Pom.log")
+                copy_path_to_log, _ = imgui.menu_item("Copy path to scNodes.log")
                 if copy_path_to_log:
                     pyperclip.copy(os.path.abspath(cfg.logpath))
                 imgui.end_popup()
@@ -1863,7 +1863,7 @@ class SegmentationEditor:
                 negative_feature_names.append(f)
         if len(positive_feature_names) == 0:
             return
-        path = filedialog.asksaveasfilename(filetypes=[("Pom traindata", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{SegmentationEditor.trainset_apix:.3f}_{positive_feature_names[0]}")
+        path = filedialog.asksaveasfilename(filetypes=[("scNodes traindata", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{SegmentationEditor.trainset_apix:.3f}_{positive_feature_names[0]}")
         if path == "":
             return
         if path[-len(cfg.filetype_traindata):] != cfg.filetype_traindata:
