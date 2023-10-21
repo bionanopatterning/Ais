@@ -1,0 +1,3 @@
+recursive-include Pom/icons/*.png
+recursive-include Pom/shaders/*.glsl
+recursive-include Pom/models/*.py

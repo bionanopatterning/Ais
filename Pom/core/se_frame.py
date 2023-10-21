@@ -536,7 +536,7 @@ class Segmentation:
                 vol = np.zeros((self.parent.n_slices, self.parent.height, self.parent.width), dtype=np.uint8)
                 for i in self.edited_slices:
                     vol[i] = self.slices[i]
-                outf.set_data(vol)
+                outf.set_data(vol * 255)
                 outf.voxel_size = self.parent.pixel_size * 10.0
             print(f"Volume saved to: {fpath}")
         except Exception as e:
