@@ -3,7 +3,7 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Concatenate, Ac
 from tensorflow.keras.optimizers import Adam
 
 title = "InceptionNet"
-
+include = True
 
 def inception_module(inputs, filters=64):
     t1 = Conv2D(filters, (1, 1), padding='same', activation='relu')(inputs)

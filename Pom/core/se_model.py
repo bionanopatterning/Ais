@@ -5,19 +5,19 @@ import numpy as np
 from itertools import count
 import glob
 import os
-import scNodes.core.config as cfg
+import Pom.core.config as cfg
 import importlib
 import threading
 import json
-from scNodes.core.opengl_classes import Texture
-from scipy.ndimage import rotate
+from Pom.core.opengl_classes import Texture
+from scipy.ndimage import rotate, zoom, binary_dilation
 import datetime
-from scipy.ndimage import zoom
-
+import time
 # Note 230522: getting tensorflow to use the GPU is a pain. Eventually it worked with:
 # Python 3.9, CUDA D11.8, cuDNN 8.6, tensorflow 2.8.0, protobuf 3.20.0, and adding
 # LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
 
+#TODO: in process_slice, check the volume of data that is processed by any model at one time. It should fit in the GPU, or tf throws an error that causes a QueuedExport to stop. Ensure that batch size is smaller than available data.
 
 class SEModel:
     idgen = count(0)
@@ -33,20 +33,24 @@ class SEModel:
                        (0 / 255, 136 / 255, 266 / 255),
                        (0 / 255, 247 / 255, 255 / 255),
                        (0 / 255, 255 / 255, 0 / 255)]
+    DEFAULT_MODEL_ENUM = 1
 
     def __init__(self):
+        if not SEModel.MODELS_LOADED:
+            SEModel.load_models()
+
         uid_counter = next(SEModel.idgen)
         self.uid = int(datetime.datetime.now().strftime('%Y%m%d%H%M%S%f') + "000") + uid_counter
         self.title = "Unnamed model"
-        self.colour = SEModel.DEFAULT_COLOURS[(uid_counter - 1) % len(SEModel.DEFAULT_COLOURS)]
+        self.colour = SEModel.DEFAULT_COLOURS[(uid_counter) % len(SEModel.DEFAULT_COLOURS)]
         self.apix = -1.0
         self.compiled = False
         self.box_size = -1
         self.model = None
-        self.model_enum = 3
+        self.model_enum = SEModel.DEFAULT_MODEL_ENUM
         self.epochs = 25
         self.batch_size = 32
-        self.train_data_path = "training_dataset.scnt"
+        self.train_data_path = ""
         self.active = True
         self.export = True
         self.blend = False
@@ -61,17 +65,19 @@ class SEModel:
         self.n_copies = 4
         self.excess_negative = 30
         self.info = ""
-        self.info_short = ""  ## TODO: add loss to info strings
+        self.info_short = ""
         self.loss = 0.0
         self.data = None
         self.texture = Texture(format="r32f")
         self.texture.set_linear_mipmap_interpolation()
-
-        if not SEModel.MODELS_LOADED:
-            SEModel.load_models()
+        self.bcprms = dict()  # backward compatibility params dict.
+        self.emit = False
+        self.absorb = False
+        self.interactions = list()  # list of ModelInteraction objects.
 
     def delete(self):
-        pass
+        for interaction in self.interactions:
+            ModelInteraction.all.remove(interaction)
 
     def save(self, file_path):
         # Split the file_path into directory and file
@@ -84,7 +90,6 @@ class SEModel:
 
         # Save metadata
         metadata = {
-            'uid': self.uid,
             'title': self.title,
             'colour': self.colour,
             'apix': self.apix,
@@ -104,7 +109,10 @@ class SEModel:
             'n_copies': self.n_copies,
             'info': self.info,
             'info_short': self.info_short,
-            'excess_negative': self.excess_negative
+            'excess_negative': self.excess_negative,
+            'emit': self.emit,
+            'absorb': self.absorb,
+            'loss': self.loss
         }
         with open(file_path, 'w') as f:
             json.dump(metadata, f)
@@ -122,7 +130,6 @@ class SEModel:
             # Load metadata
             with open(file_path, 'r') as f:
                 metadata = json.load(f)
-            self.uid = metadata['uid']
             self.title = metadata['title']
             self.colour = metadata['colour']
             self.apix = metadata['apix']
@@ -143,8 +150,10 @@ class SEModel:
             self.info = metadata['info']
             self.info_short = metadata['info_short']
             self.excess_negative = metadata['excess_negative']
+            self.emit = metadata['emit']
+            self.absorb = metadata['absorb']
+            self.loss = metadata['loss']
         except Exception as e:
-            raise e
             print("Error loading model - see details below", print(e))
 
     def train(self):
@@ -222,10 +231,12 @@ class SEModel:
             negative_x.append(x_rotated)
             negative_y.append(train_y[i])
             n_neg_copied += 1
+        print(f"Loaded a training dataset with {len(positive_x)} positive and {len(negative_x)} negative samples.")
         return np.array(positive_x + negative_x), np.array(positive_y + negative_y)
 
     def _train(self, process):
         try:
+            start_time = time.time()
             train_x, train_y = self.load_training_data()
             n_samples = train_x.shape[0]
             box_size = train_x.shape[1]
@@ -239,11 +250,11 @@ class SEModel:
                 return
 
             # train
-            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=0.1,
+            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True,
                            callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self),
                                       StopTrainingCallback(process.stop_request)])
             process.set_progress(1.0)
-
+            print(self.info + f" {time.time() - start_time:.1f} seconds of training.")
         except Exception as e:
             cfg.set_error(e, "Could not train model - see details below.")
             process.stop()
@@ -263,15 +274,22 @@ class SEModel:
         self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f})"
         self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f})"
 
+    def get_model_title(self):
+        return SEModel.AVAILABLE_MODELS[self.model_enum]
+
     def set_slice(self, slice_data, slice_pixel_size, roi, original_size):
-        if not self.compiled:
+        try:
+            self.data = np.zeros(original_size)
+            if not self.compiled:
+                return False
+            if not self.active:
+                return False
+            rx, ry = roi
+            self.data[rx[0]:rx[1], ry[0]:ry[1]] = self.apply_to_slice(slice_data[rx[0]:rx[1], ry[0]:ry[1]], slice_pixel_size)
+            return True
+        except Exception as e:
+            print(e)
             return False
-        if not self.active:
-            return False
-        self.data = np.zeros(original_size)
-        rx, ry = roi
-        self.data[rx[0]:rx[1], ry[0]:ry[1]] = self.apply_to_slice(slice_data[rx[0]:rx[1], ry[0]:ry[1]], slice_pixel_size)
-        return True
 
     def update_texture(self):
         if not self.compiled or not self.active:
@@ -312,7 +330,9 @@ class SEModel:
                 out_image[x:x + self.box_size, y:y + self.box_size] += boxes[i]
                 count[x:x + self.box_size, y:y + self.box_size] += 1
                 i += 1
-        count[count == 0] = 1
+        c_mask = count == 0   # edited 231018 to set count=1 tiles to all zero, to get rid of the border errors.
+        count[c_mask] = 1  # edited 231018
+        out_image[c_mask] = 0  # edited 231018
         out_image = out_image / count
         out_image = out_image[:w, :h]
         scale_fac = self.apix / (original_pixel_size * 10.0)
@@ -323,7 +343,9 @@ class SEModel:
         # tile
         boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
         # apply model
+        start_time = time.time()
         seg_boxes = np.squeeze(self.model.predict(boxes))
+        print(self.info + f" cost for {image.shape[0]}x{image.shape[1]} slice: {time.time()-start_time:.3f} s.")
         # detile
         segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
         return segmentation
@@ -352,12 +374,15 @@ class SEModel:
         for file in model_files:
             try:
                 module_name = os.path.basename(file)[:-3]
-                mod = importlib.import_module(("scNodes." if not cfg.frozen else "")+"models."+module_name)
-                SEModel.MODELS[mod.title] = mod.create
+                mod = importlib.import_module(("Pom." if not cfg.frozen else "")+"models."+module_name)
+                if mod.include:
+                    SEModel.MODELS[mod.title] = mod.create
             except Exception as e:
                 cfg.set_error(e, "Could not load SegmentationEditor model at path: "+file)
         SEModel.MODELS_LOADED = True
         SEModel.AVAILABLE_MODELS = list(SEModel.MODELS.keys())
+        if 'VGGNet' in SEModel.AVAILABLE_MODELS:
+            SEModel.DEFAULT_MODEL_ENUM = SEModel.AVAILABLE_MODELS.index('VGGNet')
 
     def __eq__(self, other):
         if isinstance(other, SEModel):
@@ -365,8 +390,96 @@ class SEModel:
         return False
 
 
+class ModelInteraction:
+    idgen = count(0)
+    TYPES = ["Colocalize", "Avoid"]
+
+    all = list()
+
+    def __init__(self, parent, partner):
+        self.uid = int(datetime.datetime.now().strftime('%Y%m%d%H%M%S%f') + "000") + next(ModelInteraction.idgen)
+        self.parent = parent
+        self.partner = partner
+        self.type = 0
+        self.radius = 10.0  # nanometer
+        self.threshold = 0.5
+        self.kernel = np.zeros((1, 1))
+        self.kernel_info = "none"
+        ModelInteraction.all.append(self)
+
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.uid == other.uid
+        return False
+
+    def get_kernel(self, pixel_size):
+        info_str = f"{self.radius}_{pixel_size}"
+        if self.kernel_info == info_str:  # check if the previously generated kernel was the same (i.e. same radius, pixel_size). If so, return it, else, compute the new kernel and return that.
+            return self.kernel
+        else:
+            radius_pixels = int(self.radius // pixel_size)
+            self.kernel = np.zeros((radius_pixels * 2 + 1, radius_pixels * 2 + 1), dtype=np.float32)
+            r2 = radius_pixels**2
+            for x in range(0, 2*radius_pixels+1):
+                for y in range(0, 2*radius_pixels+1):
+                    self.kernel[x, y] = 1.0 if ((x-radius_pixels)**2 + (y-radius_pixels)**2) < r2 else 0.0
+            self.kernel_info = f"{self.radius}_{pixel_size}"
+            return self.kernel
+
+    def apply(self, pixel_size):
+        print(f"Applying model interaction {self.uid}")
+        if self.parent.active:
+            self.parent.data = self.apply_to_images(pixel_size, self.partner.data, self.parent.data)
+
+    def apply_to_images(self, pixel_size, partner_image, parent_image):
+        int_mask = False
+        if partner_image.dtype == np.uint8:
+            partner_mask = np.where(partner_image > self.threshold * 255, 1, 0)
+            int_mask = True
+        else:
+            partner_mask = np.where(partner_image > self.threshold, 1, 0)
+        kernel = self.get_kernel(pixel_size)
+        if self.type == 0:
+            mask = binary_dilation(partner_mask, structure=kernel).astype(np.float32 if not int_mask else np.uint8)
+            parent_image = parent_image * mask  # this might be sped up by in place multiplication; [] *= []
+        elif self.type == 1:
+            mask = 1.0 - binary_dilation(partner_mask, structure=kernel).astype(np.float32 if not int_mask else np.uint8)
+            parent_image = parent_image * mask
+        return parent_image
+
+    def as_dict(self):
+        mdict = dict()
+        mdict['parent_title'] = self.parent.title
+        mdict['partner_title'] = self.partner.title
+        mdict['type'] = self.type
+        mdict['radius'] = self.radius
+        mdict['threshold'] = self.threshold
+        return mdict
+
+    @staticmethod
+    def from_dict(mdict):
+        parent_title = mdict['parent_title']
+        partner_title = mdict['partner_title']
+        partner_model = None
+        parent_model = None
+        for m in cfg.se_models:
+            if m.title == parent_title:
+                parent_model = m
+            elif m.title == partner_title:
+                partner_model = m
+        if partner_model is None or parent_model is None:
+            return
+        interaction = ModelInteraction(parent_model, partner_model)
+        interaction.type = mdict['type']
+        interaction.radius = mdict['radius']
+        interaction.threshold = mdict['threshold']
+        parent_model.interactions.append(interaction)
+
+
 class TrainingProgressCallback(Callback):
     def __init__(self, process, n_samples, batch_size, model):
+        self.params = dict()
+        self.params['epochs'] = 1
         super().__init__()
         self.process = process
         self.batch_size = batch_size
@@ -389,8 +502,13 @@ class TrainingProgressCallback(Callback):
 
 class StopTrainingCallback(Callback):
     def __init__(self, stop_request):
+        self.params = dict()
+        self.params['epochs'] = 1
         super().__init__()
         self.stop_request = stop_request
+
+    def on_epoch_begin(self, epoch, logs=None):
+        pass
 
     def on_batch_end(self, batch, logs=None):
         if self.stop_request.is_set():

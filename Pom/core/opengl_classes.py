@@ -54,6 +54,10 @@ class Texture:
         glActiveTexture(GL_TEXTURE0 + int(slot))
         glBindTexture(GL_TEXTURE_2D, self.renderer_id)
 
+    def bind_image_slot(self, slot=0, rw=0):
+        rwval = [GL_READ_ONLY, GL_WRITE_ONLY, GL_READ_WRITE][rw]
+        glBindImageTexture(slot, self.renderer_id, 0, GL_FALSE, 0, rwval, self.internalformat)
+
     def update(self, pixeldata, width=None, height=None):
         self.bind()
         if width:
@@ -100,8 +104,7 @@ class Texture:
 
 
 class Shader:
-    """Uniforms can only be uploaded when Shaders is first manually bound by user."""
-    def __init__(self, sourcecode = None):
+    def __init__(self, sourcecode=None):
         if sourcecode:
             self.shaderProgram = glCreateProgram()
             self.compile(sourcecode)
@@ -174,9 +177,14 @@ class Shader:
         uniformLocation = glGetUniformLocation(self.shaderProgram, uniformName)
         glUniform3f(uniformLocation, uniformFloat3Value[0], uniformFloat3Value[1], uniformFloat3Value[2])
 
+    def uniform4f(self, uniformName, uniformFloat4Value):
+        uniformLocation = glGetUniformLocation(self.shaderProgram, uniformName)
+        glUniform4f(uniformLocation, uniformFloat4Value[0], uniformFloat4Value[1], uniformFloat4Value[2], uniformFloat4Value[3])
+
     def uniformmat4(self, uniformName, uniformMat4):
         uniformLocation = glGetUniformLocation(self.shaderProgram, uniformName)
         glUniformMatrix4fv(uniformLocation, 1, GL_TRUE, uniformMat4)
+
 
 class VertexBuffer:
     """Not that vertices must be a default 1d python list. In __init__ it is cast into the required shape."""
@@ -213,9 +221,12 @@ class VertexBuffer:
 
 class IndexBuffer:
     """Note that indices must be a default python list. It is turned in to a np.array along the 2nd dimension with type np.uint16 before sending to GPU"""
-    def __init__(self, indices):
+    def __init__(self, indices, long=False):
         self.indexBufferObject = glGenBuffers(1)
-        self.indices = np.asarray([indices], dtype = np.uint16)
+        if not long:
+            self.indices = np.asarray([indices], dtype = np.uint16)
+        else:
+            self.indices = np.asarray([indices], dtype = np.uint32)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.indexBufferObject)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.indices, GL_STATIC_DRAW)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
@@ -264,6 +275,10 @@ class VertexArray:
             glEnableVertexAttribArray(0)
             glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 8, ctypes.cast(0, ctypes.c_void_p))
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer.indexBufferObject)
+        elif self.attribute_format == "xyz":
+            glEnableVertexAttribArray(0)
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 12, ctypes.cast(0, ctypes.c_void_p))
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer.indexBufferObject)
         elif self.attribute_format == "xyuv":
             glEnableVertexAttribArray(0)
             glEnableVertexAttribArray(1)
@@ -275,6 +290,12 @@ class VertexArray:
             glEnableVertexAttribArray(1)
             glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 20, ctypes.cast(0, ctypes.c_void_p))
             glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 20, ctypes.cast(8, ctypes.c_void_p))
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer.indexBufferObject)
+        elif self.attribute_format == "xyznxnynz":
+            glEnableVertexAttribArray(0)
+            glEnableVertexAttribArray(1)
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 24, ctypes.cast(0, ctypes.c_void_p))
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 24, ctypes.cast(12, ctypes.c_void_p))
             glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexBuffer.indexBufferObject)
         glBindVertexArray(0)
 
@@ -303,16 +324,25 @@ class FrameBuffer:
             self.texture.bind()
             self.texture.update(None, self.width, self.height)
             glBindTexture(GL_TEXTURE_2D, 0)
-            # Set up depth render buffer
-            self.depthRenderbuffer = glGenRenderbuffers(1)
-            glBindRenderbuffer(GL_RENDERBUFFER, self.depthRenderbuffer)
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, self.width, self.height)
-            glBindRenderbuffer(GL_RENDERBUFFER, 0)
+            # # Set up depth render buffer
+            # self.depthRenderbuffer = glGenRenderbuffers(1)
+            # glBindRenderbuffer(GL_RENDERBUFFER, self.depthRenderbuffer)
+            # glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, self.width, self.height)
+            # glBindRenderbuffer(GL_RENDERBUFFER, 0)
+            # Set up depth render texture
+            self.depth_texture_renderer_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, self.depth_texture_renderer_id)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, self.width, self.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, None)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glBindTexture(GL_TEXTURE_2D, 0)
             # Set up frame buffer
             self.framebufferObject = glGenFramebuffers(1)
             glBindFramebuffer(GL_FRAMEBUFFER, self.framebufferObject)
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, self.texture.renderer_id, 0)
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, self.depthRenderbuffer)
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, self.depth_texture_renderer_id, 0)
 
             if glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE:
                 raise RuntimeError("Framebuffer binding failed, GPU might not support this configuration.")

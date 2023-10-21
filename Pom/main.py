@@ -1,8 +1,8 @@
 import os
 import sys
-import scNodes.core.config as cfg
-from scNodes.core.window import *
-from scNodes.core.segmentation_editor import *
+import Pom.core.config as cfg
+from Pom.core.window import *
+from Pom.core.segmentation_editor import *
 from imgui.integrations.glfw import GlfwRenderer
 import tkinter as tk
 
@@ -20,7 +20,7 @@ if __name__ == "__main__":
         raise Exception("Could not initialize GLFW library!")
 
     # Init the main window, its imgui context, and a glfw rendering impl.
-    main_window = Window(cfg.window_width, cfg.window_height, "scSegmentation editor")
+    main_window = Window(cfg.window_width, cfg.window_height, settings.ne_window_title)
     main_window.set_callbacks()
     main_window_imgui_context = imgui.create_context()
     main_window_imgui_glfw_implementation = GlfwRenderer(main_window.glfw_window)

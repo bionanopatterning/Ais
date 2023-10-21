@@ -79,7 +79,7 @@ class Window:
         if self.force_alpha_zero:
             self.clear_color = (*self.clear_color[0:3], 0.0)
         glClearColor(*self.clear_color)
-        glClear(GL_COLOR_BUFFER_BIT)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         self.cursor_pos_previous_frame = self.cursor_pos
         self.cursor_pos = list(glfw.get_cursor_pos(self.glfw_window))
         self.cursor_delta = [-self.cursor_pos_previous_frame[0] + self.cursor_pos[0], -self.cursor_pos_previous_frame[1] + self.cursor_pos[1]]

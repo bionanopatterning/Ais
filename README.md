@@ -19,15 +19,15 @@ protobuf 3.20.0
 The software will work without CUDA, but only on the CPU. This set up is much slower but still reasonably interactive. We do recommend installing CUDA and cuDNN in order for tensorflow to be able to use the GPU. 
 
 ### Annotation ###
-![](scNodes/res/scR_segmentation.PNG)
+![](Pom/res/scR_segmentation.PNG)
 
 
 ### Generating training sets ###
-![](scNodes/res/scR_trainset.PNG)
+![](Pom/res/scR_trainset.PNG)
 
 
 ### Training models ###
-![](scNodes/res/scR_models_2.PNG)
+![](Pom/res/scR_models_2.PNG)
 
 ## Exporting segmented volumes ###
-![](scNodes/res/scR_export.PNG)
+![](Pom/res/scR_export.PNG)
