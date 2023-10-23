@@ -11,8 +11,8 @@ import platform
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
-app_name = "scNodes"
-version = "0.0.1"
+app_name = "Pom"
+version = "0.0.4"
 license = "GNU GPL v3"
 logpath = "scNodes.log"
 

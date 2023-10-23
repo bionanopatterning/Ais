@@ -45,7 +45,7 @@ After processing a volume, the resulting segmented volume datasets are automatic
 
 ## Fluorescence-guided segmentation ##
 ![](scNodes/res/scR_fluo_g_seg.png)
-In [scNodes](github.com/bionanopatterning/scNodes) + Pom, data can be forwarded from the correlation editor into Pom's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localization reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
+In [scNodes](github.com/bionanopatterning/scNodes) + Pom, data can be forwarded from the correlation editor into Pom's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localizations reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
 
 ## 3D ray-traced fluorescence overlays ## 
 ![](scNodes/res/scR_fluo_overlay.PNG)
