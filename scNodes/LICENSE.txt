@@ -1,3 +1,11 @@
+Pom
+-------------
+Copyright (C) 2023 Mart G. F. Last, mgflast@gmail.com, m.g.f.last@lumc.nl
+
+This software is licensed under the GNU General Public License, version 3.
+Below is the full license text.
+_____________
+
  GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
