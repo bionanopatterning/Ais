@@ -32,11 +32,11 @@ After preparing some annotations, the user in this example selects positive and 
 Here, four previously prepared training datasets are used to train four segmentation models. The menu on the left shows the set-up for the four models; the first three models have already been trained, while the fourth (microtubuli, orange) is being set up for a second training run.
 
 ### Model interactions ###
-![](scNodes/res/scR_interactions.PNG)
+![](scNodes/res/scR_interactions.png)
 Model interactions add an extra layer of nonlinear filtering to the model outputs, and can aid significantly in reducing false positive predictions. Here, competition between the single and double membrane models enhances the differentiation between these two (similar) features, and a colocalization dependency of the viral pore model conditioned on the double membrane model suppresses spurious false positives by the pore model near biologically non-relevant other features.  
 
 ## Exporting segmented volumes ###
-![](scNodes/res/scR_export.PNG)
+![](scNodes/res/scR_export.png)
 An example of the batch processing interface, in the 'Export' tab. Only one tomogram is imported, but any number can be linked into the software and processed in one go (typically, in an overnight process). Six features are being segmented: ribosome, coronaviral replication organelle pores, double membranes, intermediate filaments, microtubuli, and actin filaments.  
 
 ## Built-in rendering to inspect results ## 
@@ -48,5 +48,5 @@ After processing a volume, the resulting segmented volume datasets are automatic
 In [scNodes](github.com/bionanopatterning/scNodes) + Pom, data can be forwarded from the correlation editor into Pom's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localizations reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
 
 ## 3D ray-traced fluorescence overlays ## 
-![](scNodes/res/scR_fluo_overlay.PNG)
+![](scNodes/res/scR_fluo_overlay.png)
 Rendering in [scNodes](github.com/bionanopatterning/scNodes) + Pom combines the default isosurface viewer with 3D ray-traced fluorescence overlays. Here, a 2D single molecule localization map is projected into the 3D volume of the tomogram. Membranes, ribosomes, and the two vimentin filaments revealed by the fluorescence overlay are segmented and rendered.  
