@@ -6,6 +6,7 @@ from scNodes.core.segmentation_editor import *
 from imgui.integrations.glfw import GlfwRenderer
 import tkinter as tk
 
+
 tkroot = tk.Tk()
 tkroot.withdraw()
 
@@ -15,7 +16,8 @@ sys.path.insert(0, os.path.abspath("../.."))
 sys.path.append(directory)
 cfg.root = os.path.join(os.path.dirname(__file__))
 
-if __name__ == "__main__":
+
+def main():
     if not glfw.init():
         raise Exception("Could not initialize GLFW library!")
 
@@ -39,5 +41,7 @@ if __name__ == "__main__":
         segmentation_editor.end_frame()
 
 
+if __name__ == "__main__":
+    main()
 
 
