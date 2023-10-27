@@ -11,6 +11,7 @@ from skimage import measure
 from scipy.ndimage import label, binary_dilation
 import tifffile
 
+
 class SEFrame:
     idgen = count(0)
 

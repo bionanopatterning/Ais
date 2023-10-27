@@ -8,6 +8,21 @@ A timelapse video of the full workflow, from reconstructed tomograms to segmente
 Contact: m.g.f.last@lumc.nl
 
 ### Installation ###
+Pom works on Windows and Linux machines but not on iOS. Install as follows: 
+```
+conda create --name pom
+conda activate pom
+conda install python==3.9
+conda install pip
+pip install pom-cryoet
+```
+
+Then run using either of the following commands:
+```
+pom
+pom-cryoet
+```
+#### Tensorflow & CUDA compatibility ####
 Compatibility between Python, tensorflow, and CUDA versions can be an issue. The following combination was used during development and is know to work:
 
 Python 3.9<br/>
@@ -16,7 +31,7 @@ CUDA 11.8<br/>
 cuDNN 8.6<br/>
 protobuf 3.20.0<br/>
 
-The software will work without CUDA, but only on the CPU. This set up is much slower but still reasonably interactive. We do recommend installing CUDA and cuDNN in order for tensorflow to be able to use the GPU. See: https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html for help installing CUDA and cuDNN. 
+The software will work without CUDA, but only on the CPU. This is much slower but still reasonably interactive if the tomograms aren't too big (in XY). We do recommend installing CUDA and cuDNN in order for tensorflow to be able to use the GPU. See: https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html for help installing CUDA and cuDNN. 
 
 ## Gallery ##
 ### Annotation ###

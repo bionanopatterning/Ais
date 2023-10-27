@@ -85,6 +85,7 @@ class SegmentationEditor:
         EXTRACT_SELECTED_FEATURE_TITLE = ""
 
         trainset_apix = 10.0
+        seg_folder = ""
 
     def __init__(self, window, imgui_context, imgui_impl):
         self.window = window
@@ -128,7 +129,7 @@ class SegmentationEditor:
         self.crop_handles = list()
 
         # picking / 3d renders
-        self.seg_folder = ""
+
         self.pick_same_folder = True
         self.pick_box_va = VertexArray(attribute_format="xyz")
         self.pick_box_quad_va = VertexArray(attribute_format="xyz")
@@ -171,6 +172,7 @@ class SegmentationEditor:
         cfg.se_active_frame.slice_changed = True
         if len(cfg.se_frames) == 1:
             SegmentationEditor.trainset_apix = cfg.se_active_frame.pixel_size * 10.0
+            SegmentationEditor.seg_folder = os.path.dirname(cfg.se_active_frame.path)
         SegmentationEditor.renderer.fbo1 = FrameBuffer(dataset.width, dataset.height, "rgba32f")
         SegmentationEditor.renderer.fbo2 = FrameBuffer(dataset.width, dataset.height, "rgba32f")
         SegmentationEditor.renderer.fbo3 = FrameBuffer(dataset.width, dataset.height, "rgba32f")
@@ -1182,6 +1184,8 @@ class SegmentationEditor:
 
         def picking_tab():
             if imgui.collapsing_header("Volumes", None, imgui.TREE_NODE_DEFAULT_OPEN)[0]:
+                src_folder_changed, SegmentationEditor.seg_folder = widgets.select_directory("...", SegmentationEditor.seg_folder)
+                self.tooltip("Specify the directory in which to look for segmentations for the active dataset.")
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
@@ -1202,12 +1206,9 @@ class SegmentationEditor:
                     SegmentationEditor.pick_tab_index_datasets_segs = False
                     # find segmentations in the selected dataset's folder.
 
-                    if self.pick_same_folder:
-                        files = glob.glob(os.path.join(os.path.dirname(se_frame.path), se_frame.title + "_*.mrc"))
-                        print(f"Filename template: {os.path.dirname(se_frame.path)}, {se_frame.title}, _*.mrc")
-                    else:
-                        files = glob.glob(os.path.join(self.seg_folder, se_frame.title + "_*.mrc"))
-                        print(f"Filename template: {self.seg_folder}, {se_frame.title}, _*.mrc")
+
+                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
+                    print(f"Filename template: {SegmentationEditor.seg_folder}, {se_frame.title}, _*.mrc")
                     for f in sorted(files):
                         if not 'overlay' in f:
                             cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
@@ -1231,7 +1232,7 @@ class SegmentationEditor:
                     self.pick_box_quad_va.update(VertexBuffer(vertices), IndexBuffer(quad_indices))
 
 
-                if SegmentationEditor.pick_tab_index_datasets_segs:
+                if SegmentationEditor.pick_tab_index_datasets_segs or src_folder_changed:
                     update_picking_tab_for_new_active_frame()
 
                 for s in cfg.se_surface_models:
@@ -3133,3 +3134,4 @@ class WorldSpaceIcon:
         ab = [B[0] - A[0], B[1] - A[1]]
         ad = [D[0] - A[0], D[1] - A[1]]
         return (0 < ap[0] * ab[0] + ap[1] * ab[1] < ab[0] ** 2 + ab[1] ** 2) and (0 < ap[0] * ad[0] + ap[1] * ad[1] < ad[0] ** 2 + ad[1] ** 2)
+

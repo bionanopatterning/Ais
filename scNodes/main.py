@@ -41,6 +41,18 @@ def main():
         segmentation_editor.end_frame()
 
 
+def windowless():
+    if not glfw.init():
+        raise Exception("Could not initialize GLFW library for headless start!")
+    glfw.window_hint(glfw.VISIBLE, False)
+    window = glfw.create_window(1, 1, "invisible Pom window", None, None)
+    if not window:
+        glfw.terminate()
+        raise Exception("Could not create invisible Pom window!")
+    glfw.make_context_current(window)
+    return window
+
+
 if __name__ == "__main__":
     main()
 
