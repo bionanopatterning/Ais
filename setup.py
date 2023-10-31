@@ -1,15 +1,16 @@
 from setuptools import setup, find_packages
 
 # how to release:
-# update version number in config manually
+# UPDATE VERSION IN 3 PLACES: config.py, setup.py, docs/conf.py
 
 # push to pypi:
 # python setup.py sdist
 # twine upload dist/*
 
+
 setup(
     name='Pom-cryoET',
-    version='0.0.4',
+    version='0.0.5',
     packages=find_packages(),
     entry_points={'console_scripts':['pom=scNodes.main:main', 'pom-cryoet=scNodes.main:main']},
     url='https://github.com/bionanopatterning/Pom',
