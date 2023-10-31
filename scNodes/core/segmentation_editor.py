@@ -88,7 +88,7 @@ class SegmentationEditor:
         seg_folder = ""
 
         SHOW_BOOT_SPRITE = True
-        ICON = Image.open(os.path.join(cfg.root, "icons", "ICON_Pom_512.png"))
+        ICON = Image.open(os.path.join(cfg.root, "icons", "LOGO_Pom_128.png"))
 
     def __init__(self, window, imgui_context, imgui_impl):
         self.window = window
