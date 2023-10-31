@@ -17,6 +17,8 @@ sys.path.append(directory)
 cfg.root = os.path.join(os.path.dirname(__file__))
 
 
+
+
 def main():
     if not glfw.init():
         raise Exception("Could not initialize GLFW library!")
@@ -32,6 +34,7 @@ def main():
     # set up editor
     segmentation_editor = SegmentationEditor(main_window, main_window_imgui_context, main_window_imgui_glfw_implementation)
     cfg.segmentation_editor = segmentation_editor
+    main_window.set_icon(segmentation_editor.ICON)
 
 
     while not glfw.window_should_close(main_window.glfw_window):

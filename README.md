@@ -8,7 +8,7 @@ A timelapse video of the full workflow, from reconstructed tomograms to segmente
 Contact: m.g.f.last@lumc.nl
 
 ### Installation ###
-Pom works on Windows and Linux machines but not on iOS. Install as follows: 
+Pom works on Windows and Linux machines but not on MacOS. Install as follows: 
 ```
 conda create --name pom
 conda activate pom

@@ -87,6 +87,9 @@ class SegmentationEditor:
         trainset_apix = 10.0
         seg_folder = ""
 
+        SHOW_BOOT_SPRITE = True
+        ICON = Image.open(os.path.join(cfg.root, "icons", "ICON_Pom_512.png"))
+
     def __init__(self, window, imgui_context, imgui_impl):
         self.window = window
         self.window.clear_color = cfg.COLOUR_WINDOW_BACKGROUND
@@ -119,7 +122,7 @@ class SegmentationEditor:
 
         # export & extract
         self.export_limit_range = True
-        self.export_overlays = True
+        self.export_overlays = False
         self.export_dir = ""
         self.queued_exports = list()
         self.export_batch_size = 1
@@ -163,6 +166,13 @@ class SegmentationEditor:
             self.icon_obj.set_linear_interpolation()
             self.icon_chimerax.set_linear_interpolation()
             self.icon_blender.set_linear_interpolation()
+
+            self.boot_sprite_texture = Texture(format="rgba32f")
+            pxd = np.asarray(Image.open(os.path.join(icon_dir, "LOGO_Pom_2048.png"))).astype(np.float32) / 255.0
+            self.boot_sprite_texture.update(pxd)
+            self.boot_sprite_width, self.boot_sprite_height = pxd.shape[0:2]
+            self.boot_sprite_texture.set_linear_interpolation()
+
 
     @staticmethod
     def set_active_dataset(dataset):
@@ -419,6 +429,28 @@ class SegmentationEditor:
             imgui.push_style_color(imgui.COLOR_DRAG_DROP_TARGET, *cfg.COLOUR_DROP_TARGET)
             imgui.push_style_color(imgui.COLOR_SCROLLBAR_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND[:3], 0.0)
             imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, cfg.WINDOW_ROUNDING)
+
+        def boot_sprite():
+            if SegmentationEditor.SHOW_BOOT_SPRITE:
+                imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND[0:3], 0.0)
+                imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, *cfg.COLOUR_WINDOW_BACKGROUND[0:3], 0.0)
+                imgui.push_style_color(imgui.COLOR_TEXT, *(0.0, 0.0, 0.0, 1.0))
+
+                _w = self.boot_sprite_width * 0.25
+                _h = self.boot_sprite_height * 0.25
+                imgui.set_next_window_position(SegmentationEditor.MAIN_WINDOW_WIDTH + (cfg.window_width - SegmentationEditor.MAIN_WINDOW_WIDTH) / 2.0 - (_w / 2.0), (cfg.window_height - _h) / 2.0 - 25)
+                self.show_boot_img = imgui.begin("##boot_sprite", True,imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | imgui.WINDOW_NO_BACKGROUND | imgui.WINDOW_NO_SCROLLBAR)[1]
+                imgui.image(self.boot_sprite_texture.renderer_id, _w, _h)
+                imgui.push_style_color(imgui.COLOR_POPUP_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND)
+                if imgui.begin_popup_context_window():
+                    imgui.text(f"Welcome to {cfg.app_name}!")
+                    imgui.text(f"version {cfg.version}\nsource: github.com/bionanopatterning/Pom")
+                    imgui.end_popup()
+                if self.window.focused and imgui.is_mouse_clicked(glfw.MOUSE_BUTTON_LEFT) and not imgui.is_window_hovered():
+                    SegmentationEditor.SHOW_BOOT_SPRITE = False
+                imgui.pop_style_color(1)
+                imgui.end()
+                imgui.pop_style_color(3)
 
         def shared_gui():
             if imgui.collapsing_header("Datasets", None, imgui.TREE_NODE_DEFAULT_OPEN)[0]:
@@ -1159,12 +1191,12 @@ class SegmentationEditor:
 
                 imgui.text("Export settings")
                 imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
-                imgui.begin_child("export_settings", 0.0, 58.0, True)
+                imgui.begin_child("export_settings", 0.0, 53.0, True)
                 _, self.export_dir = widgets.select_directory("browse", self.export_dir)
                 imgui.set_next_item_width(imgui.get_content_region_available_width())
                 _, self.export_limit_range = imgui.checkbox(" limit range ", self.export_limit_range)
-                imgui.same_line(spacing=62)
-                _, self.export_overlays = imgui.checkbox(" export overlays", self.export_overlays)
+                #imgui.same_line(spacing=62)
+                #_, self.export_overlays = imgui.checkbox(" export overlays", self.export_overlays)
                 imgui.end_child()
 
 
@@ -1592,6 +1624,7 @@ class SegmentationEditor:
         # START GUI:
         # Menu bar
         menu_bar()
+
         # Render the currently active frame
 
         if cfg.se_active_frame is not None:
@@ -1701,6 +1734,7 @@ class SegmentationEditor:
 
         slicer_window()
         self._warning_window()
+        boot_sprite()
         imgui.pop_style_color(32)
         imgui.pop_style_var(1)
 
@@ -1840,12 +1874,13 @@ class SegmentationEditor:
 
     def launch_export_volumes(self):
         try:
-            if not os.path.isdir(self.export_dir):
-                os.makedirs(self.export_dir)
             datasets = [d for d in cfg.se_frames if d.export]
             models = [m for m in cfg.se_models if m.export]
             if not datasets:
                 return
+            if not os.path.isdir(self.export_dir):
+                os.makedirs(self.export_dir)
+
             for d in datasets:
                 self.queued_exports.append(QueuedExport(self.export_dir, d, models, self.export_batch_size, self.export_overlays))
 

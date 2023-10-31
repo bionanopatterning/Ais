@@ -1,4 +1,5 @@
 import glfw
+from platform import system
 from OpenGL.GL import *
 
 
@@ -164,6 +165,10 @@ class Window:
 
     def is_minimized(self):
         return glfw.get_window_attrib(self.glfw_window, glfw.ICONIFIED)
+
+    def set_icon(self, image):
+        glfw.set_window_icon(self.glfw_window, 1, image)
+
 
 class KeyEvent:
     def __init__(self, key, action, mods):

@@ -8,6 +8,10 @@ Welcome to Pom's documentation!
 
 Welcome to the user guide of Pom - a segmentation suite for cryo-electron tomography data that was designed to be fast, intuitive, and as easy to use as we could make it.
 
+.. image:: ./res/LOGO_Pom_2048.png
+   :alt: Pom logo
+   :align: center
+
 .. image:: ./res/homepage.png
    :alt: an example of the segmentation interface in Pom
    :align: center
