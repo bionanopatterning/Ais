@@ -272,6 +272,10 @@ class SegmentationEditor:
                 sef.crop = not sef.crop
                 if not sef.crop:
                     sef.crop_roi = [0, 0, sef.width, sef.height]
+            if imgui.is_key_pressed(glfw.KEY_S) and imgui.is_key_down(glfw.KEY_LEFT_CONTROL):
+                SegmentationEditor.save_dataset(dialog=False)
+            if imgui.is_key_pressed(glfw.KEY_I):
+                sef.invert = not sef.invert
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
             return
 
@@ -279,15 +283,18 @@ class SegmentationEditor:
         active_frame = cfg.se_active_frame
         if not self.active_tab == "Render":
             if active_frame in cfg.se_frames:
-                if imgui.is_key_pressed(glfw.KEY_LEFT):
+                if imgui.is_key_pressed(glfw.KEY_UP):
                     idx = cfg.se_frames.index(active_frame) - 1
                     idx = max(0, idx)
                     SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
-                elif imgui.is_key_pressed(glfw.KEY_RIGHT):
+                elif imgui.is_key_pressed(glfw.KEY_DOWN):
                     idx = cfg.se_frames.index(active_frame) + 1
                     idx = min(idx, len(cfg.se_frames) - 1)
                     SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
-
+                elif imgui.is_key_pressed(glfw.KEY_LEFT, True):
+                    active_frame.set_slice(active_frame.current_slice - 1)
+                elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
+                    active_frame.set_slice(active_frame.current_slice + 1)
         active_feature = None
         if active_frame is not None:
             active_feature = cfg.se_active_frame.active_feature
@@ -306,11 +313,11 @@ class SegmentationEditor:
                 if imgui.is_key_down(glfw.KEY_LEFT_CONTROL) and active_feature is not None:
                     active_feature.brush_size += self.window.scroll_delta[1]
                     active_feature.brush_size = max([1, active_feature.brush_size])
-                if imgui.is_key_pressed(glfw.KEY_DOWN) or imgui.is_key_pressed(glfw.KEY_S):
+                if imgui.is_key_pressed(glfw.KEY_S):
                     idx = 0 if active_feature not in active_frame.features else active_frame.features.index(active_feature)
                     idx = (idx + 1) % len(active_frame.features)
                     cfg.se_active_frame.active_feature = cfg.se_active_frame.features[idx]
-                elif imgui.is_key_pressed(glfw.KEY_UP) or imgui.is_key_pressed(glfw.KEY_W):
+                elif imgui.is_key_pressed(glfw.KEY_W):
                     idx = 0 if active_feature not in active_frame.features else active_frame.features.index(active_feature)
                     idx = (idx - 1) % len(active_frame.features)
                     cfg.se_active_frame.active_feature = cfg.se_active_frame.features[idx]
@@ -393,6 +400,26 @@ class SegmentationEditor:
                 self.parse_available_features()
         except Exception as e:
             cfg.set_error(e, "Error importing dataset, see details below:")
+
+    @staticmethod
+    def save_dataset(dialog=False):
+        try:
+            default_name = cfg.se_active_frame.path[:-4]
+            if dialog:
+                filename = filedialog.asksaveasfilename(
+                    filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")],
+                    initialfile=default_name)
+            else:
+                filename = default_name
+            if filename != '':
+                if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
+                    filename += cfg.filetype_segmentation
+                with open(filename, 'wb') as pickle_file:
+                    pickle.dump(cfg.se_active_frame, pickle_file)
+
+        except Exception as e:
+            cfg.set_error(e, "Could not save dialog - see details below.")
+
 
     def gui_main(self):
         if True:
@@ -1520,16 +1547,10 @@ class SegmentationEditor:
                     #             self.import_dataset(dirname)
                     #     except Exception as e:
                     #         cfg.set_error(e, "Could not import SPA dataset, see details below")
+                    if imgui.menu_item("Save dataset as ")[0]:
+                        SegmentationEditor.save_dataset(dialog=True)
                     if imgui.menu_item("Save dataset")[0]:
-                        try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
-                            if filename != '':
-                                if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
-                                    filename += cfg.filetype_segmentation
-                                with open(filename, 'wb') as pickle_file:
-                                    pickle.dump(cfg.se_active_frame, pickle_file)
-                        except Exception as e:
-                            cfg.set_error(e, "Could not save dataset, see details below.")
+                        SegmentationEditor.save_dataset(dialog=False)
                     if imgui.menu_item("Save dataset w. map")[0]:
                         try:
                             filename = filedialog.asksaveasfilename(filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
@@ -1737,6 +1758,8 @@ class SegmentationEditor:
         boot_sprite()
         imgui.pop_style_color(32)
         imgui.pop_style_var(1)
+
+
 
     def _warning_window(self):
         def ww_context_menu():

@@ -6,13 +6,11 @@ import sys
 import platform
 
 # TODO: 2D overlay in SE render.
-# TODO: in SE, add 'Save' and 'Save as' options for dataset instead of current Save==Save as
-# TOOD: in SE, key I to toggle inversion.
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "0.0.6"
+version = "0.0.8"
 license = "GNU GPL v3"
 logpath = "Ais.log"
 
