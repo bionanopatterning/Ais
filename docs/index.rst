@@ -8,7 +8,7 @@ Welcome to Ais' documentation!
 
 Welcome to the user guide of Ais - a segmentation suite for cryo-electron tomography data that was designed to be fast, intuitive, and as easy to use as we could make it.
 
-.. image:: ./res/LOGO_Ais_2048.png
+.. image:: ./res/LOGO_Ais_1024.png
    :alt: Ais logo
    :align: center
 
