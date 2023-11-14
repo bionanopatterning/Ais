@@ -9,11 +9,11 @@ from setuptools import setup, find_packages
 
 
 setup(
-    name='Pom-cryoET',
-    version='0.0.5',
+    name='Ais-cryoET',
+    version='0.0.6',
     packages=find_packages(),
-    entry_points={'console_scripts':['pom=scNodes.main:main', 'pom-cryoet=scNodes.main:main']},
-    url='https://github.com/bionanopatterning/Pom',
+    entry_points={'console_scripts':['ais=scNodes.main:main', 'ais-cryoet=scNodes.main:main']},
+    url='https://github.com/bionanopatterning/Ais',
     license='GPL v3',
     author='mgflast',
     author_email='m.g.f.last@lumc.nl',

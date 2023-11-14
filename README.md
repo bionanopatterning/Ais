@@ -1,4 +1,4 @@
-# Segmentation with Pom #
+# Segmentation with Ais #
 ## Fast and user-friendly annotation and segmentation of cryo-electron tomography data using convolutional neural networks ##
 
 This repository comprises a standalone pre-release of the scNodes _Segmentation Editor_. For the joint project, see the [superclem repository](https://www.github.com/bionanopatterning/scNodes)
@@ -8,19 +8,19 @@ A timelapse video of the full workflow, from reconstructed tomograms to segmente
 Contact: m.g.f.last@lumc.nl
 
 ### Installation ###
-Pom works on Windows and Linux machines but not on MacOS. Install as follows: 
+Ais works on Windows and Linux machines but not on MacOS. Install as follows: 
 ```
-conda create --name pom
-conda activate pom
+conda create --name ais
+conda activate ais
 conda install python==3.9
 conda install pip
-pip install pom-cryoet
+pip install ais-cryoet
 ```
 
 Then run using either of the following commands:
 ```
-pom
-pom-cryoet
+ais
+ais-cryoet
 ```
 #### Tensorflow & CUDA compatibility ####
 Compatibility between Python, tensorflow, and CUDA versions can be an issue. The following combination was used during development and is know to work:
@@ -60,8 +60,8 @@ After processing a volume, the resulting segmented volume datasets are automatic
 
 ## Fluorescence-guided segmentation ##
 ![](scNodes/res/scR_fluo_g_seg.png)
-In [scNodes](github.com/bionanopatterning/scNodes) + Pom, data can be forwarded from the correlation editor into Pom's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localizations reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
+In [scNodes](github.com/bionanopatterning/scNodes) + Ais, data can be forwarded from the correlation editor into Ais's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localizations reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
 
 ## 3D ray-traced fluorescence overlays ## 
 ![](scNodes/res/scR_fluo_overlay.png)
-Rendering in [scNodes](github.com/bionanopatterning/scNodes) + Pom combines the default isosurface viewer with 3D ray-traced fluorescence overlays. Here, a 2D single molecule localization map is projected into the 3D volume of the tomogram. Membranes, ribosomes, and the two vimentin filaments revealed by the fluorescence overlay are segmented and rendered.  
+Rendering in [scNodes](github.com/bionanopatterning/scNodes) + Ais combines the default isosurface viewer with 3D ray-traced fluorescence overlays. Here, a 2D single molecule localization map is projected into the 3D volume of the tomogram. Membranes, ribosomes, and the two vimentin filaments revealed by the fluorescence overlay are segmented and rendered.  

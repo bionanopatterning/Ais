@@ -26,7 +26,7 @@ The segmentation interface contains a single panel: ‘Features’. A feature is
 
 To prepare an annotated ground-truth dataset to train neural networks with, we manually annotate a small section of the data.
 
-For this example, we’ll prepare the annotation as seen in Figure 2 in the main text of the original publication of Pom.
+For this example, we’ll prepare the annotation as seen in Figure 2 in the main text of the original publication of Ais.
 
 Use the ‘Add feature’ button to set up a three features: membrane, carbon, and antibody platform, as below.
 

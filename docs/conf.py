@@ -6,10 +6,10 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'Pom'
+project = 'Ais'
 copyright = '2023, Mart G. F. Last'
 author = 'Mart G. F. Last'
-release = '0.0.5'
+release = '0.0.6'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
