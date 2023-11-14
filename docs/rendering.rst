@@ -5,7 +5,7 @@ To facilitate inspecting segmentation results, Ais comes with a built-in isosurf
 
 By default, Ais looks for segmentation results in the same folder in which the original .mrc file is located. Specify a different directory by clicking the '...' button or editing the path in the 'Volumes' tab of the main menu.
 
-.. figure:: ./res/render_1.png
+.. figure:: ./res/render_1.PNG
    :class: with-border
    :align: center
 
