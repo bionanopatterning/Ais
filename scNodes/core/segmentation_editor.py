@@ -2590,6 +2590,7 @@ class Renderer:
             glDepthFunc(GL_LESS)
             self.depth_mask_shader.uniform1i("override_z", 1)
             self.depth_mask_shader.uniform1f("override_z_val", (se_frame.current_slice - se_frame.n_slices / 2) * se_frame.pixel_size)
+            self.depth_mask_shader.uniform1f("pixel_size", se_frame.pixel_size)
             se_frame.quad_va.bind()  # frame depth mask as well.
             glDrawElements(GL_TRIANGLES, se_frame.quad_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
             se_frame.quad_va.unbind()
@@ -2623,7 +2624,7 @@ class Renderer:
 
     def render_overlay_3d(self, alpha, intensity):
         # add overlay image to whatever has been rendered before.
-        blend_mode = SegmentationEditor.BLEND_MODES[SegmentationEditor.BLEND_MODES_LIST[SegmentationEditor.OVERLAY_BLEND_MODE]]
+        blend_mode = SegmentationEditor.BLEND_MODES_3D[SegmentationEditor.BLEND_MODES_LIST_3D[SegmentationEditor.OVERLAY_BLEND_MODE_3D]]
         glBlendFunc(blend_mode[0], blend_mode[1])
         glBlendEquation(blend_mode[2])
         glDisable(GL_DEPTH_TEST)
