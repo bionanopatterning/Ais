@@ -7,7 +7,7 @@ import dill as pickle
 from scNodes.core.se_model import *
 from scNodes.core.se_frame import *
 import scNodes.core.widgets as widgets
-from scNodes.core.util import clamp, bin_mrc#, get_maxima_3d_watershed
+from scNodes.core.util import clamp, bin_mrc
 import pyperclip
 import os
 import subprocess
