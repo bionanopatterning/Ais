@@ -100,6 +100,6 @@ void main()
 
         // Write to texture.
         float norm_fac_final = style == 0 ? 1 / 500.0f : 1.0f;
-        imageStore(target, px, vec4(rayValue.xyz * norm_fac_final * vec3(0.0, 1.0, 0.0), 1.0f));
+        imageStore(target, px, vec4(rayValue.xyz * norm_fac_final, 1.0f));
     }
 }
