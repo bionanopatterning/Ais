@@ -10,7 +10,7 @@ import platform
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "0.0.9"
+version = "0.0.10"
 license = "GNU GPL v3"
 logpath = "Ais.log"
 

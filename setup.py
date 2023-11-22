@@ -10,7 +10,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='Ais-cryoET',
-    version='0.0.9',
+    version='0.0.10',
     packages=find_packages(),
     entry_points={'console_scripts':['ais=scNodes.main:main', 'ais-cryoet=scNodes.main:main']},
     url='https://github.com/bionanopatterning/Ais',
