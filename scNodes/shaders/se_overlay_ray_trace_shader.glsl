@@ -10,19 +10,19 @@ layout(local_size_x = 16, local_size_y=16) in;
 uniform mat4 ipMat;
 uniform mat4 ivMat;
 uniform mat4 pMat;
+uniform mat4 vMat;
 uniform vec2 viewportSize;
 uniform float pixelSize;
 uniform vec2 imgSize;
 uniform float near;
 uniform float far;
 uniform float zLim;
-uniform float zQuad;
 uniform int style;
 uniform float intensity;
 
 float linearizeDepth(float depth)
 {
-    float z = depth * 2.0 - 1.0; // Back to NDC
+    float z = depth; // Back to NDC
     return (2.0 * near * far) / (far + near - z * (far - near));
 }
 
@@ -43,7 +43,7 @@ void main()
     ivec2 px = ivec2(gl_GlobalInvocationID.xy);
     vec2 uv = vec2(px) / viewportSize;
 
-    // Normalized device coordinates to world coordinates.
+    // Normalized device coordinates to world coordinates. First, find ndc's:
     float z_start = 2.0f * texture(depth_start, uv).r - 1.0f;
     float z_stop = 2.0f * texture(depth_stop, uv).r - 1.0f;
     float x = (2.0f * float(px.x)) / viewportSize.x - 1.0f;
@@ -54,29 +54,33 @@ void main()
     vec4 cs_stop = ipMat * vec4(x, y, z_stop, 1.0);
     cs_stop /= cs_stop.w;
 
-    vec3 pos = (ivMat * cs_start).xyz;
+    vec3 start_pos = (ivMat * cs_start).xyz;
     vec3 stop_pos = (ivMat * cs_stop).xyz;
-    vec3 dir = normalize(stop_pos - pos);  // scale s.t. XY mag == 1.0
-    dir /= length(vec2(dir.x, dir.y));
+    vec3 dir = normalize(stop_pos - start_pos);
 
-    //    imageStore(target, px, vec4(z_start, z_stop, 0.0f, 1.0f));
-    //    return;
     if (z_start == 1.0f)
     {
         imageStore(target, px, vec4(0.0f, 0.0f, 0.0f, 1.0f));
     }
     else
     {
+        vec3 pos = start_pos;
         vec2 uv = pos.xy / imgSize * 1.0f + 0.5f;
         vec4 rayValue = vec4(0.0f);
         bool rayInVolume = true;
-        int MAX_ITER = 1000;
-        int i = 0;
+        float pathLength = 0.0;
+        float stepLength = length(dir);
+        int MAX_ITER = 10000;
+        float i = 0.0f;
         while (rayInVolume && i < MAX_ITER)
         {
+            i += 1.0f;
+            if (length(pos - start_pos) > length(stop_pos - start_pos))
+            {
+                break;
+            }
             pos += dir;
             uv = pos.xy / imgSize * 1.0f + 0.5f;
-            i += 1;
             rayInVolume = isRayInVolume(pos);
             if (style == 0)
             {
@@ -88,14 +92,14 @@ void main()
                 float threshold = intensity / 10.0f;
                 if (val.r > threshold || val.g > threshold || val.b > threshold)
                 {
-                    rayValue = 250.0f * val / intensity;
+                    rayValue = 1.0f * val / intensity;
                     break;
                 }
             }
         }
 
         // Write to texture.
-        //imageStore(target, px, vec4(rayDepth, 0.0f, 0.0f, 1.0f));
-        imageStore(target, px, vec4(rayValue.xyz / 50.0f, 1.0f));
+        float norm_fac_final = style == 0 ? 1 / 1000.0f : 1.0f;
+        imageStore(target, px, vec4(rayValue.xyz * norm_fac_final, 1.0f));
     }
 }

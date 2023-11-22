@@ -134,8 +134,8 @@ class SegmentationEditor:
         # picking / 3d renders
 
         self.pick_same_folder = True
-        self.pick_box_va = VertexArray(attribute_format="xyz")
-        self.pick_box_quad_va = VertexArray(attribute_format="xyz")
+        self.pick_box_va = VertexArray(attribute_format="xyz")  # render box lines
+        self.pick_box_quad_va = VertexArray(attribute_format="xyz")  # render box faces
         self.pick_box_va.update(VertexBuffer([0.0, 0.0]), IndexBuffer([]))
         self.pick_box_quad_va.update(VertexBuffer([0.0, 0.0]), IndexBuffer([]))
         for i in range(4):
@@ -243,13 +243,10 @@ class SegmentationEditor:
         if self.queued_exports:
             if self.queued_exports[0].process.progress >= 1.0:
                 self.queued_exports.pop(0)
-                if self.queued_exports:
+            if self.queued_exports:
+                if self.queued_exports[0].process.progress == 0.0:
                     self.queued_exports[0].start()
-        if self.queued_extracts:
-            if self.queued_extracts[0].process.progress >= 1.0:
-                self.queued_extracts.pop(0)
-                if self.queued_extracts:
-                    self.queued_extracts[0].start()
+
         # GUI calls
         if not self.window.is_minimized():
             self.camera_control()
@@ -276,6 +273,10 @@ class SegmentationEditor:
                 SegmentationEditor.save_dataset(dialog=False)
             if imgui.is_key_pressed(glfw.KEY_I):
                 sef.invert = not sef.invert
+            if imgui.is_key_pressed(glfw.KEY_A):
+                sef.autocontrast = not sef.autocontrast
+                if sef.autocontrast:
+                    sef.compute_autoconstrast()
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
             return
 
@@ -414,8 +415,17 @@ class SegmentationEditor:
             if filename != '':
                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                     filename += cfg.filetype_segmentation
+
+                buffer_dict = dict()
+                buffer_dict["clem_frame"] = cfg.se_active_frame.clem_frame
+                buffer_dict["overlay_clem_frame"] = cfg.se_active_frame.overlay.clem_frame
+                cfg.se_active_frame.clem_frame = None
+                cfg.se_active_frame.overlay.clem_frame = None
                 with open(filename, 'wb') as pickle_file:
                     pickle.dump(cfg.se_active_frame, pickle_file)
+
+                cfg.se_active_frame.clem_frame = buffer_dict["clem_frame"]
+                cfg.se_active_frame.overlay.clem_frame = buffer_dict["overlay_clem_frame"]
 
         except Exception as e:
             cfg.set_error(e, "Could not save dialog - see details below.")
@@ -1233,11 +1243,24 @@ class SegmentationEditor:
                 # export progress:
                 if self.queued_exports:
                     imgui.spacing()
-                    imgui.text(f"Exporting tomograms - {len(self.queued_exports)} jobs remaining.")
-                    cancel = self._gui_background_process_progress_bar(self.queued_exports[0].process, (*self.queued_exports[0].colour, 1.0), cancellable=True)
-                    if cancel:
-                        self.queued_exports[0].stop()
-                        self.queued_exports.pop(0)
+                    imgui.text(f"Processing '{self.queued_exports[0].dataset.title}':")
+
+                    for i, qe in enumerate(self.queued_exports):
+                        if i != 0:
+                            imgui.text(qe.dataset.title)
+                            imgui.same_line()
+                        imgui.push_id(f"{qe.dataset.title}_cancel")
+                        colour = (*qe.colour, 1.0) if i == 0 else (0.0, 0.0, 0.0, 0.0)
+                        cancel = self._gui_background_process_progress_bar(qe.process, colour, cancellable=True, transparent_background=(i!=0))
+                        imgui.pop_id()
+                        if cancel:
+                            self.queued_exports[i].stop()
+                            self.queued_exports.pop(i)
+                            break
+                        if i == 0 and len(self.queued_exports) > 1:
+                            imgui.spacing()
+                            imgui.text(f"Queue:")
+
 
                 imgui.pop_style_var(4)
 
@@ -1252,6 +1275,7 @@ class SegmentationEditor:
 
                 # list the segmentations found for the currently selected dataset.
                 def update_picking_tab_for_new_active_frame():
+                    SegmentationEditor.VIEW_REQUIRES_UPDATE = True
                     # delete old surface models
                     for s in cfg.se_surface_models:
                         s.delete()
@@ -1514,7 +1538,6 @@ class SegmentationEditor:
                 imgui.pop_style_var(2)
                 imgui.pop_style_color(3)
 
-
         def menu_bar():
             imgui.push_style_color(imgui.COLOR_MENUBAR_BACKGROUND, *cfg.COLOUR_MAIN_MENU_BAR)
             imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_MAIN_MENU_BAR_TEXT)
@@ -1626,7 +1649,7 @@ class SegmentationEditor:
             _, requested_slice = imgui.slider_int("##slicer_slider", frame.current_slice, 0, frame.n_slices, format=f"slice {1+frame.current_slice}/{frame.n_slices}")
             if _:
                 frame.set_slice(requested_slice)
-
+                SegmentationEditor.VIEW_REQUIRES_UPDATE = True
             if export_mode:
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 _, frame.export_bottom = imgui.slider_int("##export_bottom", frame.export_bottom, 0, frame.n_slices - 1, format=f"export start {frame.export_bottom + 1}")
@@ -1726,7 +1749,6 @@ class SegmentationEditor:
         shared_gui()
         imgui.spacing()
         imgui.spacing()
-
 
         if imgui.begin_tab_bar("##tabs"):
             self.window.clear_color = cfg.COLOUR_WINDOW_BACKGROUND
@@ -1829,7 +1851,7 @@ class SegmentationEditor:
         for key in to_pop:
             self.trainset_feature_selection.pop(key)
 
-    def _gui_background_process_progress_bar(self, process, colour=cfg.COLOUR_POSITIVE, cancellable=False, height=None):
+    def _gui_background_process_progress_bar(self, process, colour=cfg.COLOUR_POSITIVE, cancellable=False, height=None, transparent_background=False):
         height = SegmentationEditor.PROGRESS_BAR_HEIGHT if height is None else height
         cw = imgui.get_content_region_available_width()
         cancel_button_w = SegmentationEditor.PROGRESS_BAR_HEIGHT + 5 if cancellable else 0
@@ -1839,7 +1861,7 @@ class SegmentationEditor:
         drawlist.add_rect_filled(8 + origin[0], y,
                                  8 + origin[0] + max(0, cw - cancel_button_w),
                                  y + height,
-                                 imgui.get_color_u32_rgba(*cfg.COLOUR_NEUTRAL))
+                                 imgui.get_color_u32_rgba(*cfg.COLOUR_NEUTRAL) if not transparent_background else imgui.get_color_u32_rgba(0.0, 0.0, 0.0, 0.0))
         drawlist.add_rect_filled(8 + origin[0], y,
                                  8 + origin[0] + max(0, cw * min([1.0, process.progress]) - cancel_button_w),
                                  y + height,
@@ -1908,7 +1930,8 @@ class SegmentationEditor:
                 self.queued_exports.append(QueuedExport(self.export_dir, d, models, self.export_batch_size, self.export_overlays))
 
             if self.queued_exports:
-                self.queued_exports[0].start()
+                if self.queued_exports[0].process.progress == 0.0:
+                    self.queued_exports[0].start()
         except Exception as e:
             cfg.set_error(e, "Could not export volumes - see details below:")
 
@@ -2528,7 +2551,6 @@ class Renderer:
 
     def ray_trace_overlay(self, window_size, se_frame, camera, box_va):
         if se_frame.overlay is None:
-            print("SEFrame doesn't have an overlay; remove function call, wherever it was.")
             return
 
         # 1 - Rendering a depth mask to find where to START sampling rays.
@@ -2536,7 +2558,8 @@ class Renderer:
             self.ray_trace_fbo_size = window_size
             self.ray_trace_fbo_a = FrameBuffer(window_size[0], window_size[1], "rgba32f")
             self.ray_trace_fbo_b = FrameBuffer(window_size[0], window_size[1], "rgba32f")
-        self.ray_trace_fbo_a.bind()  # UNBIND FBO in such a way that the original rendered scene is the new fbo again.
+
+        self.ray_trace_fbo_a.bind()
         glClearDepth(1.0)
         glEnable(GL_DEPTH_TEST)
         glDepthFunc(GL_LESS)
@@ -2545,10 +2568,12 @@ class Renderer:
 
         self.depth_mask_shader.bind()
         self.depth_mask_shader.uniformmat4("vpMat", camera.matrix)
-        box_va.bind()
+        self.depth_mask_shader.uniform1i("override_z", 0)
+        self.depth_mask_shader.uniform1f("override_z_val", 0.0)
+        box_va.bind()  # box depth mask
         glDrawElements(GL_TRIANGLES, box_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
-        self.depth_mask_shader.unbind()
         box_va.unbind()
+        self.depth_mask_shader.unbind()
         self.ray_trace_fbo_a.unbind((0, 0, window_size[0], window_size[1]))
 
         # - Rendering a depth mask to find where to STOP sampling rays
@@ -2561,11 +2586,21 @@ class Renderer:
 
         self.depth_mask_shader.bind()
         self.depth_mask_shader.uniformmat4("vpMat", camera.matrix)
+        self.depth_mask_shader.uniform1i("override_z", 0)
+        self.depth_mask_shader.uniform1f("override_z_val", 0.0)
         box_va.bind()
         glDrawElements(GL_TRIANGLES, box_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
-        self.depth_mask_shader.unbind()
         box_va.unbind()
+        if SegmentationEditor.PICKING_FRAME_ALPHA != 0.0:  # frame used in the depth mask as well
+            glDepthFunc(GL_LESS)
+            self.depth_mask_shader.uniform1i("override_z", 1)
+            self.depth_mask_shader.uniform1f("override_z_val", (se_frame.current_slice - se_frame.n_slices / 2 + 0.01) * se_frame.pixel_size)
+            se_frame.quad_va.bind()  # frame depth mask as well.
+            glDrawElements(GL_TRIANGLES, se_frame.quad_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+            se_frame.quad_va.unbind()
+        self.depth_mask_shader.unbind()
         self.ray_trace_fbo_b.unbind((0, 0, window_size[0], window_size[1]))
+
         glDepthFunc(GL_LESS)
         glClearDepth(1.0)
         # 2 - ray tracing
@@ -2577,7 +2612,6 @@ class Renderer:
         self.ray_trace_shader.uniform1f("far", camera.clip_far)
         self.ray_trace_shader.uniform2f("viewportSize", window_size)
         self.ray_trace_shader.uniform1f("zLim", se_frame.n_slices * se_frame.pixel_size / 2.0)
-        self.ray_trace_shader.uniform1f("zQuad", (se_frame.current_slice - se_frame.n_slices /2) * se_frame.pixel_size)
         self.ray_trace_shader.uniform1f("pixelSize", se_frame.pixel_size)
         self.ray_trace_shader.uniform2f("imgSize", [se_frame.overlay.size[1], se_frame.overlay.size[0]])
         self.ray_trace_shader.uniform1i("style", SegmentationEditor.BLEND_MODES_3D[SegmentationEditor.BLEND_MODES_LIST_3D[SegmentationEditor.OVERLAY_BLEND_MODE_3D]][3])
@@ -2925,7 +2959,7 @@ class QueuedExport:
 
     def do_export(self, process):
         try:
-            process.set_progress(0.0)
+            process.set_progress(0.0001)
             start_time = time.time()
             print(f"QueuedExport - loading dataset {self.dataset.path}")
             rx, ry = self.dataset.get_roi_indices()
@@ -3023,7 +3057,8 @@ class QueuedExport:
             print(f"QueuedExport - done! ({time.time() - start_time:.2f} s.)\n")
 
         except Exception as e:
-            cfg.set_error(e, "")
+            if not "terminated by user" in str(e):
+                cfg.set_error(e, "")
             print("An issue was encountered during export\n"
                   f"\tDataset: {self.dataset.path}\n"
                   f"\tError: ", e)
@@ -3034,6 +3069,7 @@ class QueuedExport:
             raise Exception("QueuedExport - process terminated by user. ")
 
     def start(self):
+        self.process.set_progress(0.0001)
         self.process.start()
 
     def stop(self):

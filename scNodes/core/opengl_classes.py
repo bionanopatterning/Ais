@@ -355,12 +355,12 @@ class FrameBuffer:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
-    def bind(self, auto_set_viewport = True):
+    def bind(self, auto_set_viewport=True):
         glBindFramebuffer(GL_FRAMEBUFFER, self.framebufferObject)
         if auto_set_viewport:
             glViewport(0, 0, self.width, self.height)
 
-    def unbind(self, viewport = None):
+    def unbind(self, viewport=None):
         """When the FBO was bound, the viewport may have been changed. Remember to change it back to the right size! Forgetting to do so does not cause errors, but subsequent viewports may appear clipped. Viewport:tuple(int, int, int, int)"""
         glBindFramebuffer(GL_FRAMEBUFFER, 0)
         if viewport:

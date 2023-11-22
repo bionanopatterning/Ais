@@ -24,6 +24,6 @@ uniform float intensity;
 
 void main()
 {
-    vec3 colour = intensity * texture(image, uv).rgb;
+    vec3 colour = alpha * intensity * texture(image, uv).rgb;
     fragColour = vec4(colour, alpha);
 }

@@ -74,6 +74,7 @@ class SEFrame:
         self.compute_autocontrast()
         self.compute_histogram()
         self.toggle_interpolation()
+        self.set_slice(self.n_slices // 2, True)
 
     def setup_opengl_objects(self):
         self.texture = Texture(format="r32f")
