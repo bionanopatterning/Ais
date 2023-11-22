@@ -7,10 +7,14 @@ out vec2 fUV;
 
 uniform mat4 cameraMatrix;
 uniform mat4 modelMatrix;
+uniform int render_3d;
+uniform float z_pos;
+uniform float pixel_size;
 
 void main()
 {
-    gl_Position = cameraMatrix * modelMatrix * vec4(position, 1.0);
+    float z_pos = render_3d == 0 ? position.z : z_pos;
+    gl_Position = cameraMatrix * modelMatrix * vec4(position.xy, z_pos, 1.0);
     fUV = UV;
 }
 
@@ -22,13 +26,13 @@ layout(binding = 0) uniform sampler2D image;
 out vec4 fragmentColor;
 in vec2 fUV;
 uniform int shader_blend_code;
-
+uniform float intensity;
 uniform float alpha;
 
 void main()
 {
     vec2 uv = fUV;
-    vec3 colour = texture(image, uv).rgb;
+    vec3 colour = intensity * texture(image, uv).rgb;
     if (shader_blend_code == 0)
     {
         fragmentColor = vec4(colour, alpha);
@@ -43,6 +47,6 @@ void main()
     }
     else if (shader_blend_code == 3)
     {
-        fragmentColor = vec4(colour.rgb, (colour.r + colour.g + colour.b) * alpha * 3.0);
+        fragmentColor = vec4(colour.rgb, (colour.r + colour.g + colour.b) * alpha / 3.0);
     }
 }

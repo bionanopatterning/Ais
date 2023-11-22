@@ -84,7 +84,7 @@ void main()
             rayInVolume = isRayInVolume(pos);
             if (style == 0)
             {
-                rayValue += texture(overlay, uv);
+                rayValue += texture(overlay, uv) * 2.0f;
             }
             else if (style == 1)
             {
@@ -99,7 +99,7 @@ void main()
         }
 
         // Write to texture.
-        float norm_fac_final = style == 0 ? 1 / 1000.0f : 1.0f;
-        imageStore(target, px, vec4(rayValue.xyz * norm_fac_final, 1.0f));
+        float norm_fac_final = style == 0 ? 1 / 500.0f : 1.0f;
+        imageStore(target, px, vec4(rayValue.xyz * norm_fac_final * vec3(0.0, 1.0, 0.0), 1.0f));
     }
 }

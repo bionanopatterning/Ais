@@ -133,11 +133,12 @@ class SegmentationEditor:
 
         # picking / 3d renders
 
-        self.pick_same_folder = True
         self.pick_box_va = VertexArray(attribute_format="xyz")  # render box lines
         self.pick_box_quad_va = VertexArray(attribute_format="xyz")  # render box faces
         self.pick_box_va.update(VertexBuffer([0.0, 0.0]), IndexBuffer([]))
         self.pick_box_quad_va.update(VertexBuffer([0.0, 0.0]), IndexBuffer([]))
+        self.pick_overlay_3d = True
+
         for i in range(4):
             self.crop_handles.append(WorldSpaceIcon(i))
 
@@ -172,7 +173,6 @@ class SegmentationEditor:
             self.boot_sprite_texture.update(pxd)
             self.boot_sprite_width, self.boot_sprite_height = pxd.shape[0:2]
             self.boot_sprite_texture.set_linear_interpolation()
-
 
     @staticmethod
     def set_active_dataset(dataset):
@@ -371,10 +371,8 @@ class SegmentationEditor:
                     self.crop_handles[0].move_crop_roi(world_delta[0], world_delta[1])
 
     def import_dataset(self, filename):
+        SegmentationEditor.SHOW_BOOT_SPRITE = False
         try:
-            # if os.path.isdir(filename):
-            #     cfg.se_frames.append(SEFrame(filename, SPA=True))
-            #     SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
             _, ext = os.path.splitext(filename)
             if ext == ".mrc":
                 cfg.se_frames.append(SEFrame(filename))
@@ -636,15 +634,23 @@ class SegmentationEditor:
                         imgui.separator()
                         cw = imgui.get_content_region_available_width()
                         imgui.set_next_item_width(cw - 120)
-                        _, SegmentationEditor.OVERLAY_ALPHA = imgui.slider_float("##alphaslider_se", SegmentationEditor.OVERLAY_ALPHA, 0.0, 1.0, format=f"overlay alpha = {SegmentationEditor.OVERLAY_ALPHA:.2f}") ## TODO 230808 werkt niet meer?
+                        _, SegmentationEditor.OVERLAY_ALPHA = imgui.slider_float("##alphaslider_se", SegmentationEditor.OVERLAY_ALPHA, 0.0, 1.0, format=f"overlay alpha = {SegmentationEditor.OVERLAY_ALPHA:.2f}")
                         imgui.same_line()
                         imgui.set_next_item_width(110)
                         if self.active_tab != "Render":
                             _, SegmentationEditor.OVERLAY_BLEND_MODE = imgui.combo("##overlayblending", SegmentationEditor.OVERLAY_BLEND_MODE, SegmentationEditor.BLEND_MODES_LIST)
                         else:
-                            _, SegmentationEditor.OVERLAY_BLEND_MODE_3D = imgui.combo("##overlayblending", SegmentationEditor.OVERLAY_BLEND_MODE_3D,SegmentationEditor.BLEND_MODES_LIST_3D)
+                            if self.pick_overlay_3d:
+                                _, SegmentationEditor.OVERLAY_BLEND_MODE_3D = imgui.combo("##overlayblending", SegmentationEditor.OVERLAY_BLEND_MODE_3D, SegmentationEditor.BLEND_MODES_LIST_3D)
+                            else:
+                                _, SegmentationEditor.OVERLAY_BLEND_MODE = imgui.combo("##overlayblending", SegmentationEditor.OVERLAY_BLEND_MODE, SegmentationEditor.BLEND_MODES_LIST)
                             SegmentationEditor.VIEW_REQUIRES_UPDATE |= _
-                            imgui.set_next_item_width(cw)
+                            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                            _, self.pick_overlay_3d = imgui.checkbox("3D", self.pick_overlay_3d)
+                            imgui.pop_style_var()
+                            SegmentationEditor.VIEW_REQUIRES_UPDATE |= _
+                            imgui.same_line()
+                            imgui.set_next_item_width(imgui.get_content_region_available_width())
                             _, SegmentationEditor.OVERLAY_INTENSITY = imgui.slider_float("##inensityslider_se", SegmentationEditor.OVERLAY_INTENSITY, 0.0, 10.0, format=f"overlay intensity = {SegmentationEditor.OVERLAY_INTENSITY:.1f}")
                             SegmentationEditor.VIEW_REQUIRES_UPDATE |= _
 
@@ -667,8 +673,7 @@ class SegmentationEditor:
                         cw = imgui.get_content_region_available_width()
 
                         # Colour picker
-                        _, f.colour = imgui.color_edit3(f.title, *f.colour[:3],
-                                                        imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                        _, f.colour = imgui.color_edit3(f.title, *f.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                         if _:
                             self.parse_available_features()
                         # Title
@@ -678,6 +683,7 @@ class SegmentationEditor:
                         if _:
                             self.parse_available_features()
                         self._gui_feature_title_context_menu(f)
+
                         # Alpha slider and brush size
                         imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                         imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
@@ -687,8 +693,7 @@ class SegmentationEditor:
                         imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
                         imgui.set_next_item_width(cw - 40)
                         pxs = cfg.se_active_frame.pixel_size
-                        _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs,
-                                                             format=f"{f.brush_size:.1f} px / {2 * f.brush_size * pxs:.1f} nm ")
+                        _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{f.brush_size:.1f} px / {2 * f.brush_size * pxs:.1f} nm ")
                         f.brush_size = int(f.brush_size)
                         imgui.set_next_item_width(cw - 40)
                         _, f.alpha = imgui.slider_float("alpha", f.alpha, 0.0, 1.0, format="%.2f")
@@ -1267,6 +1272,12 @@ class SegmentationEditor:
         def picking_tab():
             if imgui.collapsing_header("Volumes", None, imgui.TREE_NODE_DEFAULT_OPEN)[0]:
                 src_folder_changed, SegmentationEditor.seg_folder = widgets.select_directory("...", SegmentationEditor.seg_folder)
+                self.tooltip("Select the location in which to look for segmentations that belong to the\n"
+                             "imported datasets. Right-click to set the path to the location of the ac-\n"
+                             "tive dataset.")
+                if imgui.is_item_clicked(1):
+                    src_folder_changed = True
+                    SegmentationEditor.seg_folder = os.path.dirname(cfg.se_active_frame.path)
                 self.tooltip("Specify the directory in which to look for segmentations for the active dataset.")
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
@@ -1291,8 +1302,9 @@ class SegmentationEditor:
 
 
                     files = glob.glob(os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
-                    print(f"Filename template: {SegmentationEditor.seg_folder}, {se_frame.title}, _*.mrc")
+                    print(f"Found the following segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
                     for f in sorted(files):
+                        print(f)
                         if not 'overlay' in f:
                             cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
 
@@ -1740,7 +1752,11 @@ class SegmentationEditor:
                 if cfg.se_active_frame.overlay is not None:
                     if SegmentationEditor.VIEW_REQUIRES_UPDATE:
                         self.renderer.ray_trace_overlay((self.window.width, self.window.height), cfg.se_active_frame, self.camera3d, self.pick_box_quad_va)
-                    self.renderer.render_overlay_3d(SegmentationEditor.OVERLAY_ALPHA, SegmentationEditor.OVERLAY_INTENSITY)
+                    if self.pick_overlay_3d:
+                        self.renderer.render_overlay_3d(SegmentationEditor.OVERLAY_ALPHA, SegmentationEditor.OVERLAY_INTENSITY)
+                    else:
+                        overlay_blend_mode = SegmentationEditor.BLEND_MODES[SegmentationEditor.BLEND_MODES_LIST[SegmentationEditor.OVERLAY_BLEND_MODE]]
+                        self.renderer.render_overlay(cfg.se_active_frame, self.camera3d, overlay_blend_mode, SegmentationEditor.OVERLAY_ALPHA)
         # MAIN WINDOW
         imgui.set_next_window_position(0, 17, imgui.ONCE)
         imgui.set_next_window_size(SegmentationEditor.MAIN_WINDOW_WIDTH, self.window.height - 17)
@@ -1896,26 +1912,6 @@ class SegmentationEditor:
                 SegmentationEditor.TOOLTIP_HOVERED_TIMER = time.time() - SegmentationEditor.TOOLTIP_HOVERED_START_TIME
         if not imgui.is_any_item_hovered():
             SegmentationEditor.TOOLTIP_HOVERED_TIMER = 0.0
-
-    # def launch_export_coordinates(self, feature_title):
-    #     try:
-    #         if not os.path.isdir(self.export_dir):
-    #             os.makedirs(self.export_dir)
-    #         datasets = [d for d in cfg.se_frames if d.export]
-    #         if not datasets:
-    #             return
-    #
-    #         feature_tag = f"_{feature_title}"
-    #         for d in datasets:
-    #             feature_mrc_path = os.path.splitext(d.path)[0]+feature_tag+".mrc"
-    #             if os.path.isfile(feature_mrc_path):
-    #                 self.queued_extracts.append(QueuedExtract(feature_mrc_path, SegmentationEditor.EXTRACT_THRESHOLD, SegmentationEditor.EXTRACT_MIN_WEIGHT, SegmentationEditor.EXTRACT_MIN_SPACING, self.export_dir))
-    #             else:
-    #                 print(f"Feature with tag {feature_title} not found for dataset at {d.path}")
-    #         if self.queued_extracts:
-    #             self.queued_extracts[0].start()
-    #     except Exception as e:
-    #         cfg.set_error(e, "Could not launch QueuedExtract jobs - see details below:")
 
     def launch_export_volumes(self):
         try:
@@ -2357,7 +2353,6 @@ class Renderer:
             window.set_full_viewport()
 
         # render the framebuffer to the screen
-
         shader = self.quad_shader if not camera3d else self.quad_3d_shader
         vpmat = camera.view_projection_matrix if not camera3d else camera3d.matrix
         shader.bind()
@@ -2594,7 +2589,7 @@ class Renderer:
         if SegmentationEditor.PICKING_FRAME_ALPHA != 0.0:  # frame used in the depth mask as well
             glDepthFunc(GL_LESS)
             self.depth_mask_shader.uniform1i("override_z", 1)
-            self.depth_mask_shader.uniform1f("override_z_val", (se_frame.current_slice - se_frame.n_slices / 2 + 0.01) * se_frame.pixel_size)
+            self.depth_mask_shader.uniform1f("override_z_val", (se_frame.current_slice - se_frame.n_slices / 2) * se_frame.pixel_size)
             se_frame.quad_va.bind()  # frame depth mask as well.
             glDrawElements(GL_TRIANGLES, se_frame.quad_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
             se_frame.quad_va.unbind()
@@ -2721,10 +2716,19 @@ class Renderer:
             return
         glBlendFunc(blend_mode[0], blend_mode[1])
         glBlendEquation(blend_mode[2])
+        glDisable(GL_DEPTH_TEST)
         shader_blend_code = blend_mode[3]
         se_frame.quad_va.bind()
         se_frame.overlay.texture.bind()
         self.overlay_shader.bind()
+        if isinstance(camera, Camera3D):
+            self.overlay_shader.uniform1i("render_3d", 1)
+            self.overlay_shader.uniform1f("intensity", SegmentationEditor.OVERLAY_INTENSITY)
+            self.overlay_shader.uniform1f("z_pos", (se_frame.current_slice - se_frame.n_slices / 2) * se_frame.pixel_size)
+            self.overlay_shader.uniform1f("pixel_size", se_frame.pixel_size)  # This factor should be in the VA, but fixing that messed up the 2D view - cheap fix for now
+        else:
+            self.overlay_shader.uniform1i("render_3d", 0)
+            self.overlay_shader.uniform1f("intensity", 1.0)
         self.overlay_shader.uniformmat4("cameraMatrix", camera.view_projection_matrix)
         self.overlay_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.overlay_shader.uniform1f("alpha", alpha)
