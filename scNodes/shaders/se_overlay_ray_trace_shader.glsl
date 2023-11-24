@@ -72,6 +72,7 @@ void main()
         float stepLength = length(dir);
         int MAX_ITER = 10000;
         float i = 0.0f;
+        bool threshold_reached = false;
         while (rayInVolume && i < MAX_ITER)
         {
             i += 1.0f;
@@ -88,18 +89,21 @@ void main()
             }
             else if (style == 1)
             {
+                rayValue += texture(overlay, uv) * 2.0f;
                 vec4 val = texture(overlay, uv);
                 float threshold = intensity / 10.0f;
                 if (val.r > threshold || val.g > threshold || val.b > threshold)
                 {
-                    rayValue = 1.0f * val / intensity;
-                    break;
+                    threshold_reached = true;
                 }
             }
         }
-
+        if (style == 1 && !threshold_reached)
+        {
+            rayValue *= 0.0f;
+        }
         // Write to texture.
-        float norm_fac_final = style == 0 ? 1 / 500.0f : 1.0f;
+        float norm_fac_final = style == 0 ? 1 / 500.0f : 1 / 500.0f;
         imageStore(target, px, vec4(rayValue.xyz * norm_fac_final, 1.0f));
     }
 }

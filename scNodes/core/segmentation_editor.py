@@ -60,7 +60,8 @@ class SegmentationEditor:
         RENDER_CLEAR_COLOUR = cfg.COLOUR_WINDOW_BACKGROUND[:3]
         RENDER_LIGHT_COLOUR = (1.0, 1.0, 1.0)
         VIEW_REQUIRES_UPDATE = True
-        
+
+        FRAME_TEXTURE_REQUIRES_UPDATE = False
         OVERLAY_ALPHA = 1.0
         OVERLAY_INTENSITY = 1.0
         OVERLAY_BLEND_MODE = 0
@@ -178,7 +179,7 @@ class SegmentationEditor:
     def set_active_dataset(dataset):
         SegmentationEditor.pick_tab_index_datasets_segs = True
         cfg.se_active_frame = dataset
-        cfg.se_active_frame.requires_histogram_update = True
+        SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
         cfg.se_active_frame.slice_changed = True
         if len(cfg.se_frames) == 1:
             SegmentationEditor.trainset_apix = cfg.se_active_frame.pixel_size * 10.0
@@ -277,6 +278,14 @@ class SegmentationEditor:
                 sef.autocontrast = not sef.autocontrast
                 if sef.autocontrast:
                     sef.compute_autoconstrast()
+            if self.active_tab == "Segmentation" and cfg.se_active_frame.active_feature is not None:
+                if imgui.is_key_pressed(glfw.KEY_F):
+                    cfg.se_active_frame.active_feature.magic = not cfg.se_active_frame.active_feature.magic
+                if cfg.se_active_frame.active_feature.magic:
+                    if imgui.is_key_pressed(glfw.KEY_MINUS):
+                        cfg.se_active_frame.active_feature.magic_strength -= 5.0
+                    elif imgui.is_key_pressed(glfw.KEY_EQUAL):
+                        cfg.se_active_frame.active_feature.magic_strength += 5.0
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
             return
 
@@ -294,8 +303,10 @@ class SegmentationEditor:
                     SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
                 elif imgui.is_key_pressed(glfw.KEY_LEFT, True):
                     active_frame.set_slice(active_frame.current_slice - 1)
+                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                 elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
                     active_frame.set_slice(active_frame.current_slice + 1)
+                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
         active_feature = None
         if active_frame is not None:
             active_feature = cfg.se_active_frame.active_feature
@@ -308,6 +319,7 @@ class SegmentationEditor:
                     idx = int(active_frame.current_slice - self.window.scroll_delta[1])
                     idx = idx % active_frame.n_slices
                     active_frame.set_slice(idx)
+                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
 
         if self.active_tab == "Segmentation":
             if active_feature is not None:
@@ -331,8 +343,14 @@ class SegmentationEditor:
 
                 if not imgui.is_key_down(glfw.KEY_LEFT_SHIFT):
                     if imgui.is_mouse_down(0):
-                        Brush.apply_circular(active_feature, pixel_coordinate, True)
                         active_feature.hide = False
+                        if active_feature.magic:
+                            try:
+                                Brush.apply_magic(active_feature, active_feature.parent.rendered_data, pixel_coordinate)
+                            except Exception as e:
+                                pass  # bit experimental still. TODO: fix error thrown when flood fill ROI partially falls outside image.
+                        else:
+                            Brush.apply_circular(active_feature, pixel_coordinate, True)
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
                 else:
@@ -377,7 +395,6 @@ class SegmentationEditor:
             if ext == ".mrc":
                 cfg.se_frames.append(SEFrame(filename))
                 SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
-                cfg.se_active_frame.requires_histogram_update = True
                 self.parse_available_features()
             elif ext == cfg.filetype_segmentation:
                 with open(filename, 'rb') as pickle_file:
@@ -567,7 +584,7 @@ class SegmentationEditor:
                     imgui.same_line(spacing=16)
                     _c, sef.autocontrast = imgui.checkbox("auto", sef.autocontrast)
                     if _c and sef.autocontrast:
-                        sef.requires_histogram_update = True
+                        SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                     imgui.same_line(spacing=16)
                     _c, sef.interpolate = imgui.checkbox("interpolate", sef.interpolate)
                     imgui.same_line(spacing=16)
@@ -601,10 +618,11 @@ class SegmentationEditor:
                         _c, ftrtype = imgui.combo("##filtertype", ftr.type, Filter.TYPES)
                         if _c:
                             self.filters[self.filters.index(ftr)] = Filter(ftrtype)
+                            SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         imgui.same_line()
                         _, ftr.enabled = imgui.checkbox("##enabled", ftr.enabled)
                         if _:
-                            cfg.se_active_frame.requires_histogram_update = True
+                            SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         # Delete button
                         imgui.same_line()
                         if imgui.image_button(self.icon_close.renderer_id, 13, 13):
@@ -616,10 +634,10 @@ class SegmentationEditor:
                             _c, ftr.param = imgui.slider_float("##param", ftr.param, 0.1, 10.0, format=f"{Filter.PARAMETER_NAME[ftr.type]}: {ftr.param:.1f}")
                             if _c:
                                 ftr.fill_kernel()
-                                cfg.se_active_frame.requires_histogram_update = True
+                                SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         _, ftr.strength = imgui.slider_float("##strength", ftr.strength, -1.0, 1.0, format=f"weight: {ftr.strength:.2f}")
                         if _:
-                            cfg.se_active_frame.requires_histogram_update = True
+                            SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         imgui.pop_item_width()
 
                         imgui.pop_id()
@@ -628,8 +646,7 @@ class SegmentationEditor:
                     _c, new_filter_type = imgui.combo("##filtertype", 0, ["Add filter"] + Filter.TYPES)
                     if _c and not new_filter_type == 0:
                         self.filters.append(Filter(new_filter_type - 1))
-                        cfg.se_active_frame.requires_histogram_update = True
-
+                        SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                     if cfg.se_active_frame.overlay is not None:
                         imgui.separator()
                         cw = imgui.get_content_region_available_width()
@@ -669,7 +686,7 @@ class SegmentationEditor:
                         if cfg.se_active_frame.active_feature == f:
                             imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *cfg.COLOUR_FRAME_ACTIVE)
                             pop_active_colour = True
-                        imgui.begin_child(f"##feat_{f.uid}", 0.0, SegmentationEditor.FEATURE_PANEL_HEIGHT, True)
+                        imgui.begin_child(f"##feat_{f.uid}", 0.0, SegmentationEditor.FEATURE_PANEL_HEIGHT + 16 * f.magic, True)
                         cw = imgui.get_content_region_available_width()
 
                         # Colour picker
@@ -691,14 +708,15 @@ class SegmentationEditor:
                         imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
                         imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
                         imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
-                        imgui.set_next_item_width(cw - 40)
+                        imgui.push_item_width(cw - 40)
                         pxs = cfg.se_active_frame.pixel_size
                         _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{f.brush_size:.1f} px / {2 * f.brush_size * pxs:.1f} nm ")
-                        f.brush_size = int(f.brush_size)
-                        imgui.set_next_item_width(cw - 40)
+                        if f.magic:
+                            _, f.magic_strength = imgui.slider_float("flood", f.magic_strength, 1.0, 100.0, format=f"{f.magic_strength:.1f}%% sensitivity")
                         _, f.alpha = imgui.slider_float("alpha", f.alpha, 0.0, 1.0, format="%.2f")
-                        imgui.set_next_item_width(cw - 40)
                         _, f.box_size = imgui.slider_int("boxes", f.box_size, 8, 128, format=f"{f.box_size} pixel")
+                        imgui.pop_item_width()
+                        f.brush_size = int(f.brush_size)
                         if _:
                             f.set_box_size(f.box_size)
                         # Show / fill checkboxes
@@ -709,6 +727,8 @@ class SegmentationEditor:
                         f.contour = not fill
                         imgui.same_line()
                         _, hide_boxes = imgui.checkbox("hide boxes", not f.show_boxes)
+                        imgui.same_line()
+                        _, f.magic = imgui.checkbox("flood##checkbox", f.magic)
                         f.show_boxes = not hide_boxes
                         f.contour = not fill
                         imgui.same_line()
@@ -739,6 +759,7 @@ class SegmentationEditor:
                                 _, jumpto = imgui.selectable(f"Slice {i} ({len(f.boxes[i])} boxes)", f.current_slice == i, width=cw - 23)
                                 if jumpto:
                                     f.parent.set_slice(i)
+                                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                                 imgui.same_line(position=cw - 5)
                                 if imgui.image_button(self.icon_close.renderer_id, 13, 13):
                                     f.remove_slice(i)
@@ -1023,8 +1044,7 @@ class SegmentationEditor:
                                     if path[-4:] != ".mrc":
                                         path += ".mrc"
                                     with mrcfile.new(path, overwrite=True) as mrc:
-                                        pxd = np.clip(m.data * 255, 0, 255).astype(
-                                            np.uint8).squeeze()
+                                        pxd = np.clip(m.data * 255, 0, 255).astype(np.uint8).squeeze()
                                         mrc.set_data(pxd)
                                         mrc.voxel_size = cfg.se_active_frame.pixel_size * 10.0
                             imgui.pop_style_var(5)
@@ -1649,6 +1669,7 @@ class SegmentationEditor:
                 imgui.pop_style_var(1)
                 if _:
                     frame.set_slice(frame.export_top)
+                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                     frame.export_bottom = min([frame.export_bottom, frame.export_top - 1])
                     frame.export_bottom = max([frame.export_bottom, 1])
                 origin = imgui.get_window_position()
@@ -1661,6 +1682,7 @@ class SegmentationEditor:
             _, requested_slice = imgui.slider_int("##slicer_slider", frame.current_slice, 0, frame.n_slices, format=f"slice {1+frame.current_slice}/{frame.n_slices}")
             if _:
                 frame.set_slice(requested_slice)
+                SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                 SegmentationEditor.VIEW_REQUIRES_UPDATE = True
             if export_mode:
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
@@ -1668,6 +1690,7 @@ class SegmentationEditor:
                 imgui.pop_style_var(1)
                 if _:
                     frame.set_slice(frame.export_bottom)
+                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                     frame.export_top = max([frame.export_top, frame.export_bottom + 1])
                     frame.export_top = min([frame.export_top, frame.n_slices])
             imgui.pop_style_color(4)
@@ -1687,10 +1710,12 @@ class SegmentationEditor:
             if self.active_tab != "Render":
                 pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, emphasize_roi=self.active_tab != "Segmentation") ## todo: save the output pxd to the corresponding frame, and render this pxd in subsequent app frames where the data is not changed instead of applying the filters on GPU every frame - which it turns out is fairly expensive
                 if pxd is not None:
+                    cfg.se_active_frame.rendered_data = pxd
+                    cfg.se_active_frame.update_image_texture()
                     cfg.se_active_frame.compute_histogram(pxd)
                     if cfg.se_active_frame.autocontrast:
                         cfg.se_active_frame.compute_autocontrast(None, pxd)
-                    cfg.se_active_frame.requires_histogram_update = False
+                SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE = False
             if self.active_tab == "Segmentation":
                 SegmentationEditor.renderer.render_segmentations(cfg.se_active_frame, self.camera)
 
@@ -1743,10 +1768,12 @@ class SegmentationEditor:
                 # Render the frame
                 pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, camera3d=self.camera3d)
                 if pxd is not None:
+                    cfg.se_active_frame.rendered_data = pxd
+                    cfg.se_active_frame.update_image_texture()
                     cfg.se_active_frame.compute_histogram(pxd)
                     if cfg.se_active_frame.autocontrast:
                         cfg.se_active_frame.compute_autocontrast(None, pxd)
-                    cfg.se_active_frame.requires_histogram_update = False
+                SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE = False
 
                 # Render overlay, if possible:
                 if cfg.se_active_frame.overlay is not None:
@@ -2186,6 +2213,8 @@ class SegmentationEditor:
 class Brush:
     circular_roi = np.zeros(1, dtype=np.uint8)
     circular_roi_radius = -1
+    magic_roi = np.zeros(1, dtype=np.uint8)
+    magic_roi_radius = -1
 
     @staticmethod
     def set_circular_roi_radius(radius):
@@ -2198,6 +2227,18 @@ class Brush:
             for y in range(0, 2*radius+1):
                 if ((x-radius)**2 + (y-radius)**2) < r:
                     Brush.circular_roi[x, y] = True
+
+    @staticmethod
+    def set_magic_roi_radius(radius):
+        if Brush.magic_roi_radius == radius:
+            return
+        Brush.magic_roi_radius = radius
+        Brush.magic_roi = np.zeros((2 * radius + 1, 2 * radius + 1), dtype=np.uint8)
+        r = radius ** 2
+        for x in range(0, 2 * radius + 1):
+            for y in range(0, 2 * radius + 1):
+                if ((x - radius) ** 2 + (y - radius) ** 2) < r:
+                    Brush.magic_roi[x, y] = True
 
     @staticmethod
     def apply_circular(segmentation, center_coordinates, val=True):
@@ -2230,8 +2271,74 @@ class Brush:
             segmentation.data[x[0]:x[1], y[0]:y[1]] += Brush.circular_roi[rx[0]:rx[1], ry[0]:ry[1]]
         else:
             segmentation.data[x[0]:x[1], y[0]:y[1]] *= (np.uint8(1.0) - Brush.circular_roi[rx[0]:rx[1], ry[0]:ry[1]])
+
         segmentation.data[x[0]:x[1], y[0]:y[1]] = np.clip(segmentation.data[x[0]:x[1], y[0]:y[1]], 0, 1)
         segmentation.texture.update_subimage(segmentation.data[x[0]:x[1], y[0]:y[1]], y[0], x[0])
+
+    @staticmethod
+    def apply_magic(segmentation, image, center_coordinates):
+        segmentation.request_draw_in_current_slice()
+        r = int(segmentation.brush_size)
+        center_coordinates[0], center_coordinates[1] = center_coordinates[1], center_coordinates[0]
+        Brush.set_magic_roi_radius(r)
+
+        # set up the ROI coordinates and image coordinates of the region to sample from
+        x, y = center_coordinates[0], center_coordinates[1]
+        if x > segmentation.height or x < 0 or y > segmentation.width or y < 0:
+            return
+
+
+        mu = image[x, y]
+        value_range = [mu * (1.0 - (100.0 - segmentation.magic_strength) / 100.0), mu * (1.0 + (100.0 - segmentation.magic_strength) / 100.0)]
+        if value_range[0] > value_range[1]:
+            value_range[0], value_range[1] = value_range[1], value_range[0]
+        # set up the ROI coordinates and image coordinates of the region to draw in
+        r = r
+        x = [center_coordinates[0] - r, center_coordinates[0] + r + 1]
+        y = [center_coordinates[1] - r, center_coordinates[1] + r + 1]
+        rx = [0, 2 * r + 1]
+        ry = [0, 2 * r + 1]
+
+        if x[0] > segmentation.height or x[1] < 0 or y[0] > segmentation.width or y[1] < 0:
+            return
+        if x[0] < 0:
+            rx[0] -= x[0]
+            x[0] = 0
+        if y[0] < 0:
+            ry[0] -= y[0]
+            y[0] = 0
+        if x[1] > segmentation.height:
+            rx[1] -= (x[1] - segmentation.height)
+            x[1] = segmentation.height
+        if y[1] > segmentation.width:
+            ry[1] -= (y[1] - segmentation.width)
+            y[1] = segmentation.width
+
+        contiguous_mask = np.zeros((rx[1]-rx[0], ry[1]-ry[0]), dtype=np.uint8)
+        for _x, _rx in zip(range(x[0], x[1]), range(rx[0], rx[1])):
+            for _y, _ry in zip(range(y[0], y[1]), range(ry[0], ry[1])):
+                if Brush.magic_roi[_rx, _ry] and value_range[0] < image[_x, _y] < value_range[1]:
+                    contiguous_mask[_rx, _ry] = 1
+
+        stack = [(r - rx[0], r - ry[0])]
+        w, h = (rx[1] - rx[0], ry[1] - ry[0])
+        while stack:
+            mx, my = stack.pop()
+            if contiguous_mask[mx, my] == 1:
+                contiguous_mask[mx, my] = 2
+                if mx + 1 < w:
+                    stack.append((mx + 1, my))
+                if mx - 1 >= 0:
+                    stack.append((mx - 1, my))
+                if my + 1 < h:
+                    stack.append((mx, my + 1))
+                if my - 1 >= 0:
+                    stack.append((mx, my - 1))
+        contiguous_mask = contiguous_mask == 2
+        segmentation.data[x[0]:x[1], y[0]:y[1]] += contiguous_mask
+        segmentation.data[x[0]:x[1], y[0]:y[1]] = np.clip(segmentation.data[x[0]:x[1], y[0]:y[1]], 0, 1)
+        segmentation.texture.update_subimage(segmentation.data[x[0]:x[1], y[0]:y[1]], y[0], x[0])
+
 
 
 class Renderer:
@@ -2292,9 +2399,13 @@ class Renderer:
         self.fbo2.clear((0.0, 0.0, 0.0, 1.0))
         self.fbo3.clear((0.0, 0.0, 0.0, 2.0))
 
+        # if any filters will be applied below, reset the frame's data to the original raw pixel data
+        if SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE:
+            cfg.se_active_frame.rendered_data = cfg.se_active_frame.data
+            cfg.se_active_frame.update_image_texture()
+
         # render the image to a framebuffer
-        fake_camera_matrix = np.matrix(
-            [[2 / self.fbo1.width, 0, 0, 0], [0, 2 / self.fbo1.height, 0, 0], [0, 0, -2 / 100, 0], [0, 0, 0, 1]])
+        fake_camera_matrix = np.matrix([[2 / self.fbo1.width, 0, 0, 0], [0, 2 / self.fbo1.height, 0, 0], [0, 0, -2 / 100, 0], [0, 0, 0, 1]])
         self.fbo1.bind()
         self.quad_shader.bind()
         se_frame.quad_va.bind()
@@ -2310,47 +2421,50 @@ class Renderer:
         glActiveTexture(GL_TEXTURE0)
         self.fbo1.unbind()
         window.set_full_viewport()
-        # filter framebuffer
-        self.kernel_filter.bind()
-        compute_size = (int(np.ceil(se_frame.width / 16)), int(np.ceil(se_frame.height / 16)), 1)
-        for fltr in filters:
-            if not fltr.enabled:
-                continue
-            self.kernel_filter.bind()
 
-            # horizontal shader pass
-            fltr.bind(horizontal=True)
-            glBindImageTexture(0, self.fbo1.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
-            glBindImageTexture(1, self.fbo2.texture.renderer_id, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
-            self.kernel_filter.uniform1i("direction", 0)
-            glDispatchCompute(*compute_size)
-            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
-
-            # vertical shader pass
-            fltr.bind(horizontal=False)
-            glBindImageTexture(0, self.fbo2.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
-            glBindImageTexture(1, self.fbo3.texture.renderer_id, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
-            self.kernel_filter.uniform1i("direction", 1)
-            glDispatchCompute(*compute_size)
-            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
-            fltr.unbind()
-            self.kernel_filter.unbind()
-
-            ## mix the filtered and the original image
-            self.mix_filtered.bind()
-            glBindImageTexture(0, self.fbo3.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
-            glBindImageTexture(1, self.fbo1.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F)
-            self.mix_filtered.uniform1f("strength", fltr.strength)
-            glDispatchCompute(*compute_size)
-            glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
-            self.mix_filtered.unbind()
-
+        # filter framebuffer - but only if the SegmentationEditor says that the image needs updating!
         pxd = None
-        if se_frame.requires_histogram_update:
-            self.fbo1.bind()
-            pxd = glReadPixels(0, 0, self.fbo1.width, self.fbo1.height, GL_RED, GL_FLOAT)
-            self.fbo1.unbind()
-            window.set_full_viewport()
+        if SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE:
+            self.kernel_filter.bind()
+            compute_size = (int(np.ceil(se_frame.width / 16)), int(np.ceil(se_frame.height / 16)), 1)
+            for fltr in filters:
+                if not fltr.enabled:
+                    continue
+                self.kernel_filter.bind()
+
+                # horizontal shader pass
+                fltr.bind(horizontal=True)
+                glBindImageTexture(0, self.fbo1.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+                glBindImageTexture(1, self.fbo2.texture.renderer_id, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
+                self.kernel_filter.uniform1i("direction", 0)
+                glDispatchCompute(*compute_size)
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
+
+                # vertical shader pass
+                fltr.bind(horizontal=False)
+                glBindImageTexture(0, self.fbo2.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+                glBindImageTexture(1, self.fbo3.texture.renderer_id, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F)
+                self.kernel_filter.uniform1i("direction", 1)
+                glDispatchCompute(*compute_size)
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
+                fltr.unbind()
+                self.kernel_filter.unbind()
+
+                # mix the filtered and the original image
+                self.mix_filtered.bind()
+                glBindImageTexture(0, self.fbo3.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA32F)
+                glBindImageTexture(1, self.fbo1.texture.renderer_id, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F)
+                self.mix_filtered.uniform1f("strength", fltr.strength)
+                glDispatchCompute(*compute_size)
+                glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
+                self.mix_filtered.unbind()
+
+                # update histogram
+                self.fbo1.bind()
+                pxd = glReadPixels(0, 0, self.fbo1.width, self.fbo1.height, GL_RED, GL_FLOAT)
+                pxd = np.frombuffer(pxd, np.float32).reshape(self.fbo1.height, self.fbo1.width)
+                self.fbo1.unbind()
+                window.set_full_viewport()
 
         # render the framebuffer to the screen
         shader = self.quad_shader if not camera3d else self.quad_3d_shader

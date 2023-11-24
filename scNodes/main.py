@@ -36,6 +36,7 @@ def main():
     cfg.segmentation_editor = segmentation_editor
     main_window.set_icon(segmentation_editor.ICON)
 
+    #from scNodes.core import debug_startup
 
     while not glfw.window_should_close(main_window.glfw_window):
         if not main_window.focused:
