@@ -264,6 +264,8 @@ class SegmentationEditor:
     def input(self):
         if self.active_tab not in ["Segmentation", "Render"] and cfg.se_active_frame is not None and cfg.se_active_frame.crop:
             SegmentationEditor.renderer.render_crop_handles(cfg.se_active_frame, self.camera, self.crop_handles)
+        if imgui.get_io().want_capture_keyboard:
+            return
         if cfg.se_active_frame is not None:
             sef = cfg.se_active_frame
             if imgui.is_key_pressed(glfw.KEY_C):
@@ -277,7 +279,7 @@ class SegmentationEditor:
             if imgui.is_key_pressed(glfw.KEY_A):
                 sef.autocontrast = not sef.autocontrast
                 if sef.autocontrast:
-                    sef.compute_autoconstrast()
+                    sef.compute_autocontrast()
             if self.active_tab == "Segmentation" and cfg.se_active_frame.active_feature is not None:
                 if imgui.is_key_pressed(glfw.KEY_F):
                     cfg.se_active_frame.active_feature.magic = not cfg.se_active_frame.active_feature.magic
@@ -286,8 +288,6 @@ class SegmentationEditor:
                         cfg.se_active_frame.active_feature.magic_strength -= 5.0
                     elif imgui.is_key_pressed(glfw.KEY_EQUAL):
                         cfg.se_active_frame.active_feature.magic_strength += 5.0
-        if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
-            return
 
         # key input
         active_frame = cfg.se_active_frame
@@ -2400,9 +2400,11 @@ class Renderer:
         self.fbo3.clear((0.0, 0.0, 0.0, 2.0))
 
         # if any filters will be applied below, reset the frame's data to the original raw pixel data
+        pxd = None
         if SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE:
             cfg.se_active_frame.rendered_data = cfg.se_active_frame.data
             cfg.se_active_frame.update_image_texture()
+            pxd = cfg.se_active_frame.rendered_data
 
         # render the image to a framebuffer
         fake_camera_matrix = np.matrix([[2 / self.fbo1.width, 0, 0, 0], [0, 2 / self.fbo1.height, 0, 0], [0, 0, -2 / 100, 0], [0, 0, 0, 1]])
@@ -2423,7 +2425,6 @@ class Renderer:
         window.set_full_viewport()
 
         # filter framebuffer - but only if the SegmentationEditor says that the image needs updating!
-        pxd = None
         if SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE:
             self.kernel_filter.bind()
             compute_size = (int(np.ceil(se_frame.width / 16)), int(np.ceil(se_frame.height / 16)), 1)
@@ -2459,12 +2460,12 @@ class Renderer:
                 glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT)
                 self.mix_filtered.unbind()
 
-                # update histogram
-                self.fbo1.bind()
-                pxd = glReadPixels(0, 0, self.fbo1.width, self.fbo1.height, GL_RED, GL_FLOAT)
-                pxd = np.frombuffer(pxd, np.float32).reshape(self.fbo1.height, self.fbo1.width)
-                self.fbo1.unbind()
-                window.set_full_viewport()
+            # update histogram
+            self.fbo1.bind()
+            pxd = glReadPixels(0, 0, self.fbo1.width, self.fbo1.height, GL_RED, GL_FLOAT)
+            pxd = np.frombuffer(pxd, np.float32).reshape(self.fbo1.height, self.fbo1.width)
+            self.fbo1.unbind()
+            window.set_full_viewport()
 
         # render the framebuffer to the screen
         shader = self.quad_shader if not camera3d else self.quad_3d_shader
