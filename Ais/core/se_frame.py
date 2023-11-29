@@ -1,15 +1,13 @@
 from itertools import count
 import numpy as np
 import mrcfile
-from scNodes.core.opengl_classes import *
+from Ais.core.opengl_classes import *
 import datetime
-import scNodes.core.config as cfg
-import scNodes.core.settings as settings
-from scNodes.core.util import bin_2d_array#, get_maxima_3d_watershed
-from scNodes.core.se_model import BackgroundProcess
+import Ais.core.config as cfg
+import Ais.core.settings as settings
+from Ais.core.se_model import BackgroundProcess
 from skimage import measure
 from scipy.ndimage import label, binary_dilation
-import tifffile
 
 
 class SEFrame:
@@ -38,6 +36,7 @@ class SEFrame:
             self.pixel_size = 1.0
         self.transform = Transform()
         self.clem_frame = None
+        self.clem_frame_path = None
         self.overlay = None
         self.texture = None
         self.quad_va = None
@@ -224,11 +223,20 @@ class SEFrame:
             self.overlay.setup_opengl_objects()
 
     def set_overlay(self, pxd, parent_clem_frame, overlay_update_function):
-        self.overlay = Overlay(pxd, parent_clem_frame, self, overlay_update_function)
+        self.overlay = Overlay(pxd, self)
+        self.overlay.set_parent_clem_frame(parent_clem_frame)
+        self.overlay.set_update_function(overlay_update_function)
 
     def include_map(self):
         self.includes_map = True
         self.map = mrcfile.open(self.path, permissive=True)
+
+    def __reduce__(self):
+        state = self.__dict__.copy()
+        to_remove = ['rendered_data', 'clem_frame']
+        for key in to_remove:
+            del state[key]
+        return self.__class__, (self.path,), state
 
     def __eq__(self, other):
         if isinstance(other, SEFrame):
@@ -305,14 +313,22 @@ class Filter:
 class Overlay:
     idgen = count(0)
 
-    def __init__(self, pxd, parent_clem_frame, parent_se_frame, update_function):
+    def __init__(self, pxd, parent_se_frame):
         self.uid = next(Overlay.idgen)
         self.pxd = pxd
         self.texture = Texture(format="rgba32f")
         self.texture.update(pxd)
-        self.clem_frame = parent_clem_frame
+        self.clem_frame = None
+        self.clem_frame_path = ''
         self.se_frame = parent_se_frame
-        self.update_function = update_function
+        self.update_function = None
+
+    def set_parent_clem_frame(self, clem_frame):
+        self.clem_frame = clem_frame
+        self.clem_frame_path = clem_frame.path
+
+    def set_update_function(self, fn):
+        self.update_function = fn
 
     def update(self):
         self.pxd = self.update_function(self.clem_frame)
@@ -326,6 +342,12 @@ class Overlay:
     def size(self):
         return self.pxd.shape
 
+    def __reduce__(self):
+        state = self.__dict__.copy()
+        to_remove = ['clem_frame', 'update_function']
+        for key in to_remove:
+            del state[key]
+        return self.__class__, (self.pxd, self.se_frame, ), state
 
 class Segmentation:
     idgen = count(0)

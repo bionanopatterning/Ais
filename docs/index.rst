@@ -11,6 +11,7 @@ Welcome to the user guide of Ais - a segmentation suite for cryo-electron tomogr
 .. image:: ./res/LOGO_Ais_1024.png
    :alt: Ais logo
    :align: center
+   :width: 50%
 
 .. image:: ./res/homepage.png
    :alt: an example of the segmentation interface in Ais

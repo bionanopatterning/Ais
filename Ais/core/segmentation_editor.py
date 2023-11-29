@@ -4,14 +4,20 @@ from PIL import Image
 from copy import copy
 from tkinter import filedialog
 import dill as pickle
-from scNodes.core.se_model import *
-from scNodes.core.se_frame import *
-import scNodes.core.widgets as widgets
-from scNodes.core.util import clamp, bin_mrc
+from Ais.core.se_model import *
+from Ais.core.se_frame import *
+import Ais.core.widgets as widgets
+from Ais.core.util import clamp, bin_mrc
 import pyperclip
 import os
 import subprocess
 
+EMBEDDED = False
+try:
+    import scNodes.core.config as scn_cfg
+    EMBEDDED = True
+except ImportError:
+    pass
 
 class SegmentationEditor:
     if True:
@@ -46,7 +52,7 @@ class SegmentationEditor:
         BLEND_MODES["Overlay"] = (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_FUNC_ADD, 3)
         BLEND_MODES_3D = dict()  # blend mode template: (glBlendFunc ARG1, ... ARG2, glBlendEquation ARG1, glsl_side_blend_mode_code)
         BLEND_MODES_3D["Halo"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 0)
-        BLEND_MODES_3D["Binary"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 1)
+        BLEND_MODES_3D["Threshold"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 1)
         BLEND_MODES_LIST = list(BLEND_MODES.keys())
         BLEND_MODES_LIST_3D = list(BLEND_MODES_3D.keys())
 
@@ -143,6 +149,7 @@ class SegmentationEditor:
         for i in range(4):
             self.crop_handles.append(WorldSpaceIcon(i))
 
+
         if True:
             icon_dir = os.path.join(cfg.root, "icons")
 
@@ -175,6 +182,7 @@ class SegmentationEditor:
             self.boot_sprite_width, self.boot_sprite_height = pxd.shape[0:2]
             self.boot_sprite_texture.set_linear_interpolation()
 
+
     @staticmethod
     def set_active_dataset(dataset):
         SegmentationEditor.pick_tab_index_datasets_segs = True
@@ -196,13 +204,19 @@ class SegmentationEditor:
 
     def on_update(self):
         imgui.set_current_context(self.imgui_context)
-        imgui.CONFIG_DOCKING_ENABLE = True  ## maayyyybe not.
+        imgui.CONFIG_DOCKING_ENABLE = True  ## maayyyybe not?
 
         self.window.make_current()
         self.window.set_full_viewport()
         if self.window.focused:
             self.imgui_implementation.process_inputs()
 
+        if EMBEDDED:
+            if not imgui.get_io().want_capture_keyboard and imgui.is_key_pressed(glfw.KEY_TAB):
+                if imgui.is_key_down(glfw.KEY_LEFT_SHIFT):
+                    scn_cfg.active_editor = (scn_cfg.active_editor - 1) % len(scn_cfg.editors)
+                else:
+                    scn_cfg.active_editor = (scn_cfg.active_editor + 1) % len(scn_cfg.editors)
 
         for filepath in self.window.dropped_files:
             self.import_dataset(filepath)
@@ -286,8 +300,11 @@ class SegmentationEditor:
                 if cfg.se_active_frame.active_feature.magic:
                     if imgui.is_key_pressed(glfw.KEY_MINUS):
                         cfg.se_active_frame.active_feature.magic_strength -= 5.0
+                        cfg.se_active_frame.active_feature.magic_strength = max([5.0, cfg.se_active_frame.active_feature.magic_strength])
                     elif imgui.is_key_pressed(glfw.KEY_EQUAL):
                         cfg.se_active_frame.active_feature.magic_strength += 5.0
+                        cfg.se_active_frame.active_feature.magic_strength = min([100.0, cfg.se_active_frame.active_feature.magic_strength])
+
 
         # key input
         active_frame = cfg.se_active_frame
@@ -389,6 +406,7 @@ class SegmentationEditor:
                     self.crop_handles[0].move_crop_roi(world_delta[0], world_delta[1])
 
     def import_dataset(self, filename):
+        # TODO: upon import, if scNodes, if has overlay and overlay.clem_frame.path found in any CLEMFrame's path, link CLEMFrame and SEFrame s.t. overlay can be updated.
         SegmentationEditor.SHOW_BOOT_SPRITE = False
         try:
             _, ext = os.path.splitext(filename)
@@ -430,17 +448,9 @@ class SegmentationEditor:
             if filename != '':
                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                     filename += cfg.filetype_segmentation
-
-                buffer_dict = dict()
-                buffer_dict["clem_frame"] = cfg.se_active_frame.clem_frame
-                buffer_dict["overlay_clem_frame"] = cfg.se_active_frame.overlay.clem_frame
-                cfg.se_active_frame.clem_frame = None
-                cfg.se_active_frame.overlay.clem_frame = None
                 with open(filename, 'wb') as pickle_file:
                     pickle.dump(cfg.se_active_frame, pickle_file)
 
-                cfg.se_active_frame.clem_frame = buffer_dict["clem_frame"]
-                cfg.se_active_frame.overlay.clem_frame = buffer_dict["overlay_clem_frame"]
 
         except Exception as e:
             cfg.set_error(e, "Could not save dialog - see details below.")
@@ -496,7 +506,7 @@ class SegmentationEditor:
                 imgui.push_style_color(imgui.COLOR_POPUP_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND)
                 if imgui.begin_popup_context_window():
                     imgui.text(f"Welcome to {cfg.app_name}!")
-                    imgui.text(f"version {cfg.version}\nsource: github.com/bionanopatterning/Pom")
+                    imgui.text(f"version {cfg.version}\nsource: github.com/bionanopatterning/Ais\nmanual: ais-cryoet.readthedocs.org")
                     imgui.end_popup()
                 if self.window.focused and imgui.is_mouse_clicked(glfw.MOUSE_BUTTON_LEFT) and not imgui.is_window_hovered():
                     SegmentationEditor.SHOW_BOOT_SPRITE = False
@@ -527,7 +537,7 @@ class SegmentationEditor:
                                 s.title = os.path.splitext(os.path.basename(s.path))[0]
                         if imgui.menu_item("Copy path to .mrc")[0]:
                             pyperclip.copy(s.path)
-                        if s.overlay is not None and imgui.menu_item("Update overlay")[0]:
+                        if s.overlay is not None and s.overlay.update_function is not None and imgui.menu_item("Update overlay")[0]:
                             s.overlay.update()
                         if imgui.begin_menu("Generate binned version"):
                             path = s.path
@@ -1626,7 +1636,12 @@ class SegmentationEditor:
                                 SegmentationEditor.save_model_group(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not save model group, see details below.")
-
+                    imgui.end_menu()
+                if EMBEDDED and imgui.begin_menu("Editor"):
+                    for i in range(len(scn_cfg.editors)):
+                        select, _ = imgui.menu_item(scn_cfg.editors[i], None, False)
+                        if select:
+                            scn_cfg.active_editor = i
                     imgui.end_menu()
                 imgui.end_main_menu_bar()
 
@@ -2060,6 +2075,7 @@ class SegmentationEditor:
             return
         new_se_frame = SEFrame(clemframe.path)
         new_se_frame.clem_frame = clemframe
+        new_se_frame.clem_frame_path = clemframe.path
         new_se_frame.autocontrast = False
         new_se_frame.title = clemframe.title
         new_se_frame.contrast_lims = clemframe.contrast_lims
@@ -2067,6 +2083,7 @@ class SegmentationEditor:
 
         cfg.se_frames.append(new_se_frame)
         SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
+        return cfg.se_frames[-1]
 
     @staticmethod
     def load_model_group(path):
@@ -2289,7 +2306,7 @@ class Brush:
 
 
         mu = image[x, y]
-        value_range = [mu * (1.0 - (100.0 - segmentation.magic_strength) / 100.0), mu * (1.0 + (100.0 - segmentation.magic_strength) / 100.0)]
+        value_range = [mu * (1.0 - (100.0 - (50 + 0.5 * segmentation.magic_strength)) / 100.0), mu * (1.0 + (100.0 - (50 + 0.5 * segmentation.magic_strength)) / 100.0)]
         if value_range[0] > value_range[1]:
             value_range[0], value_range[1] = value_range[1], value_range[0]
         # set up the ROI coordinates and image coordinates of the region to draw in

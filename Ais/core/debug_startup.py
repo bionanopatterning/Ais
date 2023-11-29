@@ -1,5 +1,5 @@
-import scNodes.core.config as cfg
-from scNodes.core.segmentation_editor import Segmentation, SegmentationEditor
+import Ais.core.config as cfg
+from Ais.core.segmentation_editor import Segmentation, SegmentationEditor
 
 cfg.segmentation_editor.import_dataset("C:/Users/mgflast/Desktop/DELETE.scns")
 

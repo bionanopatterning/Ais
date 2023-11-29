@@ -3,7 +3,7 @@ __________
 
 Ais was originally created as a part of our cryoCLEM processing suite `scNodes <https://github.com/bionanopatterning/scNodes>`_. As such, the naming system of Ais as a standalone python package can be a little bit confusing. Here we outline some of the classes and functions of Ais that you may be useful in case you want to strip certain functionality from Ais; for example, to create a script for batch processing that can be called from the command line (see below).
 
-Ais imports two filetypes for segmentation (as of october 27th, 2023; we will include .tiff in the future): .mrc files and .scns files. When importing a .mrc and saving the dataset, a .scns file is created that links to that dataset. When the original .mrc file is moved, the link in the .scns becomes incorrect. By right-clicking a dataset in the Datasets panel of the main menu and selecting the 'Relink dataset' this link can be repaired.
+Ais imports two filetypes for segmentation (as of October 27th, 2023; we will probably include .tif at some point): .mrc files and .scns files. When importing a .mrc and saving the dataset, a .scns file is created that links to that dataset. When the original .mrc file is moved, the link in the .scns becomes incorrect. By right-clicking a dataset in the Datasets panel of the main menu and selecting the 'Relink dataset' this link can be repaired.
 
 Filetypes
 ^^^^^^^^^^^^^^
@@ -21,11 +21,11 @@ The following filetypes are created and used by Ais:
 Models
 ^^^^^^^^^^^^^^
 
-When booting Ais, a library of neural network architectures is loaded from the scNodes/models directory. Adding new models to the software is a matter of properly defining a tensorflow.keras file in a .py and saving this in the models directory. A template, scNodes/models/model_template.py is available for further instructions.
+When booting Ais, a library of neural network architectures is loaded from the Ais/models directory. Adding new models to the software is a matter of properly defining a tensorflow.keras model in a .py file and saving this in the models directory. A template, scNodes/models/model_template.py is available for further instructions. A custom model object can also be used, as long as the .fit, .predict. and various other builtin keras models, are implemented.
 
-All models in Ais are ultimately contained in an object of the class SEModel, defined in scNodes/core/se_model.py. Models and model interactions are defined in this file.
+All models in Ais are contained in an object of the class SEModel, defined in Ais/core/se_model.py. Models and model interactions are defined in this file.
 
-We are aware that the documentation here is currently lacking - Ais was more built for use than as a repurposable Python package. We are happy to help with any questions though, so if you're looking for some specific information please contact us via m.g.f.last@lumc.nl or `the GitHub page <https://www.github.com/bionanopatterning/Ais/issues>`_
+We are aware that the documentation here is currently lacking - Ais was more built for usage than to be a repurposable Python package. We are happy to help with any questions though, so if you're looking for some specific information please contact us via m.g.f.last@lumc.nl or `the GitHub page <https://www.github.com/bionanopatterning/Ais/issues>`_
 
 Scripting with Ais
 ^^^^^^^^^^^^
@@ -36,9 +36,9 @@ Important note: the first function that must always be called to enable Ais func
 
 ::
 
-   from scNodes.main import windowless
-   from scNodes.core.se_frame import SEFrame
-   from scNodes.core.se_model import SEModel
+   from Ais.main import windowless
+   from Ais.core.se_frame import SEFrame
+   from Ais.core.se_model import SEModel
    import time
    import numpy as np
 

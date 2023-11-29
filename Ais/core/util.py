@@ -3,7 +3,7 @@ from PIL import Image
 import numpy as np
 import tifffile
 import glob
-from scNodes.core import config as cfg
+from Ais.core import config as cfg
 import time
 import mrcfile
 from scipy.ndimage import label, center_of_mass, distance_transform_edt
