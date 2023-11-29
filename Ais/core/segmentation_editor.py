@@ -19,6 +19,7 @@ try:
 except ImportError:
     pass
 
+
 class SegmentationEditor:
     if True:
         CAMERA_ZOOM_STEP = 0.1
@@ -2226,6 +2227,11 @@ class SegmentationEditor:
     def end_frame(self):
         self.window.end_frame()
 
+    @staticmethod
+    def set_log_path(path):
+        cfg.log_path = path
+        cfg.start_log()
+
 
 class Brush:
     circular_roi = np.zeros(1, dtype=np.uint8)
@@ -2355,7 +2361,6 @@ class Brush:
         segmentation.data[x[0]:x[1], y[0]:y[1]] += contiguous_mask
         segmentation.data[x[0]:x[1], y[0]:y[1]] = np.clip(segmentation.data[x[0]:x[1], y[0]:y[1]], 0, 1)
         segmentation.texture.update_subimage(segmentation.data[x[0]:x[1], y[0]:y[1]], y[0], x[0])
-
 
 
 class Renderer:

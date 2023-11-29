@@ -5,14 +5,14 @@ from datetime import datetime
 import sys
 import platform
 
-# TODO: 2D overlay in SE render.
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "0.0.11"
+version = "0.0.18"
 license = "GNU GPL v3"
-logpath = "Ais.log"
+log_title = "Ais.log"
+log_path = os.path.join(root, log_title)
 
 filetype_segmentation = ".scns"
 filetype_traindata = ".scnt"
@@ -52,17 +52,14 @@ def set_error(error_object, error_message):
     error_logged = False
 
 
-
 def write_to_log(text):
-    with open(os.path.join(root, logpath), "a") as f:
+    with open(log_path, "a") as f:
         f.write("\n\n ____________________ \n\n")
         f.write(text)
 
 
 def start_log():
-    if os.path.join(root, logpath):
-        os.path.join(root, logpath)
-    with open(os.path.join(root, logpath), "w") as f:
+    with open(log_path, "w") as f:
         f.write(app_name+" version "+version+" "+license+"\n"+datetime.now().strftime("%m/%d/%Y, %H:%M:%S")+"\n")
         f.write(f"OS: {platform.platform()}")
         f.write(f"Python version: {sys.version}")
