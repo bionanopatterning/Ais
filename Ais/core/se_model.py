@@ -376,7 +376,7 @@ class SEModel:
         for file in model_files:
             try:
                 module_name = os.path.basename(file)[:-3]
-                mod = importlib.import_module(("scNodes." if not cfg.frozen else "")+"models."+module_name)
+                mod = importlib.import_module(("Ais." if not cfg.frozen else "")+"models."+module_name)
                 if mod.include:
                     SEModel.MODELS[mod.title] = mod.create
             except Exception as e:
