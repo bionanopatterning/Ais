@@ -65,7 +65,7 @@ void main()
     else
     {
         vec3 pos = start_pos;
-        vec2 uv = pos.xy / imgSize * 1.0f + 0.5f;
+        vec2 uv;
         vec4 rayValue = vec4(0.0f);
         bool rayInVolume = true;
         float pathLength = 0.0;
@@ -81,7 +81,7 @@ void main()
                 break;
             }
             pos += dir;
-            uv = pos.xy / imgSize * 1.0f + 0.5f;
+            uv = pos.xy / imgSize / pixelSize + 0.5f;
             rayInVolume = isRayInVolume(pos);
             if (style == 0)
             {
