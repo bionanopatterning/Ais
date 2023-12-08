@@ -1333,7 +1333,7 @@ class SegmentationEditor:
 
 
                     files = glob.glob(os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
-                    print(f"Found the following segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
+                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
                     for f in sorted(files):
                         print(f)
                         if not 'overlay' in f:
@@ -1414,6 +1414,9 @@ class SegmentationEditor:
                     imgui.pop_item_width()
                     imgui.pop_style_var(3)
                     imgui.pop_style_color(2)
+                    if imgui.begin_popup_context_window():
+                        imgui.text(f"{s.title}")
+                        imgui.end_popup()
                     imgui.end_child()
 
                 imgui.pop_style_var(3)
@@ -3172,7 +3175,7 @@ class QueuedExport:
             for m in self.models:
                 self.check_stop_request()
                 print(f"QueuedExport - saving output of model {m.info}")
-                out_path = os.path.join(self.directory, self.dataset.title+"_"+m.title+".mrc")
+                out_path = os.path.join(self.directory, os.path.splitext(self.dataset.title)[0]+"_"+m.title+".mrc")
                 with mrcfile.new(out_path, overwrite=True) as mrc:
                     s = segmentations[i, :, :, :].squeeze()
                     mrc.set_data(s)
