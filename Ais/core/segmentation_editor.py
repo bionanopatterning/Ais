@@ -1332,8 +1332,8 @@ class SegmentationEditor:
                     # find segmentations in the selected dataset's folder.
 
 
-                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
-                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, se_frame.title + "_*.mrc"))
+                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "_*.mrc"))
+                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "_*.mrc"))
                     for f in sorted(files):
                         print(f)
                         if not 'overlay' in f:
