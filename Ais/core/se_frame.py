@@ -572,7 +572,7 @@ class SurfaceModel:
         self.uid = next(SurfaceModel.idgen)
         self.path = path
         self.title = os.path.splitext(os.path.basename(self.path))[0]
-        self.title = self.title[1+self.title.rfind("_"):]
+        self.title = self.title[1+self.title.rfind("__"):]
         self.colour = (0.0, 0.0, 0.0)
         self.vertices = list()
         self.indices = list()

@@ -9,7 +9,7 @@ import platform
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "0.0.22"
+version = "0.0.23"
 license = "GNU GPL v3"
 log_title = "Ais.log"
 log_path = os.path.join(root, log_title)
@@ -40,7 +40,25 @@ se_active_model = None
 se_path = "..."
 se_surface_models = list()
 
-
+controls_info_text = \
+    "left mouse:     draw\n" \
+    "    +shift:     place box\n" \
+    "right mouse:    erase\n" \
+    "    +shift:     erase box\n" \
+    "scroll:         change slice\n" \
+    "    +shift:     zoom\n" \
+    "    + ctrl:     change brush size\n" \
+    "spacebar:       reset view\n" \
+    "key A:          toggle autocontrast\n" \
+    "key I:          toggle interpolation\n" \
+    "    +shift:     toggle inversion\n" \
+    "key C:          toggle cropping\n" \
+    "key F:          toggle flood drawing mode\n" \
+    "key Q:          hide 3d models" \
+    "key left:       previous slice\n" \
+    "key right:      next slice\n" \
+    "key up:         previous dataset\n" \
+    "key down:       next dataset\n"
 
 def set_error(error_object, error_message):
     global error_msg, error_obj, error_new, error_logged

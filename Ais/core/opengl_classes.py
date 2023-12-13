@@ -91,10 +91,10 @@ class Texture:
 
     def set_linear_mipmap_interpolation(self):
         glBindTexture(GL_TEXTURE_2D, self.renderer_id)
-        glGenerateMipmap(GL_TEXTURE_2D)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR)
+        #glGenerateMipmap(GL_TEXTURE_2D)  231213: removing mipmaps to avoid issue with old OpenGL Mesa drivers on some Linux machines.
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR) # used to be GL_LINEAR_MIPMAP something
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        self.wants_mipmap = True
+        self.wants_mipmap = False #True
 
     def set_no_interpolation(self):
         glBindTexture(GL_TEXTURE_2D, self.renderer_id)

@@ -159,9 +159,10 @@ class SEModel:
             print("Error loading model - see details below", print(e))
 
     def train(self):
-        process = BackgroundProcess(self._train, (), name=f"{self.title} training")
-        self.background_process_train = process
-        process.start()
+        if self.train_data_path:
+            process = BackgroundProcess(self._train, (), name=f"{self.title} training")
+            self.background_process_train = process
+            process.start()
 
     def load_training_data(self):
         with tifffile.TiffFile(self.train_data_path) as train_data:

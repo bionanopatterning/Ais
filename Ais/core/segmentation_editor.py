@@ -295,6 +295,10 @@ class SegmentationEditor:
                 sef.autocontrast = not sef.autocontrast
                 if sef.autocontrast:
                     sef.compute_autocontrast()
+            if imgui.is_key_pressed(glfw.KEY_SPACE):
+                self.camera = Camera()
+                self.camera3d = Camera3D()
+                self.camera.zoom = SegmentationEditor.DEFAULT_ZOOM
             if self.active_tab == "Segmentation" and cfg.se_active_frame.active_feature is not None:
                 if imgui.is_key_pressed(glfw.KEY_F):
                     cfg.se_active_frame.active_feature.magic = not cfg.se_active_frame.active_feature.magic
@@ -422,14 +426,6 @@ class SegmentationEditor:
                     seframe.slice_changed = False
                     cfg.se_frames.append(seframe)
                     SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
-                    # compatibility:
-                    if not hasattr(seframe, 'crop'):
-                        seframe.crop = False
-                        seframe.crop_roi = [0, 0, seframe.width, seframe.height]
-                    if not hasattr(seframe, 'includes_map'):
-                        seframe.includes_map = False
-                        seframe.map = None
-                    seframe.spa = False
                     if seframe.includes_map:
                         seframe.path = filename[:-len(cfg.filetype_segmentation)]+".mrc"  # 'virtual' file path, pointing at the location of the .scns file but ending with .mrc s.t. model output regex doesn't get messed up
                 self.parse_available_features()
@@ -1332,8 +1328,8 @@ class SegmentationEditor:
                     # find segmentations in the selected dataset's folder.
 
 
-                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "_*.mrc"))
-                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "_*.mrc"))
+                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "__*.mrc"))
+                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "__*.mrc"))
                     for f in sorted(files):
                         print(f)
                         if not 'overlay' in f:
@@ -1647,6 +1643,9 @@ class SegmentationEditor:
                         if select:
                             scn_cfg.active_editor = i
                     imgui.end_menu()
+                if imgui.begin_menu("Controls"):
+                    imgui.text(cfg.controls_info_text)
+                    imgui.end_menu()
                 imgui.end_main_menu_bar()
 
             imgui.pop_style_color(6)
@@ -1727,7 +1726,7 @@ class SegmentationEditor:
 
         if cfg.se_active_frame is not None:
             if self.active_tab != "Render":
-                pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, emphasize_roi=self.active_tab != "Segmentation") ## todo: save the output pxd to the corresponding frame, and render this pxd in subsequent app frames where the data is not changed instead of applying the filters on GPU every frame - which it turns out is fairly expensive
+                pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, emphasize_roi=self.active_tab not in ["Segmentation", "Render"])
                 if pxd is not None:
                     cfg.se_active_frame.rendered_data = pxd
                     cfg.se_active_frame.update_image_texture()
@@ -1781,7 +1780,7 @@ class SegmentationEditor:
                 self.renderer.render_frame_border(cfg.se_active_frame, self.camera3d)
 
                 # Render surface models in 3D
-                if not imgui.is_key_down(glfw.KEY_SPACE):
+                if not imgui.is_key_down(glfw.KEY_Q):
                     self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT)
 
                 # Render the frame
@@ -1814,9 +1813,9 @@ class SegmentationEditor:
 
         if imgui.begin_tab_bar("##tabs"):
             self.window.clear_color = cfg.COLOUR_WINDOW_BACKGROUND
-            if imgui.begin_tab_item(" Segmentation ")[0]:
+            if imgui.begin_tab_item("  Annotation ")[0]:
                 segmentation_tab()
-                self.active_tab = "Segmentation"
+                self.active_tab = "Segmentation"   # used to be labelled Segmentation then changed to 'Annotation'. Did not change the active_tab enum value though.
                 imgui.end_tab_item()
             if imgui.begin_tab_item(" Models ")[0]:
                 if self.active_tab != "Models":
@@ -1828,7 +1827,7 @@ class SegmentationEditor:
                 self.active_tab = "Export"
                 export_tab()
                 imgui.end_tab_item()
-            if imgui.begin_tab_item(" Render ")[0]:
+            if imgui.begin_tab_item(" Render  ")[0]:
                 self.window.clear_color = [*SegmentationEditor.RENDER_CLEAR_COLOUR, 1.0]
                 self.active_tab = "Render"
                 picking_tab()
@@ -2070,7 +2069,7 @@ class SegmentationEditor:
             all_imgs = np.array(positive)
         else:
             all_imgs = np.array(positive + negative)
-        tifffile.imwrite(path, all_imgs, description=f"apix={apix}")
+        tifffile.imwrite(path, all_imgs, description=f"apix={apix:.2f}")
 
     @staticmethod
     def seframe_from_clemframe(clemframe):
@@ -3175,7 +3174,7 @@ class QueuedExport:
             for m in self.models:
                 self.check_stop_request()
                 print(f"QueuedExport - saving output of model {m.info}")
-                out_path = os.path.join(self.directory, os.path.splitext(self.dataset.title)[0]+"_"+m.title+".mrc")
+                out_path = os.path.join(self.directory, os.path.splitext(self.dataset.title)[0]+"__"+m.title+".mrc")
                 with mrcfile.new(out_path, overwrite=True) as mrc:
                     s = segmentations[i, :, :, :].squeeze()
                     mrc.set_data(s)
