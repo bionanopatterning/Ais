@@ -9,7 +9,7 @@ import platform
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "0.0.23"
+version = "0.0.25"
 license = "GNU GPL v3"
 log_title = "Ais.log"
 log_path = os.path.join(root, log_title)
@@ -54,7 +54,7 @@ controls_info_text = \
     "    +shift:     toggle inversion\n" \
     "key C:          toggle cropping\n" \
     "key F:          toggle flood drawing mode\n" \
-    "key Q:          hide 3d models" \
+    "key Q:          hide 3d models\n" \
     "key left:       previous slice\n" \
     "key right:      next slice\n" \
     "key up:         previous dataset\n" \

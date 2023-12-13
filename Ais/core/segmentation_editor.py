@@ -183,7 +183,6 @@ class SegmentationEditor:
             self.boot_sprite_width, self.boot_sprite_height = pxd.shape[0:2]
             self.boot_sprite_texture.set_linear_interpolation()
 
-
     @staticmethod
     def set_active_dataset(dataset):
         SegmentationEditor.pick_tab_index_datasets_segs = True
@@ -451,7 +450,6 @@ class SegmentationEditor:
 
         except Exception as e:
             cfg.set_error(e, "Could not save dialog - see details below.")
-
 
     def gui_main(self):
         if True:
@@ -1842,8 +1840,6 @@ class SegmentationEditor:
         imgui.pop_style_color(32)
         imgui.pop_style_var(1)
 
-
-
     def _warning_window(self):
         def ww_context_menu():
             imgui.push_style_color(imgui.COLOR_POPUP_BACKGROUND, *cfg.COLOUR_MENU_WINDOW_BACKGROUND)
@@ -2234,6 +2230,10 @@ class SegmentationEditor:
         cfg.log_path = path
         cfg.start_log()
 
+    @staticmethod
+    def force_not_embedded():
+        global EMBEDDED
+        EMBEDDED = False
 
 class Brush:
     circular_roi = np.zeros(1, dtype=np.uint8)
