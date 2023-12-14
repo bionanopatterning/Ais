@@ -318,6 +318,7 @@ class Overlay:
         self.pxd = pxd
         self.texture = Texture(format="rgba32f")
         self.texture.update(pxd)
+        self.texture.set_linear_interpolation()
         self.clem_frame = None
         self.clem_frame_path = ''
         self.se_frame = parent_se_frame
