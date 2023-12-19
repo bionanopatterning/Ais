@@ -1603,17 +1603,11 @@ class SegmentationEditor:
                                 SegmentationEditor.load_model_group(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not import model group, see details below.")
-                    # if imgui.menu_item("Import SPA dataset")[0]:
-                    #     try:
-                    #         dirname = filedialog.askdirectory()
-                    #         if dirname != '':
-                    #             self.import_dataset(dirname)
-                    #     except Exception as e:
-                    #         cfg.set_error(e, "Could not import SPA dataset, see details below")
-                    if imgui.menu_item("Save dataset as ")[0]:
-                        SegmentationEditor.save_dataset(dialog=True)
+                    imgui.separator()
                     if imgui.menu_item("Save dataset")[0]:
                         SegmentationEditor.save_dataset(dialog=False)
+                    if imgui.menu_item("Save dataset as ")[0]:
+                        SegmentationEditor.save_dataset(dialog=True)
                     if imgui.menu_item("Save dataset w. map")[0]:
                         try:
                             filename = filedialog.asksaveasfilename(filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
@@ -1634,7 +1628,17 @@ class SegmentationEditor:
                                 SegmentationEditor.save_model_group(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not save model group, see details below.")
+                    if imgui.menu_item("Save current slice as .tiff")[0]:
+                        try:
+                            filename = filedialog.asksaveasfilename(filetypes=[("tifffile", ".tiff")])
+                            if filename != '':
+                                if filename[-5:] != '.tiff':
+                                    filename += '.tiff'
+                                tifffile.imwrite(filename, cfg.se_active_frame.data.astype(np.float32))
+                        except Exception as e:
+                            cfg.set_error(e, "Could not export current slice as .tiff, see details below.")
                     imgui.end_menu()
+
                 if EMBEDDED and imgui.begin_menu("Editor"):
                     for i in range(len(scn_cfg.editors)):
                         select, _ = imgui.menu_item(scn_cfg.editors[i], None, False)
@@ -2425,10 +2429,13 @@ class Renderer:
 
         # if any filters will be applied below, reset the frame's data to the original raw pixel data
         pxd = None
+        override_contrast_roi = False
         if SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE:
+            # set the frame's .rendered_data to the raw image data - then render as usual.
             cfg.se_active_frame.rendered_data = cfg.se_active_frame.data
             cfg.se_active_frame.update_image_texture()
             pxd = cfg.se_active_frame.rendered_data
+            override_contrast_roi = True
 
         # render the image to a framebuffer
         fake_camera_matrix = np.matrix([[2 / self.fbo1.width, 0, 0, 0], [0, 2 / self.fbo1.height, 0, 0], [0, 0, -2 / 100, 0], [0, 0, 0, 1]])
@@ -2501,7 +2508,7 @@ class Renderer:
         shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         crop_x_lims = [se_frame.crop_roi[0] / se_frame.width, 1.0 - (se_frame.width - se_frame.crop_roi[2]) / se_frame.width]
         crop_y_lims = [(se_frame.height - se_frame.crop_roi[3]) / se_frame.height, 1.0 - se_frame.crop_roi[1] / se_frame.height]
-        if not emphasize_roi:
+        if override_contrast_roi:
             crop_x_lims = [0, 1]
             crop_y_lims = [0, 1]
         shader.uniform2f("xLims", crop_x_lims)

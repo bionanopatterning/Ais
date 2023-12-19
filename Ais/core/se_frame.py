@@ -127,12 +127,12 @@ class SEFrame:
                 self.export_top = self.n_slices
             requested_slice = min([max([requested_slice, 0]), self.n_slices - 1])
             self.data = mrc.data[requested_slice, :, :]
-            target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
+            target_type_dict = {np.float32: np.float32, float: np.float32, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
             if self.data.dtype not in target_type_dict:
                 target_type = float
             else:
                 target_type = target_type_dict[self.data.dtype]
-            self.data = np.array(self.data.astype(target_type, copy=False), dtype=float)
+            self.data = np.array(self.data.astype(target_type, copy=False), dtype=np.float32)
             self.rendered_data = self.data
         self.current_slice = requested_slice
         for s in self.features:
