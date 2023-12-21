@@ -123,10 +123,10 @@ class SEModel:
         try:
             # Split the file_path into directory and file
             directory = os.path.dirname(file_path)
-            base_name = os.path.basename(file_path)
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
 
-            # Load the Keras model
-            model_path = os.path.join(directory, base_name + '_weights.h5')
+            # Find the keras model:
+            model_path = glob.glob(os.path.join(directory, f"*{base_name}*.h5"))[0]
             self.model = tf.keras.models.load_model(model_path)
 
             # Load metadata
