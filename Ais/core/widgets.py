@@ -52,7 +52,7 @@ def select_directory(label, path):
             new_path = path
             return changed, new_path
     imgui.pop_style_var(2)
-    return changed, path
+    return changed, new_path
 
 
 def select_file(label, path, filetypes):
