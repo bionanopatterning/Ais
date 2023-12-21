@@ -298,6 +298,7 @@ class SegmentationEditor:
                 self.camera = Camera()
                 self.camera3d = Camera3D()
                 self.camera.zoom = SegmentationEditor.DEFAULT_ZOOM
+                SegmentationEditor.VIEW_REQUIRES_UPDATE = True
             if self.active_tab == "Segmentation" and cfg.se_active_frame.active_feature is not None:
                 if imgui.is_key_pressed(glfw.KEY_F):
                     cfg.se_active_frame.active_feature.magic = not cfg.se_active_frame.active_feature.magic
