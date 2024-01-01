@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath("../.."))
 sys.path.append(directory)
 cfg.root = os.path.join(os.path.dirname(__file__))
 
+
 def main():
     if not glfw.init():
         raise Exception("Could not initialize GLFW library!")
@@ -34,7 +35,7 @@ def main():
     cfg.segmentation_editor = segmentation_editor
     main_window.set_icon(segmentation_editor.ICON)
 
-    #from scNodes.core import debug_startup
+    from Ais.core import start
 
     while not glfw.window_should_close(main_window.glfw_window):
         if not main_window.focused:

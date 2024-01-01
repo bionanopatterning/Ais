@@ -11,6 +11,7 @@ from Ais.core.util import clamp, bin_mrc
 import pyperclip
 import os
 import subprocess
+from Ais.core.util import get_maxima_3d_watershed
 
 EMBEDDED = False
 try:
@@ -91,6 +92,10 @@ class SegmentationEditor:
         EXTRACT_MIN_WEIGHT = 1000
         EXTRACT_MIN_SPACING = 10.0  # Angstrom
         EXTRACT_SELECTED_FEATURE_TITLE = ""
+        EXTRACT_ALL = True
+        EXTRACT_MIN_SPACING = 10.0
+        queued_exports = list()
+        export_dir = ""
 
         trainset_apix = 10.0
         seg_folder = ""
@@ -131,10 +136,7 @@ class SegmentationEditor:
         # export & extract
         self.export_limit_range = True
         self.export_overlays = False
-        self.export_dir = ""
-        self.queued_exports = list()
         self.export_batch_size = 1
-        self.queued_extracts = list()
 
         # crop handles
         self.crop_handles = list()
@@ -255,12 +257,12 @@ class SegmentationEditor:
         imgui.get_io().display_size = self.window.width, self.window.height
         imgui.new_frame()
 
-        if self.queued_exports:
-            if self.queued_exports[0].process.progress >= 1.0:
-                self.queued_exports.pop(0)
-            if self.queued_exports:
-                if self.queued_exports[0].process.progress == 0.0:
-                    self.queued_exports[0].start()
+        if SegmentationEditor.queued_exports:
+            if SegmentationEditor.queued_exports[0].process.progress >= 1.0:
+                SegmentationEditor.queued_exports.pop(0)
+            if SegmentationEditor.queued_exports:
+                if SegmentationEditor.queued_exports[0].process.progress == 0.0:
+                    SegmentationEditor.queued_exports[0].start()
 
         # GUI calls
         if not self.window.is_minimized():
@@ -1209,7 +1211,7 @@ class SegmentationEditor:
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.text("Models to include")
                 n_available_models = sum([m.compiled for m in cfg.se_models])
-                c_height = (1 if n_available_models == 0 else 9) + n_available_models * 21
+                c_height = (1 if n_available_models == 0 else 2) + n_available_models * 21
                 imgui.begin_child("models_included", 0.0, c_height, True)
                 for m in cfg.se_models:
                     if not m.compiled:
@@ -1260,7 +1262,7 @@ class SegmentationEditor:
                 imgui.text("Export settings")
                 imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
                 imgui.begin_child("export_settings", 0.0, 53.0, True)
-                _, self.export_dir = widgets.select_directory("browse", self.export_dir)
+                _, SegmentationEditor.export_dir = widgets.select_directory("browse", SegmentationEditor.export_dir)
                 imgui.set_next_item_width(imgui.get_content_region_available_width())
                 _, self.export_limit_range = imgui.checkbox(" limit range ", self.export_limit_range)
                 #imgui.same_line(spacing=62)
@@ -1272,11 +1274,11 @@ class SegmentationEditor:
                     self.launch_export_volumes()
 
                 # export progress:
-                if self.queued_exports:
+                if SegmentationEditor.queued_exports:
                     imgui.spacing()
-                    imgui.text(f"Processing '{self.queued_exports[0].dataset.title}':")
+                    imgui.text(f"Processing '{SegmentationEditor.queued_exports[0].dataset.title}':")
 
-                    for i, qe in enumerate(self.queued_exports):
+                    for i, qe in enumerate(SegmentationEditor.queued_exports):
                         if i != 0:
                             imgui.text(qe.dataset.title)
                             imgui.same_line()
@@ -1285,10 +1287,10 @@ class SegmentationEditor:
                         cancel = self._gui_background_process_progress_bar(qe.process, colour, cancellable=True, transparent_background=(i!=0))
                         imgui.pop_id()
                         if cancel:
-                            self.queued_exports[i].stop()
-                            self.queued_exports.pop(i)
+                            SegmentationEditor.queued_exports[i].stop()
+                            SegmentationEditor.queued_exports.pop(i)
                             break
-                        if i == 0 and len(self.queued_exports) > 1:
+                        if i == 0 and len(SegmentationEditor.queued_exports) > 1:
                             imgui.spacing()
                             imgui.text(f"Queue:")
 
@@ -1331,8 +1333,7 @@ class SegmentationEditor:
                     print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "__*.mrc"))
                     for f in sorted(files):
                         print(f)
-                        if not 'overlay' in f:
-                            cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
+                        cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
 
                     # set the size of the volume spanning box
                     w, h, d = se_frame.width / 2, se_frame.height / 2, se_frame.n_slices / 2
@@ -1410,89 +1411,12 @@ class SegmentationEditor:
                     imgui.pop_style_var(3)
                     imgui.pop_style_color(2)
                     if imgui.begin_popup_context_window():
-                        imgui.text(f"{s.title}")
+                        self.extract_coordinates_menu(s)
                         imgui.end_popup()
                     imgui.end_child()
 
                 imgui.pop_style_var(3)
                 imgui.pop_style_color(1)
-
-            # if imgui.collapsing_header("Extract coordinates", None)[0]:
-            #     imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
-            #     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
-            #     imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
-            #     imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 10)
-            #     imgui.text("Detection settings")
-            #     imgui.begin_child("extract_feature", 0.0, 80 if len(cfg.se_surface_models) > 0 else 1, True)
-            #     if len(cfg.se_surface_models) > 0:
-            #         cw = imgui.get_content_region_available_width()
-            #         available_features = [s.title for s in cfg.se_surface_models]
-            #         selected_feature_idx = 0 if SegmentationEditor.EXTRACT_SELECTED_FEATURE_TITLE not in available_features else available_features.index(SegmentationEditor.EXTRACT_SELECTED_FEATURE_TITLE)
-            #         selected_surface_model = cfg.se_surface_models[selected_feature_idx]
-            #
-            #         imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (10, 0))
-            #         imgui.push_style_color(imgui.COLOR_BUTTON, *selected_surface_model.colour, 1.0)
-            #         imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, *selected_surface_model.colour, 1.0)
-            #         imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, *selected_surface_model.colour, 1.0)
-            #         imgui.push_item_width(cw)
-            #         _, selected_feature_idx = imgui.combo("##sel_ext_ftr", selected_feature_idx, available_features)
-            #         imgui.pop_style_var(1)
-            #         imgui.pop_style_color(3)
-            #         _, SegmentationEditor.EXTRACT_THRESHOLD = imgui.slider_int("##ext_thr", SegmentationEditor.EXTRACT_THRESHOLD, 0, 255, format=f"threshold = {SegmentationEditor.EXTRACT_THRESHOLD}")
-            #         _, SegmentationEditor.EXTRACT_MIN_WEIGHT = imgui.slider_int("##ext_mw", SegmentationEditor.EXTRACT_MIN_WEIGHT, 1000, 100000, format=f"min weight = {SegmentationEditor.EXTRACT_MIN_WEIGHT}", flags=imgui.SLIDER_FLAGS_LOGARITHMIC)
-            #         _, SegmentationEditor.EXTRACT_MIN_SPACING = imgui.slider_int("##ext_ms", SegmentationEditor.EXTRACT_MIN_SPACING, 10, 300, format=f"min spacing = {SegmentationEditor.EXTRACT_MIN_SPACING} A")
-            #     imgui.end_child()
-            #
-            #     imgui.text("Datasets to process")
-            #     imgui.same_line(spacing=80)
-            #     _, SegmentationEditor.DATASETS_PICK_PANEL_EXPANDED = imgui.checkbox("expand", SegmentationEditor.DATASETS_PICK_PANEL_EXPANDED)
-            #     imgui.same_line(spacing=5)
-            #     _, SegmentationEditor.DATASETS_PICK_SELECT_ALL = imgui.checkbox("all", SegmentationEditor.DATASETS_PICK_SELECT_ALL)
-            #     if _:
-            #         for s in cfg.se_frames:
-            #             s.pick = SegmentationEditor.DATASETS_PICK_SELECT_ALL
-            #     imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
-            #     c_height = min([120, (1 if len(cfg.se_frames) == 0 else 9) + len(cfg.se_frames) * 21])
-            #     if SegmentationEditor.DATASETS_PICK_PANEL_EXPANDED:
-            #         c_height = SegmentationEditor.DATASETS_PICK_PANEL_EXPANDED_HEIGHT
-            #
-            #     imgui.begin_child("datasets_to_sample", 0.0, c_height, True)
-            #     for s in cfg.se_frames:
-            #         imgui.push_id(f"{s.uid}")
-            #         if s == cfg.se_active_frame:
-            #             imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT_ACTIVE)
-            #             _, s.pick = imgui.checkbox(s.title, s.pick)
-            #             imgui.pop_style_color()
-            #         else:
-            #             _, s.pick = imgui.checkbox(s.title, s.pick)
-            #         if _:
-            #             self.parse_available_features()
-            #         imgui.pop_id()
-            #     imgui.end_child()
-            #     imgui.pop_style_color(1)
-            #     ## buttons
-            #     cw = imgui.get_content_region_available_width()
-            #     w = 110
-            #     imgui.new_line()
-            #     imgui.same_line(spacing=(cw - 2 * w) / 3)
-            #     if imgui.button("Trial", w, 20):
-            #         selected_surface_model.find_coordinates(SegmentationEditor.EXTRACT_THRESHOLD, SegmentationEditor.EXTRACT_MIN_WEIGHT, SegmentationEditor.EXTRACT_MIN_SPACING)
-            #     imgui.same_line(spacing=(cw - 2 * w) / 3)
-            #     if imgui.button("Export all", w, 20):
-            #         self.launch_export_coordinates(selected_surface_model.title)
-            #     if selected_surface_model.coordinates is not None:
-            #         print("TODO: render particle ROIs")
-            #
-            #     ## extract progress bar & cancel option:
-            #     if self.queued_extracts:
-            #         imgui.spacing()
-            #         imgui.text(f"Exporting coordinates - {len(self.queued_extracts)} jobs remaining.")
-            #         cancel = self._gui_background_process_progress_bar(self.queued_extracts[0].process, cfg.COLOUR_POSITIVE, cancellable=True)
-            #         if cancel:
-            #             self.queued_extracts[0].stop()
-            #             self.queued_extracts.pop(0)
-            #
-            #     imgui.pop_style_var(4)
 
             SegmentationEditor.LIGHT_SPOT.compute_vec(dyaw=-self.camera3d.yaw)
             if imgui.collapsing_header("Graphics settings", None)[0]:
@@ -1947,6 +1871,29 @@ class SegmentationEditor:
             imgui.end_popup()
 
     @staticmethod
+    def extract_coordinates_menu(feature):
+        imgui.push_style_color(imgui.COLOR_CHECK_MARK, *feature.colour)
+        imgui.text("Extract coordinates:")
+        imgui.spacing()
+        _, SegmentationEditor.EXTRACT_ALL = imgui.checkbox("this dataset", SegmentationEditor.EXTRACT_ALL)
+        _, extract_single = imgui.checkbox("all datasets", not SegmentationEditor.EXTRACT_ALL)
+        if _:
+            SegmentationEditor.EXTRACT_ALL = not extract_single
+        imgui.spacing()
+
+        imgui.text("Minimum particle spacing:")
+        cw = imgui.get_content_region_available_width()
+        imgui.set_next_item_width(cw)
+        _, SegmentationEditor.EXTRACT_MIN_SPACING = imgui.slider_float("##min_dist", SegmentationEditor.EXTRACT_MIN_SPACING, 0.0, 25.0, format = f"{SegmentationEditor.EXTRACT_MIN_SPACING:.1f} nm")
+
+        imgui.spacing()
+        if widgets.centred_button("start", 50, 20):
+            SegmentationEditor.launch_export_coordinates(feature)
+            imgui.close_current_popup()
+
+        imgui.pop_style_color()
+
+    @staticmethod
     def tooltip(text):
         if imgui.is_item_hovered() and not imgui.is_mouse_down(0):
             if SegmentationEditor.TOOLTIP_HOVERED_TIMER == 0.0:
@@ -1959,21 +1906,48 @@ class SegmentationEditor:
         if not imgui.is_any_item_hovered():
             SegmentationEditor.TOOLTIP_HOVERED_TIMER = 0.0
 
+    @staticmethod
+    def launch_export_coordinates(feature):
+        try:
+            if SegmentationEditor.EXTRACT_ALL:
+                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc"'))
+                print(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc"'))
+                print(datasets)
+            else:
+                se_frame = cfg.se_active_frame
+                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc"'))[0]
+                print(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc"'))
+                print(datasets)
+            print(datasets)
+            if not datasets:
+                print("No datasets selected")
+                return
+
+            for d in datasets:
+                SegmentationEditor.queued_exports.append(QueuedExtract(d, threshold = feature.level, min_weight = feature.dust, min_spacing=SegmentationEditor.EXTRACT_MIN_SPACING, save_dir = SegmentationEditor.seg_folder, binning = feature.bin))
+
+            if SegmentationEditor.queued_exports:
+                if SegmentationEditor.queued_exports[0].process.progress == 0.0:
+                    SegmentationEditor.queued_exports[0].start()
+
+        except Exception as e:
+            cfg.set_error(e, "Could not export coordinates - see details below:")
+
     def launch_export_volumes(self):
         try:
             datasets = [d for d in cfg.se_frames if d.export]
             models = [m for m in cfg.se_models if m.export]
             if not datasets:
                 return
-            if not os.path.isdir(self.export_dir):
-                os.makedirs(self.export_dir)
+            if not os.path.isdir(SegmentationEditor.export_dir):
+                os.makedirs(SegmentationEditor.export_dir)
 
             for d in datasets:
-                self.queued_exports.append(QueuedExport(self.export_dir, d, models, self.export_batch_size, self.export_overlays))
+                SegmentationEditor.queued_exports.append(QueuedExport(SegmentationEditor.export_dir, d, models, self.export_batch_size, self.export_overlays))
 
-            if self.queued_exports:
-                if self.queued_exports[0].process.progress == 0.0:
-                    self.queued_exports[0].start()
+            if SegmentationEditor.queued_exports:
+                if SegmentationEditor.queued_exports[0].process.progress == 0.0:
+                    SegmentationEditor.queued_exports[0].start()
         except Exception as e:
             cfg.set_error(e, "Could not export volumes - see details below:")
 
@@ -2239,6 +2213,7 @@ class SegmentationEditor:
     def force_not_embedded():
         global EMBEDDED
         EMBEDDED = False
+
 
 class Brush:
     circular_roi = np.zeros(1, dtype=np.uint8)
@@ -2669,7 +2644,9 @@ class Renderer:
         self.surface_model_shader.uniform3f("lightColour", spot_light.colour)
         self.surface_model_shader.uniform1i("style", SegmentationEditor.SELECTED_RENDER_STYLE)
         glEnable(GL_DEPTH_TEST)
-        for s in surface_models:
+        # TODO: sort the surface models by alpha.
+        alpha_sorted_surface_models = sorted(surface_models, key = lambda x: x.alpha, reverse=True)
+        for s in alpha_sorted_surface_models:
             if s.hide:
                 continue
             self.surface_model_shader.uniform4f("color", [*s.colour, s.alpha])
@@ -3128,7 +3105,7 @@ class QueuedExport:
             segmentations = np.zeros((len(self.models), *mrcd.shape), dtype=np.uint8)
             m_idx = 0
             for m in self.models:
-                print(f"QueuedExport - applying model {m.info}")
+                print(f"QueuedExport - applying model {m.title} ({m.info})")
                 self.colour = m.colour
                 slices_to_process = list(range(self.dataset.export_bottom, self.dataset.export_top))
                 while len(slices_to_process) > 0:
@@ -3228,29 +3205,35 @@ class QueuedExport:
         if self.process.thread is not None:
             self.process.stop_request.set()
 
-#
-# class QueuedExtract:
-#     def __init__(self, mrcpath, threshold, min_weight, min_spacing, save_dir):
-#         self.path = mrcpath
-#         self.threshold = threshold
-#         self.min_weight = min_weight
-#         self.min_spacing = min_spacing
-#         self.dir = save_dir
-#         self.process = BackgroundProcess(self.do_export, (), name=f"{self.path} find coords.")
-#
-#     def do_export(self, process):
-#         try:
-#             get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_weight=self.min_weight, save_dir=self.dir, process=self.process)
-#         except Exception as e:
-#             cfg.set_error(e, "Error in QueuedExtract (finding coordinates in a .mrc) - see details below.")
-#         process.set_progress(1.0)
-#
-#     def start(self):
-#         self.process.start()
-#
-#     def stop(self):
-#         if self.process.thread is not None:
-#             self.process.stop_request.set()
+
+
+class QueuedExtract:
+    def __init__(self, mrcpath, threshold, min_weight, min_spacing, save_dir, binning=1):
+        self.path = mrcpath
+        self.threshold = threshold
+        self.min_weight = min_weight
+        self.min_spacing = min_spacing
+        self.binning = binning
+        self.dir = save_dir
+        self.process = BackgroundProcess(self.do_export, (), name=f"{self.path} find coords.")
+
+    def do_export(self, process):
+        try:
+            get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_weight=self.min_weight, save_dir=self.dir, process=self.process, binning=self.binning)
+        except Exception as e:
+            cfg.set_error(e, "Error in QueuedExtract (finding coordinates in a .mrc) - see details below.")
+        process.set_progress(1.0)
+
+    def check_stop_request(self):
+        if self.process.stop_request.is_set():
+            raise Exception("QueuedExport - process terminated by user. ")
+
+    def start(self):
+        self.process.start()
+
+    def stop(self):
+        if self.process.thread is not None:
+            self.process.stop_request.set()
 
 
 class WorldSpaceIcon:

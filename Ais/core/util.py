@@ -7,155 +7,154 @@ from Ais.core import config as cfg
 import time
 import mrcfile
 from scipy.ndimage import label, center_of_mass, distance_transform_edt
+from skimage.feature import peak_local_max
+from skimage.segmentation import watershed
 
 timer = 0.0
-#
-#
-# def coords_from_tsv(coords_path):
-#     coords = []
-#     with open(coords_path, 'r') as file:
-#         for line in file:
-#             x, y, z = map(int, line.strip().split('\t'))
-#             coords.append((x, y, z))
-#     return coords
-#
-#
-# def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=False, normalize=True):
-#     coords = coords_from_tsv(coords_path)
-#     coords = np.array(coords) * unbin
-#     data = mrcfile.mmap(vol_path, mode='r').data
-#     imgs = list()
-#
-#     d = boxsize // 2
-#     for p in coords:
-#         x, y, z = p
-#         if two_dimensional:
-#             imgs.append(data[z, y - d:y + d, x - d:x + d])
-#         else:
-#             imgs.append(data[z - d:z + d, y - d:y + d, x - d:x + d])
-#
-#     if normalize:
-#         for i in range(len(imgs)):
-#             img = np.array(imgs[i]).astype(np.float32)
-#             img -= np.mean(img)
-#             img /= np.std(img)
-#             imgs[i] = img
-#     return imgs
-#
-#
-# def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_weight=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False):
-#     if array is None:
-#         print(f"\nLoading {mrcpath}")
-#         data = mrcfile.read(mrcpath)
-#         if process:
-#             process.set_progress(0.2)
-#         pixel_size = mrcfile.open(mrcpath, header_only=True).voxel_size.x / 10.0
-#         print(f"Pixel size is {pixel_size:.2f} nm.")
-#     else:
-#         data = array
-#         pixel_size = array_pixel_size
-#     print(f"Thresholding & computing distance map")
-#     binary_vol = data > threshold
-#     distance = distance_transform_edt(binary_vol)
-#     min_distance = int(min_spacing / pixel_size)
-#     if process:
-#         process.set_progress(0.3)
-#     print("Finding local maxima")
-#     local_max = peak_local_max(distance, footprint=np.ones((min_distance, min_distance, min_distance)), labels=binary_vol)
-#     markers, _ = label(local_max)
-#     if process:
-#         process.set_progress(0.4)
-#     print("Watershedding")
-#     labels = watershed(-distance, markers, mask=binary_vol)
-#     Z, Y, X = np.nonzero(labels)
-#     if process:
-#         process.set_progress(0.5)
-#     # parse blobs
-#     blobs = dict()
-#     for i in range(len(X)):
-#         z = Z[i]
-#         y = Y[i]
-#         x = X[i]
-#
-#         l = labels[z, y, x]
-#         if l not in blobs:
-#             blobs[l] = Blob()
-#
-#         blobs[l].x.append(x)
-#         blobs[l].y.append(y)
-#         blobs[l].z.append(z)
-#         blobs[l].v.append(data[z, y, x])
-#     if process:
-#         process.set_progress(0.6)
-#     if min_weight:
-#         to_pop = list()
-#         for key in blobs:
-#             weight = blobs[key].get_weight()
-#             if weight < min_weight:
-#                 to_pop.append(key)
-#         for key in to_pop:
-#             blobs.pop(key)
-#         print(f"Removing {len(to_pop)} blobs because their sum weight is too little. N = {len(blobs)} blobs remaining.")
-#     if process:
-#         process.set_progress(0.7)
-#     blobs = list(blobs.values())
-#     metrics = list()
-#     print(f"Sorting blobs by {'summed prediction weight' if sort_by_weight else 'volume'}.")
-#     for blob in blobs:
-#         if sort_by_weight:
-#             metrics.append(blob.get_weight())
-#         else:
-#             metrics.append(blob.get_volume())
-#
-#     indices = np.argsort(metrics)[::-1]
-#     coordinates = list()
-#     print(f"Finding centroids.")
-#     for i in indices:
-#         coordinates.append(blobs[i].get_centroid())
-#     if process:
-#         process.set_progress(0.8)
-#     # remove points that are too close to others.
-#     remove = list()
-#     i = 0
-#     print(f"Removing particles that are too close to better ones.")
-#     while i < len(coordinates):
-#         for j in range(0, i):
-#             if i in remove:
-#                 continue
-#             p = np.array(coordinates[i])
-#             q = np.array(coordinates[j])
-#             d = np.sum((p - q) ** 2) ** 0.5 * pixel_size
-#             if d < min_spacing:
-#                 remove.append(j)
-#         i += 1
-#     if process:
-#         process.set_progress(0.9)
-#
-#     print(f"Removing N = {len(remove)} blobs due to proximity to better blobs.")
-#     remove.sort()
-#     for i in reversed(remove):
-#         coordinates.pop(i)
-#
-#     if not return_coords:
-#         if not save_txt:
-#             print(f"Found N = {len(coordinates)} blobs.")
-#             return len(coordinates)
-#
-#         out_path = mrcpath[:-4] + "_coords.txt"
-#         if save_dir is not None:
-#             out_path = save_dir + os.path.basename(mrcpath)[:-4] + "_coords.txt"
-#         print(f"Converting the final N = {len(coordinates)} to integers and saving to file: {out_path}")
-#         with open(out_path, 'w') as out_file:
-#             for i in range(len(coordinates)):
-#                 x = int(coordinates[i][0])
-#                 y = int(coordinates[i][1])
-#                 z = int(coordinates[i][2])
-#                 out_file.write(f"{x}\t{y}\t{z}\n")
-#         if process:
-#             process.set_progress(0.99)
-#         return len(coordinates)
-#     else:
-#         return coordinates
+
+
+def coords_from_tsv(coords_path):
+    coords = []
+    with open(coords_path, 'r') as file:
+        for line in file:
+            x, y, z = map(int, line.strip().split('\t'))
+            coords.append((x, y, z))
+    return coords
+
+
+def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=False, normalize=True):
+    coords = coords_from_tsv(coords_path)
+    coords = np.array(coords) * unbin
+    data = mrcfile.mmap(vol_path, mode='r').data
+    imgs = list()
+
+    d = boxsize // 2
+    for p in coords:
+        x, y, z = p
+        if two_dimensional:
+            imgs.append(data[z, y - d:y + d, x - d:x + d])
+        else:
+            imgs.append(data[z - d:z + d, y - d:y + d, x - d:x + d])
+
+    if normalize:
+        for i in range(len(imgs)):
+            img = np.array(imgs[i]).astype(np.float32)
+            img -= np.mean(img)
+            img /= np.std(img)
+            imgs[i] = img
+    return imgs
+
+
+def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_weight=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1):
+    if array is None:
+        data = mrcfile.read(mrcpath)
+        if process:
+            process.set_progress(0.2)
+        pixel_size = mrcfile.open(mrcpath, header_only=True).voxel_size.x / 10.0
+    else:
+        data = array
+        pixel_size = array_pixel_size
+    if binning > 1:
+        z, y, x = data.shape
+        b = int(binning)
+        data = data[:z // b * b, :y // b * b, :x // b * b]
+        _type = data.dtype
+        data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5, dtype=_type).mean(3, dtype=_type).mean(1, dtype=_type)
+
+    binary_vol = data > threshold
+    distance = distance_transform_edt(binary_vol)
+    min_distance = int(min_spacing / pixel_size)
+    if process:
+        process.set_progress(0.3)
+
+    local_max = peak_local_max(distance, footprint=np.ones((min_distance, min_distance, min_distance)), labels=binary_vol)
+    markers, _ = label(local_max)
+    if process:
+        process.set_progress(0.4)
+
+    labels = watershed(-distance, markers, mask=binary_vol)
+    Z, Y, X = np.nonzero(labels)
+    if process:
+        process.set_progress(0.5)
+    # parse blobs
+    blobs = dict()
+    for i in range(len(X)):
+        z = Z[i]
+        y = Y[i]
+        x = X[i]
+
+        l = labels[z, y, x]
+        if l not in blobs:
+            blobs[l] = Blob()
+
+        blobs[l].x.append(x)
+        blobs[l].y.append(y)
+        blobs[l].z.append(z)
+        blobs[l].v.append(data[z, y, x])
+    if process:
+        process.set_progress(0.6)
+    if min_weight:
+        to_pop = list()
+        for key in blobs:
+            weight = blobs[key].get_weight()
+            if weight < min_weight:
+                to_pop.append(key)
+        for key in to_pop:
+            blobs.pop(key)
+    if process:
+        process.set_progress(0.7)
+    blobs = list(blobs.values())
+    metrics = list()
+    for blob in blobs:
+        if sort_by_weight:
+            metrics.append(blob.get_weight())
+        else:
+            metrics.append(blob.get_volume())
+
+    indices = np.argsort(metrics)[::-1]
+    coordinates = list()
+    for i in indices:
+        coordinates.append(blobs[i].get_centroid() * binning)
+    if process:
+        process.set_progress(0.8)
+    # remove points that are too close to others.
+    remove = list()
+    i = 0
+    while i < len(coordinates):
+        for j in range(0, i):
+            if i in remove:
+                continue
+            p = np.array(coordinates[i])
+            q = np.array(coordinates[j])
+            d = np.sum((p - q) ** 2) ** 0.5 * pixel_size
+            if d < min_spacing:
+                remove.append(j)
+        i += 1
+    if process:
+        process.set_progress(0.9)
+
+    remove.sort()
+    for i in reversed(remove):
+        coordinates.pop(i)
+
+    if not return_coords:
+        if not save_txt:
+            return len(coordinates)
+
+        out_path = mrcpath[:-4] + "_coords.txt"
+        if save_dir is not None:
+            out_path = save_dir + os.path.basename(mrcpath)[:-4] + "_coords.txt"
+        with open(out_path, 'w') as out_file:
+            for i in range(len(coordinates)):
+                x = int(coordinates[i][0])
+                y = int(coordinates[i][1])
+                z = int(coordinates[i][2])
+                out_file.write(f"{x}\t{y}\t{z}\n")
+        if process:
+            process.set_progress(0.99)
+        return len(coordinates)
+    else:
+        return coordinates
 
 
 class Blob:
