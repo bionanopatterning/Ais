@@ -1275,14 +1275,19 @@ class SegmentationEditor:
 
                 # export progress:
                 if SegmentationEditor.queued_exports:
+                    qe = SegmentationEditor.queued_exports[0]
                     imgui.spacing()
-                    imgui.text(f"Processing '{SegmentationEditor.queued_exports[0].dataset.title}':")
+                    if isinstance(qe, QueuedExport):
+                        imgui.text(f"Processing '{qe.dataset.title}':")
+                    else:
+                        imgui.text(f"Extracting {os.path.splitext(os.path.basename(qe.path))[0]}")
+
 
                     for i, qe in enumerate(SegmentationEditor.queued_exports):
                         if i != 0:
                             imgui.text(qe.dataset.title)
                             imgui.same_line()
-                        imgui.push_id(f"{qe.dataset.title}_cancel")
+                        imgui.push_id(f"{qe.tag}_cancel")
                         colour = (*qe.colour, 1.0) if i == 0 else (0.0, 0.0, 0.0, 0.0)
                         cancel = self._gui_background_process_progress_bar(qe.process, colour, cancellable=True, transparent_background=(i!=0))
                         imgui.pop_id()
@@ -1910,21 +1915,26 @@ class SegmentationEditor:
     def launch_export_coordinates(feature):
         try:
             if SegmentationEditor.EXTRACT_ALL:
-                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc"'))
-                print(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc"'))
+                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc'))
+                print(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc'))
                 print(datasets)
             else:
                 se_frame = cfg.se_active_frame
-                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc"'))[0]
-                print(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc"'))
+                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc'))[0]
+                print(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc'))
                 print(datasets)
+
+            print("DATASETS:")
             print(datasets)
+
             if not datasets:
                 print("No datasets selected")
                 return
 
             for d in datasets:
-                SegmentationEditor.queued_exports.append(QueuedExtract(d, threshold = feature.level, min_weight = feature.dust, min_spacing=SegmentationEditor.EXTRACT_MIN_SPACING, save_dir = SegmentationEditor.seg_folder, binning = feature.bin))
+                print(d)
+                SegmentationEditor.queued_exports.append(QueuedExtract(d, threshold = feature.level, min_size = feature.dust, min_spacing=SegmentationEditor.EXTRACT_MIN_SPACING, save_dir = SegmentationEditor.seg_folder, binning = feature.bin))
+                SegmentationEditor.queued_exports[-1].colour = feature.colour
 
             if SegmentationEditor.queued_exports:
                 if SegmentationEditor.queued_exports[0].process.progress == 0.0:
@@ -3075,6 +3085,7 @@ class Camera3D:
 
 class QueuedExport:
     def __init__(self, directory, dataset, models, batch_size, export_overlay):
+        self.tag = dataset.path
         self.directory = directory
         self.dataset = dataset
         self.models = models
@@ -3208,18 +3219,20 @@ class QueuedExport:
 
 
 class QueuedExtract:
-    def __init__(self, mrcpath, threshold, min_weight, min_spacing, save_dir, binning=1):
+    def __init__(self, mrcpath, threshold, min_size, min_spacing, save_dir, binning=1):
+        self.tag = mrcpath
         self.path = mrcpath
         self.threshold = threshold
-        self.min_weight = min_weight
+        self.min_size = min_size
         self.min_spacing = min_spacing
         self.binning = binning
         self.dir = save_dir
+        self.colour = (0.2, 0.9, 0.2)
         self.process = BackgroundProcess(self.do_export, (), name=f"{self.path} find coords.")
 
     def do_export(self, process):
         try:
-            get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_weight=self.min_weight, save_dir=self.dir, process=self.process, binning=self.binning)
+            get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, save_dir=self.dir, process=self.process, binning=self.binning)
         except Exception as e:
             cfg.set_error(e, "Error in QueuedExtract (finding coordinates in a .mrc) - see details below.")
         process.set_progress(1.0)
@@ -3229,6 +3242,7 @@ class QueuedExtract:
             raise Exception("QueuedExport - process terminated by user. ")
 
     def start(self):
+        self.process.set_progress(0.0001)
         self.process.start()
 
     def stop(self):

@@ -45,7 +45,7 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_weight=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1):
+def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1):
     if array is None:
         data = mrcfile.read(mrcpath)
         if process:
@@ -67,11 +67,15 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_wei
     if process:
         process.set_progress(0.3)
 
-    local_max = peak_local_max(distance, footprint=np.ones((min_distance, min_distance, min_distance)), labels=binary_vol)
-    markers, _ = label(local_max)
+    coords = peak_local_max(distance, footprint=np.ones((min_distance, min_distance, min_distance)), labels=binary_vol)
+    mask = np.zeros(distance.shape, dtype=bool)
+    mask[tuple(coords.T)] = True
+    markers, _ = label(mask)
     if process:
         process.set_progress(0.4)
-
+    print(distance.shape)
+    print(markers.shape)
+    print(binary_vol.shape)
     labels = watershed(-distance, markers, mask=binary_vol)
     Z, Y, X = np.nonzero(labels)
     if process:
@@ -93,17 +97,18 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_wei
         blobs[l].v.append(data[z, y, x])
     if process:
         process.set_progress(0.6)
-    if min_weight:
+    if min_size:
         to_pop = list()
         for key in blobs:
-            weight = blobs[key].get_weight()
-            if weight < min_weight:
+            weight = blobs[key].get_volume()
+            if weight < min_size:
                 to_pop.append(key)
         for key in to_pop:
             blobs.pop(key)
     if process:
         process.set_progress(0.7)
     blobs = list(blobs.values())
+    print(blobs)
     metrics = list()
     for blob in blobs:
         if sort_by_weight:
@@ -154,6 +159,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_wei
             process.set_progress(0.99)
         return len(coordinates)
     else:
+        if process:
+            process.set_progress(0.99)
         return coordinates
 
 
