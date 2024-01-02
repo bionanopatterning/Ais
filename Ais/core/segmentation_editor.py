@@ -11,8 +11,7 @@ from Ais.core.util import clamp, bin_mrc
 import pyperclip
 import os
 import subprocess
-from Ais.core.util import get_maxima_3d_watershed
-
+from Ais.core.util import get_maxima_3d_watershed, icosphere_va
 EMBEDDED = False
 try:
     import scNodes.core.config as scn_cfg
@@ -215,7 +214,7 @@ class SegmentationEditor:
 
         if EMBEDDED:
             if not imgui.get_io().want_capture_keyboard and imgui.is_key_pressed(glfw.KEY_TAB):
-                if imgui.is_key_down(glfw.KEY_LEFT_SHIFT):
+                if SegmentationEditor.is_shift_down():
                     scn_cfg.active_editor = (scn_cfg.active_editor - 1) % len(scn_cfg.editors)
                 else:
                     scn_cfg.active_editor = (scn_cfg.active_editor + 1) % len(scn_cfg.editors)
@@ -288,11 +287,23 @@ class SegmentationEditor:
                 sef.crop = not sef.crop
                 if not sef.crop:
                     sef.crop_roi = [0, 0, sef.width, sef.height]
-            if imgui.is_key_pressed(glfw.KEY_S) and imgui.is_key_down(glfw.KEY_LEFT_CONTROL):
+            if imgui.is_key_pressed(glfw.KEY_S) and SegmentationEditor.is_ctrl_down():
                 SegmentationEditor.save_dataset(dialog=False)
             if imgui.is_key_pressed(glfw.KEY_I):
-                sef.invert = not sef.invert
-            if imgui.is_key_pressed(glfw.KEY_A):
+                if SegmentationEditor.is_shift_down():
+                    sef.interpolate = not sef.interpolate
+                    if sef.interpolate:
+                        sef.texture.set_linear_interpolation()
+                        SegmentationEditor.renderer.fbo1.texture.set_linear_interpolation()
+                        SegmentationEditor.renderer.fbo2.texture.set_linear_interpolation()
+                    else:
+                        sef.texture.set_no_interpolation()
+                        SegmentationEditor.renderer.fbo1.texture.set_no_interpolation()
+                        SegmentationEditor.renderer.fbo2.texture.set_no_interpolation()
+                else:
+                    sef.invert = not sef.invert
+
+            if imgui.is_key_pressed(glfw.KEY_A) and not SegmentationEditor.is_ctrl_down():
                 sef.autocontrast = not sef.autocontrast
                 if sef.autocontrast:
                     sef.compute_autocontrast()
@@ -337,8 +348,7 @@ class SegmentationEditor:
 
         # Key inputs that affect the active feature:
         if active_frame is not None:
-            if not imgui.is_key_down(glfw.KEY_LEFT_SHIFT) and not imgui.is_key_down(
-                    glfw.KEY_LEFT_CONTROL) and active_frame is not None:
+            if not SegmentationEditor.is_shift_down() and not SegmentationEditor.is_ctrl_down() and active_frame is not None:
                 if self.window.scroll_delta[1] != 0.0:
                     idx = int(active_frame.current_slice - self.window.scroll_delta[1])
                     idx = idx % active_frame.n_slices
@@ -347,7 +357,7 @@ class SegmentationEditor:
 
         if self.active_tab == "Segmentation":
             if active_feature is not None:
-                if imgui.is_key_down(glfw.KEY_LEFT_CONTROL) and active_feature is not None:
+                if SegmentationEditor.is_ctrl_down() and active_feature is not None:
                     active_feature.brush_size += self.window.scroll_delta[1]
                     active_feature.brush_size = max([1, active_feature.brush_size])
                 if imgui.is_key_pressed(glfw.KEY_S):
@@ -360,12 +370,12 @@ class SegmentationEditor:
                     cfg.se_active_frame.active_feature = cfg.se_active_frame.features[idx]
 
             # Drawing / mouse input
-            if active_feature is not None:
+            if active_feature is not None and not imgui.get_io().want_capture_mouse:
                 cursor_world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
                 pixel_coordinate = active_feature.parent.world_to_pixel_coordinate(cursor_world_position)
 
 
-                if not imgui.is_key_down(glfw.KEY_LEFT_SHIFT):
+                if not SegmentationEditor.is_shift_down():
                     if imgui.is_mouse_down(0):
                         active_feature.hide = False
                         if active_feature.magic:
@@ -382,7 +392,7 @@ class SegmentationEditor:
                         active_feature.add_box(pixel_coordinate)
                     elif imgui.is_mouse_clicked(1):
                         active_feature.remove_box(pixel_coordinate)
-        elif self.active_tab != "Render" and active_frame is not None and active_frame.crop:
+        elif self.active_tab != "Render" and active_frame is not None and active_frame.crop and not imgui.get_io().want_capture_mouse:
             if not self.crop_handles[0].moving_entire_roi:
                 any_handle_active = False
                 for h in self.crop_handles:
@@ -398,7 +408,7 @@ class SegmentationEditor:
                             h.active = False
                             h.convert_crop_roi_to_integers()
                             cfg.se_active_frame.slice_changed = True  # not really, but this flag is also used to trigger a model update.
-                if not any_handle_active and imgui.is_mouse_clicked(0):
+                if not any_handle_active and imgui.is_mouse_clicked(0): ## TODO: only when mouse is clicked within ROI!
                     self.crop_handles[0].moving_entire_roi = True
                     self.crop_handles[0].convert_crop_roi_to_integers()
             else:
@@ -1371,7 +1381,7 @@ class SegmentationEditor:
                     else:
                         imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *s.colour, 0.0)
                         imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
-                    imgui.begin_child(f"{s.title}_surfm", 0.0, 82, True)
+                    imgui.begin_child(f"{s.title}_surfm", 0.0, 82 + (15 if s.particles else 0), True)
                     cw = imgui.get_content_region_available_width()
                     _, s.colour = imgui.color_edit3(s.title, *s.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
 
@@ -1400,6 +1410,12 @@ class SegmentationEditor:
                     _, s.dust = imgui.slider_float("##dust", s.dust, 1.0, 1000000.0, f"dust < {s.dust:.1f} nm³", imgui.SLIDER_FLAGS_LOGARITHMIC)
                     s.hide_dust()
                     imgui.pop_item_width()
+                    if s.particles:
+                        imgui.push_item_width(cw - 22)
+                        _, s.particle_size = imgui.slider_float("##particle", s.particle_size, 0.0, 25.0, "hide particles" if s.particle_size == 0 else f"particle size = {s.particle_size:.1f} nm")
+                        imgui.same_line()
+                        _, s.particle_colour = imgui.color_edit3(s.title+"pclr", *s.particle_colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                        imgui.pop_item_width()
                     imgui.push_item_width((cw - 7) / 2)
                     _, s.alpha = imgui.slider_float("##alpha", s.alpha, 0, 1.0, f"alpha = {s.alpha:.1f}")
                     imgui.same_line()
@@ -1437,7 +1453,7 @@ class SegmentationEditor:
                 _, SegmentationEditor.RENDER_CLEAR_COLOUR = imgui.color_edit3("##clrclr", *SegmentationEditor.RENDER_CLEAR_COLOUR[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                 imgui.same_line()
                 imgui.align_text_to_frame_padding()
-                imgui.text(" Background colour      ")
+                imgui.text(" Background colour     ")
                 imgui.same_line()
                 _, SegmentationEditor.LIGHT_SPOT.colour = imgui.color_edit3("##lightclr", *SegmentationEditor.LIGHT_SPOT.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                 imgui.same_line()
@@ -1455,11 +1471,11 @@ class SegmentationEditor:
                 imgui.pop_item_width()
 
                 imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0)
-                _, SegmentationEditor.RENDER_BOX = imgui.checkbox(" render bounding box     ",
+                _, SegmentationEditor.RENDER_BOX = imgui.checkbox(" render bounding box   ",
                                                                   SegmentationEditor.RENDER_BOX)
                 imgui.same_line()
                 _render_frame = SegmentationEditor.PICKING_FRAME_ALPHA != 0.0
-                _r, _render_frame = imgui.checkbox(" render frame", _render_frame)
+                _r, _render_frame = imgui.checkbox("render frame", _render_frame)
                 if _r:
                     SegmentationEditor.PICKING_FRAME_ALPHA = float(_render_frame)
                 imgui.pop_style_var(4)
@@ -1674,7 +1690,7 @@ class SegmentationEditor:
                 if active_feature is not None:
                     radius = active_feature.brush_size * active_feature.parent.pixel_size
                     world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
-                    if not imgui.is_key_down(glfw.KEY_LEFT_SHIFT):
+                    if not SegmentationEditor.is_shift_down():
                         SegmentationEditor.renderer.add_circle(world_position, radius, active_feature.colour)
                     else:
                         SegmentationEditor.renderer.add_square(world_position, active_feature.box_size_nm, active_feature.colour)
@@ -1714,6 +1730,7 @@ class SegmentationEditor:
                 # Render surface models in 3D
                 if not imgui.is_key_down(glfw.KEY_Q):
                     self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT)
+                    self.renderer.render_surface_model_particles(cfg.se_surface_models, self.camera3d)
 
                 # Render the frame
                 pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, camera3d=self.camera3d)
@@ -1889,7 +1906,7 @@ class SegmentationEditor:
         imgui.text("Minimum particle spacing:")
         cw = imgui.get_content_region_available_width()
         imgui.set_next_item_width(cw)
-        _, SegmentationEditor.EXTRACT_MIN_SPACING = imgui.slider_float("##min_dist", SegmentationEditor.EXTRACT_MIN_SPACING, 0.0, 25.0, format = f"{SegmentationEditor.EXTRACT_MIN_SPACING:.1f} nm")
+        _, SegmentationEditor.EXTRACT_MIN_SPACING = imgui.slider_float("##min_dist", SegmentationEditor.EXTRACT_MIN_SPACING, 0.1, 25.0, format = f"{SegmentationEditor.EXTRACT_MIN_SPACING:.1f} nm")
 
         imgui.spacing()
         if widgets.centred_button("start", 50, 20):
@@ -1916,16 +1933,9 @@ class SegmentationEditor:
         try:
             if SegmentationEditor.EXTRACT_ALL:
                 datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc'))
-                print(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}*.mrc'))
-                print(datasets)
             else:
                 se_frame = cfg.se_active_frame
                 datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc'))[0]
-                print(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}*.mrc'))
-                print(datasets)
-
-            print("DATASETS:")
-            print(datasets)
 
             if not datasets:
                 print("No datasets selected")
@@ -2186,11 +2196,11 @@ class SegmentationEditor:
                 delta_cursor = self.window.cursor_delta
                 self.camera.position[0] += delta_cursor[0] / self.camera.zoom
                 self.camera.position[1] -= delta_cursor[1] / self.camera.zoom
-            if self.window.get_key(glfw.KEY_LEFT_SHIFT):
+            if SegmentationEditor.is_shift_down():
                 self.camera.zoom *= (1.0 + self.window.scroll_delta[1] * SegmentationEditor.CAMERA_ZOOM_STEP)
                 self.camera.zoom = min([self.camera.zoom, SegmentationEditor.CAMERA_MAX_ZOOM])
         else:
-            if self.window.get_key(glfw.KEY_LEFT_SHIFT):
+            if SegmentationEditor.is_shift_down():
                 if self.window.get_mouse_button(glfw.MOUSE_BUTTON_MIDDLE):
                     self.camera3d.pitch += self.window.cursor_delta[1] * SegmentationEditor.VIEW_3D_PIVOT_SPEED
                     self.camera3d.yaw += self.window.cursor_delta[0] * SegmentationEditor.VIEW_3D_PIVOT_SPEED
@@ -2223,6 +2233,15 @@ class SegmentationEditor:
     def force_not_embedded():
         global EMBEDDED
         EMBEDDED = False
+
+
+    @staticmethod
+    def is_shift_down():
+        return imgui.is_key_down(glfw.KEY_LEFT_SHIFT) or imgui.is_key_down(glfw.KEY_RIGHT_SHIFT)
+
+    @staticmethod
+    def is_ctrl_down():
+        return imgui.is_key_down(glfw.KEY_LEFT_CONTROL) or imgui.is_key_down(glfw.KEY_RIGHT_CONTROL)
 
 
 class Brush:
@@ -2372,6 +2391,7 @@ class Renderer:
         self.depth_mask_shader = Shader(os.path.join(cfg.root, "shaders", "se_depth_mask_shader.glsl"))
         self.ray_trace_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_ray_trace_shader.glsl"))
         self.overlay_blend_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_blend_shader.glsl"))
+        self.particle_shader = Shader(os.path.join(cfg.root, "shaders", "se_particle_shader.glsl"))
         self.line_list = list()
         self.line_list_s = list()
         self.line_va = VertexArray(None, None, attribute_format="xyrgb")
@@ -2383,6 +2403,8 @@ class Renderer:
         self.ndc_screen_va = VertexArray(attribute_format="xy")
         self.ndc_screen_va.update(VertexBuffer([-1, -1, 1, -1, 1, 1, -1, 1]), IndexBuffer([0, 1, 2, 0, 2, 3]))
         self.ray_trace_fbo_size = [0.0, 0.0]
+        vertices, indices = icosphere_va()
+        self.particle_va = VertexArray(VertexBuffer(vertices), IndexBuffer(indices), attribute_format="xyz")
 
     def recompile_shaders(self):  # for debugging
         try:
@@ -2401,6 +2423,7 @@ class Renderer:
             self.depth_mask_shader = Shader(os.path.join(cfg.root, "shaders", "se_depth_mask_shader.glsl"))
             self.ray_trace_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_ray_trace_shader.glsl"))
             self.overlay_blend_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_blend_shader.glsl"))
+            self.particle_shader = Shader(os.path.join(cfg.root, "shaders", "se_particle_shader.glsl"))
         finally:
             pass
 
@@ -2654,8 +2677,7 @@ class Renderer:
         self.surface_model_shader.uniform3f("lightColour", spot_light.colour)
         self.surface_model_shader.uniform1i("style", SegmentationEditor.SELECTED_RENDER_STYLE)
         glEnable(GL_DEPTH_TEST)
-        # TODO: sort the surface models by alpha.
-        alpha_sorted_surface_models = sorted(surface_models, key = lambda x: x.alpha, reverse=True)
+        alpha_sorted_surface_models = sorted(surface_models, key=lambda x: x.alpha, reverse=True)
         for s in alpha_sorted_surface_models:
             if s.hide:
                 continue
@@ -2667,6 +2689,29 @@ class Renderer:
                     blob.va.unbind()
         self.surface_model_shader.unbind()
         glDisable(GL_DEPTH_TEST)
+
+    def render_surface_model_particles(self, surface_models, camera):
+        glEnable(GL_DEPTH_TEST)
+        alpha_sorted_surface_models = sorted(surface_models, key=lambda x: x.alpha, reverse=True)
+        self.particle_va.bind()
+        self.particle_shader.bind()
+        self.particle_shader.uniformmat4("vpMat", camera.matrix)
+        for s in alpha_sorted_surface_models:
+            if s.hide:
+                continue
+            if s.particle_size > 0.0:
+                self.particle_shader.uniform3f("particleColour", s.particle_colour)
+                self.particle_shader.uniform1f("particleSize", s.particle_size)
+                self.particle_shader.uniform1f("pixelSize", s.pixel_size)
+                self.particle_shader.uniform3f("origin", s.center_xyz / 2.0)
+                for p in s.particles:
+                    self.particle_shader.uniform3f("particlePosition", p)
+                    glDrawElements(GL_TRIANGLES, self.particle_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+        self.particle_va.unbind()
+        self.particle_shader.unbind()
+        glDisable(GL_DEPTH_TEST)
+
+
 
     def render_line_va(self, va, camera):
         glEnable(GL_DEPTH_TEST)
@@ -3217,7 +3262,6 @@ class QueuedExport:
             self.process.stop_request.set()
 
 
-
 class QueuedExtract:
     def __init__(self, mrcpath, threshold, min_size, min_spacing, save_dir, binning=1):
         self.tag = mrcpath
@@ -3233,6 +3277,9 @@ class QueuedExtract:
     def do_export(self, process):
         try:
             get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, save_dir=self.dir, process=self.process, binning=self.binning)
+            for s in cfg.se_surface_models:
+                if s.path == self.path:
+                    s.find_coordinates()
         except Exception as e:
             cfg.set_error(e, "Error in QueuedExtract (finding coordinates in a .mrc) - see details below.")
         process.set_progress(1.0)

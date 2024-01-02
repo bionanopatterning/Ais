@@ -597,9 +597,24 @@ class SurfaceModel:
         self.alpha = 1.0
         self.process = None
         self.pixel_size = pixel_size
-
+        self.center_xyz = np.array([header.nx, header.ny, header.nz])
         self.coordinates = None
         self.initialized = False
+
+        self.particles = list()
+        self.particle_size = 0.0
+        self.particle_colour = self.colour
+        self.find_coordinates()
+
+    def find_coordinates(self):
+        # is there a coordinate file?
+        txt_file = os.path.splitext(self.path)[0]+"_coords.txt"
+        if os.path.exists(txt_file):
+            print(f"parsing coordinates for SurfaceModel object with path {self.path}")
+            with open(txt_file, 'r') as f:
+                for line in f:
+                    xyz = [int(val) for val in line.strip().split('\t')]
+                    self.particles.append(xyz)
 
     def set_colour(self):
         if self.title in SurfaceModel.COLOURS:
@@ -715,7 +730,6 @@ class SurfaceModel:
                 f_idx += (1 + np.max(b.indices))
                 print(f"Incrementing f_idx by {np.max(b.indices)}")
         return path
-
 
 
     def __eq__(self, other):

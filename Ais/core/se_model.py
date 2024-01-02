@@ -18,7 +18,7 @@ import time
 # LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
 
 
-#TODO: in process_slice, check the volume of data that is processed by any model at one time. It should fit in the GPU, or tf throws an error that causes a QueuedExport to stop. Ensure that batch size is smaller than available data.
+#TODO: in process_slice, check the volume of data that is processed by any model at one time. It should fit in the GPU, or tf throws an error that causes a QueuedExport to stop. Ensure that batch size is smaller than available memory.
 
 
 class SEModel:

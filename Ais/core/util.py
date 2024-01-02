@@ -6,7 +6,7 @@ import glob
 from Ais.core import config as cfg
 import time
 import mrcfile
-from scipy.ndimage import label, center_of_mass, distance_transform_edt
+from scipy.ndimage import label, distance_transform_edt
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 
@@ -46,6 +46,11 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
 
 
 def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1):
+    """
+    min_spacing: in nanometer
+    min_size: in cubic nanometer
+    """
+    print("get_maxima_3d_watershed")
     if array is None:
         data = mrcfile.read(mrcpath)
         if process:
@@ -60,29 +65,31 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         data = data[:z // b * b, :y // b * b, :x // b * b]
         _type = data.dtype
         data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5, dtype=_type).mean(3, dtype=_type).mean(1, dtype=_type)
-
+        pixel_size *= b
     binary_vol = data > threshold
+    print(f"\tcomputing distance transform")
     distance = distance_transform_edt(binary_vol)
-    min_distance = int(min_spacing / pixel_size)
+    min_distance = max(3, int(min_spacing / pixel_size))
     if process:
         process.set_progress(0.3)
 
-    coords = peak_local_max(distance, footprint=np.ones((min_distance, min_distance, min_distance)), labels=binary_vol)
+    print(f"\tfinding local maxima")
+    coords = peak_local_max(distance, min_distance=min_distance)
     mask = np.zeros(distance.shape, dtype=bool)
     mask[tuple(coords.T)] = True
+    print(f"\tenumerating local maxima")
     markers, _ = label(mask)
     if process:
         process.set_progress(0.4)
-    print(distance.shape)
-    print(markers.shape)
-    print(binary_vol.shape)
+    print(f"\twatershedding")
     labels = watershed(-distance, markers, mask=binary_vol)
     Z, Y, X = np.nonzero(labels)
     if process:
         process.set_progress(0.5)
     # parse blobs
     blobs = dict()
-    for i in range(len(X)):
+    print(f"\tparsing instance labelled volume")
+    for i in range(len(X)):  # todo - this is super inefficient; maybe improve it.
         z = Z[i]
         y = Y[i]
         x = X[i]
@@ -95,20 +102,23 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         blobs[l].y.append(y)
         blobs[l].z.append(z)
         blobs[l].v.append(data[z, y, x])
+
+    print(f"\t{len(blobs)} unique volumes found")
     if process:
         process.set_progress(0.6)
     if min_size:
+        print(f"\tremoving blobs smaller than {min_size} cubic nanometer")
         to_pop = list()
         for key in blobs:
-            weight = blobs[key].get_volume()
-            if weight < min_size:
+            size = blobs[key].get_volume() * (pixel_size**3)
+            if size < min_size:
                 to_pop.append(key)
         for key in to_pop:
             blobs.pop(key)
+        print(f"\t{len(blobs)} volumes remaining")
     if process:
         process.set_progress(0.7)
     blobs = list(blobs.values())
-    print(blobs)
     metrics = list()
     for blob in blobs:
         if sort_by_weight:
@@ -119,10 +129,12 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
     indices = np.argsort(metrics)[::-1]
     coordinates = list()
     for i in indices:
-        coordinates.append(blobs[i].get_centroid() * binning)
+        coordinates.append(blobs[i].get_centroid(scale=binning))
     if process:
         process.set_progress(0.8)
+
     # remove points that are too close to others.
+    print(f"\tremoving particles that are too close to a better particle")
     remove = list()
     i = 0
     while i < len(coordinates):
@@ -141,14 +153,17 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
     remove.sort()
     for i in reversed(remove):
         coordinates.pop(i)
-
+    print(f"\t{len(coordinates)} particles remaining")
     if not return_coords:
         if not save_txt:
             return len(coordinates)
 
         out_path = mrcpath[:-4] + "_coords.txt"
         if save_dir is not None:
-            out_path = save_dir + os.path.basename(mrcpath)[:-4] + "_coords.txt"
+            if not os.path.exists(save_dir):
+                os.mkdir(save_dir)
+            out_path = os.path.join(save_dir, os.path.basename(mrcpath)[:-4] + "_coords.txt")
+        print(f"\toutputting coordinates to {out_path}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
                 x = int(coordinates[i][0])
@@ -157,10 +172,12 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
                 out_file.write(f"{x}\t{y}\t{z}\n")
         if process:
             process.set_progress(0.99)
+        print(f"\tdone\n")
         return len(coordinates)
     else:
         if process:
             process.set_progress(0.99)
+        print(f"\tdone\n")
         return coordinates
 
 
@@ -171,8 +188,8 @@ class Blob:
         self.z = list()
         self.v = list()
 
-    def get_centroid(self):
-        return np.mean(self.x), np.mean(self.y), np.mean(self.z)
+    def get_centroid(self, scale=1):
+        return np.mean(self.x) * scale, np.mean(self.y) * scale, np.mean(self.z) * scale
 
     def get_center_of_mass(self):
         mx = np.sum(np.array(self.x) * np.array(self.v))
@@ -371,3 +388,277 @@ def toc(msg):
 def clamp(a, _min, _max):
     return min(max(a, _min), _max)
 
+def icosphere_va():
+    v = np.array([[0., 0.52573111, 0.85065081],
+        [0., -0.52573111, 0.85065081],
+        [0.52573111, 0.85065081, 0.],
+        [-0.52573111, 0.85065081, 0.],
+        [0.85065081, 0., 0.52573111],
+        [-0.85065081, 0., 0.52573111],
+        [-0., -0.52573111, -0.85065081],
+        [-0., 0.52573111, -0.85065081],
+        [-0.52573111, -0.85065081, -0.],
+        [0.52573111, -0.85065081, -0.],
+        [-0.85065081, -0., -0.52573111],
+        [0.85065081, -0., -0.52573111],
+        [0., 0.20177411, 0.97943209],
+        [0., -0.20177411, 0.97943209],
+        [0.20177411, 0.73002557, 0.65295472],
+        [0.40354821, 0.85472883, 0.32647736],
+        [-0.20177411, 0.73002557, 0.65295472],
+        [-0.40354821, 0.85472883, 0.32647736],
+        [0.32647736, 0.40354821, 0.85472883],
+        [0.65295472, 0.20177411, 0.73002557],
+        [-0.32647736, 0.40354821, 0.85472883],
+        [-0.65295472, 0.20177411, 0.73002557],
+        [0.32647736, -0.40354821, 0.85472883],
+        [0.65295472, -0.20177411, 0.73002557],
+        [-0.32647736, -0.40354821, 0.85472883],
+        [-0.65295472, -0.20177411, 0.73002557],
+        [-0.20177411, -0.73002557, 0.65295472],
+        [-0.40354821, -0.85472883, 0.32647736],
+        [0.20177411, -0.73002557, 0.65295472],
+        [0.40354821, -0.85472883, 0.32647736],
+        [0.20177411, 0.97943209, 0.],
+        [-0.20177411, 0.97943209, 0.],
+        [0.73002557, 0.65295472, 0.20177411],
+        [0.85472883, 0.32647736, 0.40354821],
+        [0.40354821, 0.85472883, -0.32647736],
+        [0.20177411, 0.73002557, -0.65295472],
+        [0.73002557, 0.65295472, -0.20177411],
+        [0.85472883, 0.32647736, -0.40354821],
+        [-0.73002557, 0.65295472, 0.20177411],
+        [-0.85472883, 0.32647736, 0.40354821],
+        [-0.40354821, 0.85472883, -0.32647736],
+        [-0.20177411, 0.73002557, -0.65295472],
+        [-0.73002557, 0.65295472, -0.20177411],
+        [-0.85472883, 0.32647736, -0.40354821],
+        [0.85472883, -0.32647736, 0.40354821],
+        [0.73002557, -0.65295472, 0.20177411],
+        [0.97943209, 0., 0.20177411],
+        [0.97943209, 0., -0.20177411],
+        [-0.85472883, -0.32647736, 0.40354821],
+        [-0.73002557, -0.65295472, 0.20177411],
+        [-0.97943209, 0., 0.20177411],
+        [-0.97943209, 0., -0.20177411],
+        [-0., -0.20177411, -0.97943209],
+        [-0., 0.20177411, -0.97943209],
+        [-0.20177411, -0.73002557, -0.65295472],
+        [-0.40354821, -0.85472883, -0.32647736],
+        [0.20177411, -0.73002557, -0.65295472],
+        [0.40354821, -0.85472883, -0.32647736],
+        [-0.32647736, -0.40354821, -0.85472883],
+        [-0.65295472, -0.20177411, -0.73002557],
+        [0.32647736, -0.40354821, -0.85472883],
+        [0.65295472, -0.20177411, -0.73002557],
+        [-0.32647736, 0.40354821, -0.85472883],
+        [-0.65295472, 0.20177411, -0.73002557],
+        [0.32647736, 0.40354821, -0.85472883],
+        [0.65295472, 0.20177411, -0.73002557],
+        [-0.20177411, -0.97943209, -0.],
+        [0.20177411, -0.97943209, -0.],
+        [-0.73002557, -0.65295472, -0.20177411],
+        [-0.85472883, -0.32647736, -0.40354821],
+        [0.73002557, -0.65295472, -0.20177411],
+        [0.85472883, -0.32647736, -0.40354821],
+        [-0.35682209, 0., 0.93417236],
+        [-0.57735027, 0.57735027, 0.57735027],
+        [0., 0.93417236, 0.35682209],
+        [0.57735027, 0.57735027, 0.57735027],
+        [0.35682209, 0., 0.93417236],
+        [-0.57735027, -0.57735027, 0.57735027],
+        [-0.93417236, 0.35682209, 0.],
+        [0., 0.93417236, -0.35682209],
+        [0.93417236, 0.35682209, 0.],
+        [0.57735027, -0.57735027, 0.57735027],
+        [0.35682209, 0., -0.93417236],
+        [0.57735027, -0.57735027, -0.57735027],
+        [0., -0.93417236, -0.35682209],
+        [-0.57735027, -0.57735027, -0.57735027],
+        [-0.35682209, 0., -0.93417236],
+        [0.57735027, 0.57735027, -0.57735027],
+        [0.93417236, -0.35682209, 0.],
+        [0., -0.93417236, 0.35682209],
+        [-0.93417236, -0.35682209, 0.],
+        [-0.57735027, 0.57735027, -0.57735027]])
+    f = np.array([[ 0, 20, 12],
+        [20, 21, 72],
+        [20, 72, 12],
+        [12, 72, 13],
+        [21,  5, 25],
+        [21, 25, 72],
+        [72, 25, 24],
+        [72, 24, 13],
+        [13, 24,  1],
+        [ 0, 16, 20],
+        [16, 17, 73],
+        [16, 73, 20],
+        [20, 73, 21],
+        [17,  3, 38],
+        [17, 38, 73],
+        [73, 38, 39],
+        [73, 39, 21],
+        [21, 39,  5],
+        [ 0, 14, 16],
+        [14, 15, 74],
+        [14, 74, 16],
+        [16, 74, 17],
+        [15,  2, 30],
+        [15, 30, 74],
+        [74, 30, 31],
+        [74, 31, 17],
+        [17, 31,  3],
+        [ 0, 18, 14],
+        [18, 19, 75],
+        [18, 75, 14],
+        [14, 75, 15],
+        [19,  4, 33],
+        [19, 33, 75],
+        [75, 33, 32],
+        [75, 32, 15],
+        [15, 32,  2],
+        [ 0, 12, 18],
+        [12, 13, 76],
+        [12, 76, 18],
+        [18, 76, 19],
+        [13,  1, 22],
+        [13, 22, 76],
+        [76, 22, 23],
+        [76, 23, 19],
+        [19, 23,  4],
+        [ 1, 24, 26],
+        [24, 25, 77],
+        [24, 77, 26],
+        [26, 77, 27],
+        [25,  5, 48],
+        [25, 48, 77],
+        [77, 48, 49],
+        [77, 49, 27],
+        [27, 49,  8],
+        [ 5, 39, 50],
+        [39, 38, 78],
+        [39, 78, 50],
+        [50, 78, 51],
+        [38,  3, 42],
+        [38, 42, 78],
+        [78, 42, 43],
+        [78, 43, 51],
+        [51, 43, 10],
+        [ 3, 31, 40],
+        [31, 30, 79],
+        [31, 79, 40],
+        [40, 79, 41],
+        [30,  2, 34],
+        [30, 34, 79],
+        [79, 34, 35],
+        [79, 35, 41],
+        [41, 35,  7],
+        [ 2, 32, 36],
+        [32, 33, 80],
+        [32, 80, 36],
+        [36, 80, 37],
+        [33,  4, 46],
+        [33, 46, 80],
+        [80, 46, 47],
+        [80, 47, 37],
+        [37, 47, 11],
+        [ 4, 23, 44],
+        [23, 22, 81],
+        [23, 81, 44],
+        [44, 81, 45],
+        [22,  1, 28],
+        [22, 28, 81],
+        [81, 28, 29],
+        [81, 29, 45],
+        [45, 29,  9],
+        [ 7, 64, 53],
+        [64, 65, 82],
+        [64, 82, 53],
+        [53, 82, 52],
+        [65, 11, 61],
+        [65, 61, 82],
+        [82, 61, 60],
+        [82, 60, 52],
+        [52, 60,  6],
+        [11, 71, 61],
+        [71, 70, 83],
+        [71, 83, 61],
+        [61, 83, 60],
+        [70,  9, 57],
+        [70, 57, 83],
+        [83, 57, 56],
+        [83, 56, 60],
+        [60, 56,  6],
+        [ 9, 67, 57],
+        [67, 66, 84],
+        [67, 84, 57],
+        [57, 84, 56],
+        [66,  8, 55],
+        [66, 55, 84],
+        [84, 55, 54],
+        [84, 54, 56],
+        [56, 54,  6],
+        [ 8, 68, 55],
+        [68, 69, 85],
+        [68, 85, 55],
+        [55, 85, 54],
+        [69, 10, 59],
+        [69, 59, 85],
+        [85, 59, 58],
+        [85, 58, 54],
+        [54, 58,  6],
+        [10, 63, 59],
+        [63, 62, 86],
+        [63, 86, 59],
+        [59, 86, 58],
+        [62,  7, 53],
+        [62, 53, 86],
+        [86, 53, 52],
+        [86, 52, 58],
+        [58, 52,  6],
+        [ 2, 36, 34],
+        [36, 37, 87],
+        [36, 87, 34],
+        [34, 87, 35],
+        [37, 11, 65],
+        [37, 65, 87],
+        [87, 65, 64],
+        [87, 64, 35],
+        [35, 64,  7],
+        [ 4, 44, 46],
+        [44, 45, 88],
+        [44, 88, 46],
+        [46, 88, 47],
+        [45,  9, 70],
+        [45, 70, 88],
+        [88, 70, 71],
+        [88, 71, 47],
+        [47, 71, 11],
+        [ 1, 26, 28],
+        [26, 27, 89],
+        [26, 89, 28],
+        [28, 89, 29],
+        [27,  8, 66],
+        [27, 66, 89],
+        [89, 66, 67],
+        [89, 67, 29],
+        [29, 67,  9],
+        [ 5, 50, 48],
+        [50, 51, 90],
+        [50, 90, 48],
+        [48, 90, 49],
+        [51, 10, 69],
+        [51, 69, 90],
+        [90, 69, 68],
+        [90, 68, 49],
+        [49, 68,  8],
+        [ 3, 40, 42],
+        [40, 41, 91],
+        [40, 91, 42],
+        [42, 91, 43],
+        [41,  7, 62],
+        [41, 62, 91],
+        [91, 62, 63],
+        [91, 63, 43],
+        [43, 63, 10]])
+    return v.flatten(), f.flatten()
