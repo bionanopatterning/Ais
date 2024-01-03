@@ -31,8 +31,8 @@ __________
    creating_models
    batch_processing
    rendering
-   python_module
    picking
+   python_module
 
 Help
 ----------------
