@@ -64,6 +64,7 @@ class SegmentationEditor:
         SELECTED_RENDER_STYLE = 1
         RENDER_STYLES = ["Cartoon", "Phong", "Flat", "Misc."]
         RENDER_BOX = False
+        RENDER_PARTICLES_XRAY = False
         RENDER_CLEAR_COLOUR = cfg.COLOUR_WINDOW_BACKGROUND[:3]
         RENDER_LIGHT_COLOUR = (1.0, 1.0, 1.0)
         VIEW_REQUIRES_UPDATE = True
@@ -1471,13 +1472,14 @@ class SegmentationEditor:
                 imgui.pop_item_width()
 
                 imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0)
-                _, SegmentationEditor.RENDER_BOX = imgui.checkbox(" render bounding box   ",
-                                                                  SegmentationEditor.RENDER_BOX)
+                _, SegmentationEditor.RENDER_BOX = imgui.checkbox(" render bounding box   ", SegmentationEditor.RENDER_BOX)
+
                 imgui.same_line()
                 _render_frame = SegmentationEditor.PICKING_FRAME_ALPHA != 0.0
                 _r, _render_frame = imgui.checkbox("render frame", _render_frame)
                 if _r:
                     SegmentationEditor.PICKING_FRAME_ALPHA = float(_render_frame)
+                _, SegmentationEditor.RENDER_PARTICLES_XRAY = imgui.checkbox(" particle x-ray", SegmentationEditor.RENDER_PARTICLES_XRAY)
                 imgui.pop_style_var(4)
                 imgui.pop_style_color(1)
 
@@ -2691,7 +2693,10 @@ class Renderer:
         glDisable(GL_DEPTH_TEST)
 
     def render_surface_model_particles(self, surface_models, camera):
-        glEnable(GL_DEPTH_TEST)
+        if SegmentationEditor.RENDER_PARTICLES_XRAY:
+            glDisable(GL_DEPTH_TEST)
+        else:
+            glEnable(GL_DEPTH_TEST)
         alpha_sorted_surface_models = sorted(surface_models, key=lambda x: x.alpha, reverse=True)
         self.particle_va.bind()
         self.particle_shader.bind()

@@ -1,4 +1,4 @@
-Batch exporting segmented volumes
+Batch processing
 __________
 
 Once the models have been set up and trained to a point where they work well, you can batch-process any amount of tomograms you’d like.

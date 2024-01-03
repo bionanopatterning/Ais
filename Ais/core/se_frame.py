@@ -598,7 +598,7 @@ class SurfaceModel:
         self.process = None
         self.pixel_size = pixel_size
         self.center_xyz = np.array([header.nx, header.ny, header.nz])
-        self.coordinates = None
+        self.coordinates = None  # obsolete?
         self.initialized = False
 
         self.particles = list()
@@ -608,6 +608,7 @@ class SurfaceModel:
 
     def find_coordinates(self):
         # is there a coordinate file?
+        self.particles = list()
         txt_file = os.path.splitext(self.path)[0]+"_coords.txt"
         if os.path.exists(txt_file):
             print(f"parsing coordinates for SurfaceModel object with path {self.path}")
