@@ -10,14 +10,14 @@ from setuptools import setup, find_packages
 
 setup(
     name='Ais-cryoET',
-    version='0.0.25',
+    version='1.0.0',
     packages=find_packages(),
     entry_points={'console_scripts': ['ais=Ais.main:main', 'ais-cryoet=Ais.main:main']},
     url='https://github.com/bionanopatterning/Ais',
     license='GPL v3',
     author='mgflast',
     author_email='m.g.f.last@lumc.nl',
-    description='Segmentation of cryo-electron tomography data',
+    description='Segmentation of cryo-electron tomography data - https://ais-cryoet.readthedocs.org/ https://aiscryoet.org/',
     package_data={'': ['*.png', '*.glsl', '*.pdf', '*.txt']},
     include_package_data=False,  # weirdly, the above filetypes _are_ included when this parameter is set to False.
     install_requires=[

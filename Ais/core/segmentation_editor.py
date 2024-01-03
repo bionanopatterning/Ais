@@ -1576,7 +1576,7 @@ class SegmentationEditor:
                                 SegmentationEditor.save_model_group(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not save model group, see details below.")
-                    if imgui.menu_item("Save current slice as .tiff")[0]:
+                    if imgui.menu_item("Export validation slice")[0]:
                         try:
                             filename = filedialog.asksaveasfilename(filetypes=[("tifffile", ".tiff")])
                             if filename != '':
