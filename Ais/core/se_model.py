@@ -84,7 +84,7 @@ class SEModel:
     def save(self, file_path):
         # Split the file_path into directory and file
         directory = os.path.dirname(file_path)
-        base_name = os.path.basename(file_path)
+        base_name = os.path.splitext(os.path.basename(file_path))[0]
 
         # Save the Keras model
         model_path = os.path.join(directory, base_name + '_weights.h5')

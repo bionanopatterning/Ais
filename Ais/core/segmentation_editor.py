@@ -555,6 +555,13 @@ class SegmentationEditor:
                                     bpath = bin_mrc(path, i)
                                     self.import_dataset(bpath)
                             imgui.end_menu()
+                        if imgui.begin_menu("Change pixel size"):
+                            imgui.set_next_item_width(100)
+                            pxs_ang = s.pixel_size * 10.0
+                            _, pxs_ang = imgui.input_float("##Appix", s.pixel_size, 0.0, 00.0, format = f"{pxs_ang:.2f} A/pixel")
+                            if _:
+                                s.pixel_size = pxs_ang / 10.0
+                            imgui.end_menu()
                         imgui.end_popup()
                     self.tooltip(f"{s.title}\nPixel size: {s.pixel_size * 10.0:.4f} Angstrom\nLocation: {s.path}")
                     if _change and _selected:
@@ -646,6 +653,7 @@ class SegmentationEditor:
                         imgui.same_line()
                         if imgui.image_button(self.icon_close.renderer_id, 13, 13):
                             self.filters.remove(ftr)
+                            SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         imgui.pop_style_var(1)
                         # Parameter and strength sliders
                         imgui.push_item_width(cw)
@@ -1576,6 +1584,7 @@ class SegmentationEditor:
                                 SegmentationEditor.save_model_group(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not save model group, see details below.")
+                    imgui.separator()
                     if imgui.menu_item("Export validation slice")[0]:
                         try:
                             filename = filedialog.asksaveasfilename(filetypes=[("tifffile", ".tiff")])
