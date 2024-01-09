@@ -254,6 +254,7 @@ class SegmentationEditor:
                     interaction.apply(cfg.se_active_frame.pixel_size)
                 model.update_texture()
             cfg.se_active_frame.slice_changed = False
+
         imgui.get_io().display_size = self.window.width, self.window.height
         imgui.new_frame()
 
@@ -555,7 +556,7 @@ class SegmentationEditor:
                                     bpath = bin_mrc(path, i)
                                     self.import_dataset(bpath)
                             imgui.end_menu()
-                        if imgui.begin_menu("Change pixel size"):
+                        if imgui.begin_menu("Overrule pixel size"):
                             imgui.set_next_item_width(100)
                             pxs_ang = s.pixel_size * 10.0
                             _, pxs_ang = imgui.input_float("##Appix", s.pixel_size, 0.0, 00.0, format = f"{pxs_ang:.2f} A/pixel")
@@ -1954,7 +1955,7 @@ class SegmentationEditor:
 
             for d in datasets:
                 print(d)
-                SegmentationEditor.queued_exports.append(QueuedExtract(d, threshold = feature.level, min_size = feature.dust, min_spacing=SegmentationEditor.EXTRACT_MIN_SPACING, save_dir = SegmentationEditor.seg_folder, binning = feature.bin))
+                SegmentationEditor.queued_exports.append(QueuedExtract(d, threshold=feature.level, min_size=feature.dust, min_spacing=SegmentationEditor.EXTRACT_MIN_SPACING, save_dir=SegmentationEditor.seg_folder, binning=feature.bin))
                 SegmentationEditor.queued_exports[-1].colour = feature.colour
 
             if SegmentationEditor.queued_exports:

@@ -45,7 +45,7 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1):
+def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None):
     """
     min_spacing: in nanometer
     min_size: in cubic nanometer
@@ -55,7 +55,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         data = mrcfile.read(mrcpath)
         if process:
             process.set_progress(0.2)
-        pixel_size = mrcfile.open(mrcpath, header_only=True).voxel_size.x / 10.0
+        if pixel_size is None:
+            pixel_size = mrcfile.open(mrcpath, header_only=True).voxel_size.x / 10.0
     else:
         data = array
         pixel_size = array_pixel_size
