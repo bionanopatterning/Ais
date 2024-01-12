@@ -155,8 +155,6 @@ class SEModel:
             self.emit = metadata['emit']
             self.absorb = metadata['absorb']
             self.loss = metadata['loss']
-            print(repr(self.info_short))
-            print(repr(self.info))
         except Exception as e:
             print("Error loading model - see details below", print(e))
 
