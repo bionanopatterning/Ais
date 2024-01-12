@@ -1553,6 +1553,13 @@ class SegmentationEditor:
                                 self.import_dataset(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not import dataset, see details below.")
+                    if imgui.menu_item("Import model")[0]:
+                        try:
+                            filename = filedialog.askopenfilename(filetypes=[("scNodes model", f"{cfg.filetype_semodel}")])
+                            if filename != '':
+                                self.load_model(filename)
+                        except Exception as e:
+                            cfg.set_error(e, "Could not import model, see details below.")
                     if imgui.menu_item("Import model group")[0]:
                         try:
                             filename = filedialog.askopenfilename(filetypes=[("scNodes model group", cfg.filetype_semodel_group)])
@@ -1595,6 +1602,8 @@ class SegmentationEditor:
                                 tifffile.imwrite(filename, cfg.se_active_frame.data.astype(np.float32))
                         except Exception as e:
                             cfg.set_error(e, "Could not export current slice as .tiff, see details below.")
+                    imgui.separator()
+                    imgui.text(f'version {cfg.version}')
                     imgui.end_menu()
 
                 if EMBEDDED and imgui.begin_menu("Editor"):
@@ -2116,6 +2125,15 @@ class SegmentationEditor:
 
         except Exception as e:
             cfg.set_error(e, "Error loading model group, see details below.")
+
+    @staticmethod
+    def load_model(path):
+        try:
+            model = SEModel()
+            model.load(path)
+            cfg.se_models.append(model)
+        except Exception as e:
+            cfg.set_error(e, "Error loading model, see details below.")
 
     @staticmethod
     def save_model_group(path):

@@ -155,6 +155,8 @@ class SEModel:
             self.emit = metadata['emit']
             self.absorb = metadata['absorb']
             self.loss = metadata['loss']
+            print(repr(self.info_short))
+            print(repr(self.info))
         except Exception as e:
             print("Error loading model - see details below", print(e))
 
@@ -301,7 +303,8 @@ class SEModel:
 
     def slice_to_boxes(self, image, pixel_size, as_array=True):
         scale_fac = pixel_size * 10.0 / self.apix
-        image = zoom(image, scale_fac)
+        # if abs(scale_fac - 1.0) > 0.1:
+        #     image = zoom(image, scale_fac)
         w, h = image.shape
         self.overlap = min([0.9, self.overlap])
         pad_w = self.box_size - (w % self.box_size)
@@ -339,7 +342,7 @@ class SEModel:
         out_image = out_image / count
         out_image = out_image[:w, :h]
         scale_fac = self.apix / (original_pixel_size * 10.0)
-        out_image = zoom(out_image, scale_fac)
+        #out_image = zoom(out_image, scale_fac)
         return out_image[:w, :h]
 
     def apply_to_slice(self, image, pixel_size):

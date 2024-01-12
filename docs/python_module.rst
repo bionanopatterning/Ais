@@ -14,7 +14,7 @@ The following filetypes are created and used by Ais:
 
 **.scnt**, or 'scNodes training data', is essentially just a .tif file (they can be opened in ImageJ/FIJI) but containing some additional metadata that is read by Ais when training a neural network.
 
-**.scnm**, or 'scNodes model', are .json files containing the parameters of segmentation models; such as their colour, the A/pix they were trained on, etc. A '[model_name]_weights.h5' file also exists for every .scnm file and these files are expectedto be in the same folder when loading a model into Ais.
+**.scnm**, or 'scNodes model', are .json files containing the parameters of segmentation models; such as their colour, the A/pix they were trained on, etc. A '[model_name]_weights.h5' file also exists for every .scnm file and these files are expected to be in the same folder when loading a model into Ais.
 
 **.scnmgroup**, or 'scNodes model group' files are created when saving model groups. The .scnmgroup file links to multiple .scnm and .h5 files, as well as saved the model interactions between these groups.
 
@@ -79,7 +79,7 @@ Important note: the first function that must always be called to enable Ais func
 
    ## Option 2: using QueuedExports - easier when you want to schedule many exports.
 
-   from scNodes.core.segmentation_editor import QueuedExport
+   from Ais.core.segmentation_editor import QueuedExport
 
    out_dir = "C:/Users/mgflast/Desktop/segmentations"
 
