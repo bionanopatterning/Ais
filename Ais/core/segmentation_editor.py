@@ -19,6 +19,7 @@ try:
 except ImportError:
     pass
 
+# TODO: render surface models in Render tab _only_ when an update is required.
 
 class SegmentationEditor:
     if True:
