@@ -496,7 +496,7 @@ class Segmentation:
             cfg.set_error(e, "Could not save current slice, see details below.")
 
     def save_volume(self):
-        fpath = os.path.splitext(self.parent.path)[0] + ".mrc_" + self.title + f"_annotated_volume.mrc"
+        fpath = os.path.splitext(self.parent.path)[0] + self.title + f"__annotations.mrc"
         try:
             with mrcfile.new(fpath, overwrite=True) as outf:
                 vol = np.zeros((self.parent.n_slices, self.parent.height, self.parent.width), dtype=np.uint8)
