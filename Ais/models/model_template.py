@@ -40,6 +40,8 @@ class TemplateModel:  # note that inheriting from tensorflow.keras.models.Model 
         for e in range(epochs):
             for i in range(len(train_x) // batch_size):
                 # fit batch
+                pass
+
                 logs = {'loss': 0.0}
                 for c in callbacks:
                     c.on_batch_end(i, logs)
@@ -49,9 +51,9 @@ class TemplateModel:  # note that inheriting from tensorflow.keras.models.Model 
         return None
 
     def save(self, path):
-        pass # TODO
+        pass
 
     def load(self, path):
-        pass # TODO
+        pass
 
 

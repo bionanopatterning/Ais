@@ -20,6 +20,7 @@ except ImportError:
     pass
 
 # TODO: render surface models in Render tab _only_ when an update is required.
+# TODO: save SEMOdels as tarballs instead of in two separate files
 
 class SegmentationEditor:
     if True:
@@ -305,7 +306,8 @@ class SegmentationEditor:
                         SegmentationEditor.renderer.fbo2.texture.set_no_interpolation()
                 else:
                     sef.invert = not sef.invert
-
+            if imgui.is_key_pressed(glfw.KEY_O):
+                SegmentationEditor.OVERLAY_ALPHA = float(not bool(SegmentationEditor.OVERLAY_ALPHA))
             if imgui.is_key_pressed(glfw.KEY_A) and not SegmentationEditor.is_ctrl_down():
                 sef.autocontrast = not sef.autocontrast
                 if sef.autocontrast:
