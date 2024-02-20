@@ -695,6 +695,12 @@ class SurfaceModel:
         z, y, x = data.shape
         data = data[:z//b * b, :y//b * b, :x//b * b]
         data = data.reshape((z // b, b, y//b, b, x//b, b)).mean(5).mean(3).mean(1)
+        data[0, :, :] = 0
+        data[-1, :, :] = 0
+        data[:, 0, :] = 0
+        data[:, -1, :] = 0
+        data[:, :, 0] = 0
+        data[:, :, -1] = 0
         return data
 
     def delete(self):

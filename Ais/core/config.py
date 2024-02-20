@@ -56,6 +56,8 @@ controls_info_text = \
     "key F:          toggle flood drawing mode\n" \
     "key Q:          hide 3d models\n" \
     "key O:          toggle overlay visibility\n" \
+    "key W:          select previous feature\n" \
+    "key S:          select next feature\n" \
     "key left:       previous slice\n" \
     "key right:      next slice\n" \
     "key up:         previous dataset\n" \

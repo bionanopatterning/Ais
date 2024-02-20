@@ -365,7 +365,7 @@ class SegmentationEditor:
                 if SegmentationEditor.is_ctrl_down() and active_feature is not None:
                     active_feature.brush_size += self.window.scroll_delta[1]
                     active_feature.brush_size = max([1, active_feature.brush_size])
-                if imgui.is_key_pressed(glfw.KEY_S):
+                if imgui.is_key_pressed(glfw.KEY_S) and not imgui.is_key_down(glfw.KEY_LEFT_CONTROL):
                     idx = 0 if active_feature not in active_frame.features else active_frame.features.index(active_feature)
                     idx = (idx + 1) % len(active_frame.features)
                     cfg.se_active_frame.active_feature = cfg.se_active_frame.features[idx]
