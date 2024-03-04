@@ -2110,18 +2110,27 @@ class SegmentationEditor:
     @staticmethod
     def load_model_group(path):
         try:
-            root = os.path.dirname(path)
-            with open(path, 'r') as infile:
-                model_paths = json.load(infile)
-                json_path = model_paths.pop(0)
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Extract the .tar.gz archive to the temporary directory
+                with tarfile.open(path, 'r:gz') as tar:
+                    tar.extractall(path=temp_dir)
 
-                # load models
-                for path in model_paths:
-                    cfg.se_models.append(SEModel())
-                    cfg.se_models[-1].load(root + "/" + path)
+                # Assuming the first file is always the interactions JSON,
+                # and the rest are model files
+                files = os.listdir(temp_dir)
+                json_path = [f for f in files if f.endswith('_interactions.json')][0]
+                model_files = [f for f in files if f != json_path]
 
-                # load interactions
-                with open(root + "/" + json_path, 'r') as f:
+                # Load models
+                for m_file in model_files:
+                    model_path = os.path.join(temp_dir, m_file)
+                    # Assuming SEModel has a load method that accepts a file path
+                    model = SEModel()
+                    model.load(model_path)
+                    cfg.se_models.append(model)
+
+                # Load interactions
+                with open(os.path.join(temp_dir, json_path), 'r') as f:
                     interaction_dict_list = json.load(f)
                     for d in interaction_dict_list:
                         ModelInteraction.from_dict(d)
@@ -2141,28 +2150,31 @@ class SegmentationEditor:
     @staticmethod
     def save_model_group(path):
         try:
-            root = os.path.dirname(path)
             group_name = os.path.splitext(os.path.basename(path))[0]
-            # save all models as '../[group_name]_model_N'
-            model_paths = list()
-            i = 0
-            for m in cfg.se_models:
-                m_path = group_name + f"_model_{i}" + cfg.filetype_semodel
-                m.save(root + "/" + m_path)
-                model_paths.append(m_path)
-                i += 1
 
-            # save interactions as json.
-            interaction_dict_list = list()
-            for interaction in ModelInteraction.all:
-                interaction_dict_list.append(interaction.as_dict())
-            json_path = f"{group_name}_interactions.json"
-            with open(root + "/" + json_path, 'w') as outfile:
-                json.dump(interaction_dict_list, outfile, indent=2)
+            # Create a temporary directory to hold the files before archiving
+            with tempfile.TemporaryDirectory() as temp_dir:
+                model_paths = list()
+                i = 0
+                for m in cfg.se_models:
+                    m_path = os.path.join(temp_dir, group_name + f"_model_{i}" + cfg.filetype_semodel)
+                    m.save(m_path)  # Save model directly to the temporary directory
+                    model_paths.append(m_path)
+                    i += 1
 
-            all_paths = [json_path] + model_paths
-            with open(path, 'w') as outfile:
-                json.dump(all_paths, outfile, indent=2)
+                # Save interactions as json in the temporary directory
+                interaction_dict_list = list()
+                for interaction in ModelInteraction.all:
+                    interaction_dict_list.append(interaction.as_dict())
+                json_path = os.path.join(temp_dir, f"{group_name}_interactions.json")
+                with open(json_path, 'w') as outfile:
+                    json.dump(interaction_dict_list, outfile, indent=2)
+
+                # Create a .tar.gz archive and add all the model and JSON files
+                with tarfile.open(path, 'w:gz') as tar:
+                    for file_path in model_paths + [json_path]:
+                        tar.add(file_path, arcname=os.path.basename(file_path))
+
         except Exception as e:
             cfg.set_error(e, "Error saving model group, see details below")
 

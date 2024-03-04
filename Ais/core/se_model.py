@@ -13,6 +13,8 @@ from Ais.core.opengl_classes import Texture
 from scipy.ndimage import rotate, zoom, binary_dilation
 import datetime
 import time
+import tarfile
+import tempfile
 # Note 230522: getting tensorflow to use the GPU is a pain. Eventually it worked with:
 # Python 3.9, CUDA D11.8, cuDNN 8.6, tensorflow 2.8.0, protobuf 3.20.0, and adding
 # LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
@@ -83,80 +85,90 @@ class SEModel:
 
     def save(self, file_path):
         # Split the file_path into directory and file
-        directory = os.path.dirname(file_path)
-        base_name = os.path.splitext(os.path.basename(file_path))[0]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            model_path = os.path.join(temp_dir, base_name + '_weights.h5')
+            metadata_path = os.path.join(temp_dir, base_name + "_metadata.json")
 
-        # Save the Keras model
-        model_path = os.path.join(directory, base_name + '_weights.h5')
-        self.model.save(model_path)
+            self.model.save(model_path)
 
-        # Save metadata
-        metadata = {
-            'title': self.title,
-            'colour': self.colour,
-            'apix': self.apix,
-            'compiled': self.compiled,
-            'box_size': self.box_size,
-            'model_enum': self.model_enum,
-            'epochs': self.epochs,
-            'batch_size': self.batch_size,
-            'active': self.active,
-            'blend': self.blend,
-            'show': self.show,
-            'alpha': self.alpha,
-            'threshold': self.threshold,
-            'overlap': self.overlap,
-            'active_tab': self.active_tab,
-            'n_parameters': self.n_parameters,
-            'n_copies': self.n_copies,
-            'info': self.info,
-            'info_short': self.info_short,
-            'excess_negative': self.excess_negative,
-            'emit': self.emit,
-            'absorb': self.absorb,
-            'loss': self.loss
-        }
-        with open(file_path, 'w') as f:
-            json.dump(metadata, f)
+            # Save metadata
+            metadata = {
+                'title': self.title,
+                'colour': self.colour,
+                'apix': self.apix,
+                'compiled': self.compiled,
+                'box_size': self.box_size,
+                'model_enum': self.model_enum,
+                'epochs': self.epochs,
+                'batch_size': self.batch_size,
+                'active': self.active,
+                'blend': self.blend,
+                'show': self.show,
+                'alpha': self.alpha,
+                'threshold': self.threshold,
+                'overlap': self.overlap,
+                'active_tab': self.active_tab,
+                'n_parameters': self.n_parameters,
+                'n_copies': self.n_copies,
+                'info': self.info,
+                'info_short': self.info_short,
+                'excess_negative': self.excess_negative,
+                'emit': self.emit,
+                'absorb': self.absorb,
+                'loss': self.loss
+            }
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f)
+
+            with tarfile.open(file_path, 'w:gz') as archive:
+                archive.add(model_path, arcname=os.path.basename(model_path))
+                archive.add(metadata_path, arcname=os.path.basename(metadata_path))
+
 
     def load(self, file_path):
         try:
-            # Split the file_path into directory and file
-            directory = os.path.dirname(file_path)
-            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with tarfile.open(file_path, 'r:gz') as archive:
+                    archive.extractall(path=temp_dir)
 
-            # Find the keras model:
-            model_path = glob.glob(os.path.join(directory, f"*{base_name}*.h5"))[0]
-            self.model = tf.keras.models.load_model(model_path)
+                base_name = os.path.splitext(os.path.basename(file_path))[0]
+                model_file = os.path.join(temp_dir, base_name + '_weights.h5')
+                metadata_file = os.path.join(temp_dir, base_name + '_metadata.json')
 
-            # Load metadata
-            with open(file_path, 'r') as f:
-                metadata = json.load(f)
-            self.title = metadata['title']
-            self.colour = metadata['colour']
-            self.apix = metadata['apix']
-            self.compiled = metadata['compiled']
-            self.box_size = metadata['box_size']
-            self.model_enum = metadata['model_enum']
-            self.epochs = metadata['epochs']
-            self.batch_size = metadata['batch_size']
-            self.active = metadata['active']
-            self.blend = metadata['blend']
-            self.show = metadata['show']
-            self.alpha = metadata['alpha']
-            self.threshold = metadata['threshold']
-            self.overlap = metadata['overlap']
-            self.active_tab = metadata['active_tab']
-            self.n_parameters = metadata['n_parameters']
-            self.n_copies = metadata['n_copies']
-            self.info = metadata['info']
-            self.info_short = metadata['info_short']
-            self.excess_negative = metadata['excess_negative']
-            self.emit = metadata['emit']
-            self.absorb = metadata['absorb']
-            self.loss = metadata['loss']
+                # Load the Keras model
+                self.model = tf.keras.models.load_model(model_file)
+
+                # Load metadata
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+
+                self.title = metadata['title']
+                self.colour = metadata['colour']
+                self.apix = metadata['apix']
+                self.compiled = metadata['compiled']
+                self.box_size = metadata['box_size']
+                self.model_enum = metadata['model_enum']
+                self.epochs = metadata['epochs']
+                self.batch_size = metadata['batch_size']
+                self.active = metadata['active']
+                self.blend = metadata['blend']
+                self.show = metadata['show']
+                self.alpha = metadata['alpha']
+                self.threshold = metadata['threshold']
+                self.overlap = metadata['overlap']
+                self.active_tab = metadata['active_tab']
+                self.n_parameters = metadata['n_parameters']
+                self.n_copies = metadata['n_copies']
+                self.info = metadata['info']
+                self.info_short = metadata['info_short']
+                self.excess_negative = metadata['excess_negative']
+                self.emit = metadata['emit']
+                self.absorb = metadata['absorb']
+                self.loss = metadata['loss']
+
         except Exception as e:
-            print("Error loading model - see details below", print(e))
+            print("Error loading model - see details below", e)
 
     def train(self):
         if self.train_data_path:
