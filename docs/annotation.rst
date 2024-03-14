@@ -38,7 +38,6 @@ Use the ‘Add feature’ button to set up a three features: membrane, carbon, a
 
 In the above image, the ‘carbon’  feature, with the highlighted panel, is the currently activated feature. The brush, with which annotations are drawn, can be seen as a yellow circle overlayed on the image. The membrane, lacey carbon, and antibody platforms have already been annotated. The drawing controls are as follows:
 
-
 +--------------------------+----------------------------------------------+
 | **Draw**                 | left mouse button                            |
 +--------------------------+----------------------------------------------+
@@ -48,18 +47,18 @@ In the above image, the ‘carbon’  feature, with the highlighted panel, is th
 +--------------------------+----------------------------------------------+
 | **Zoom view**            | scroll + hold SHIFT                          |
 +--------------------------+----------------------------------------------+
-| **Change brush size**    | hold CTRL & scroll mouse wheel             |
+| **Change brush size**    | hold CTRL & scroll mouse wheel               |
 +--------------------------+----------------------------------------------+
-| **Browse slices**        | scroll mouse wheel                           |
+| **Browse slices**        | scroll mouse wheel or left/right arrow keys  |
 +--------------------------+----------------------------------------------+
 | **Place box**            | left mouse button while holding SHIFT        |
 +--------------------------+----------------------------------------------+
 | **Remove box**           | right mouse button while holding SHIFT       |
 +--------------------------+----------------------------------------------+
-| **Set active feature**   | click it in the ‘Features’ panel, or use the |
-|                          | up/down keys                                 |
+| **Set active feature**   | click it in the Features panel, or use the   |
+|                          | W/S keys                                     |
 +--------------------------+----------------------------------------------+
-| **Set active tomogram**  | left/right arrow keys                        |
+| **Set active tomogram**  | up/down arrow keys                           |
 +--------------------------+----------------------------------------------+
 
 Placing boxes

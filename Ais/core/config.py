@@ -6,6 +6,8 @@ import sys
 import platform
 
 
+# TODO: backwards compatibility for .scnm and .scnmgroup files.
+
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
