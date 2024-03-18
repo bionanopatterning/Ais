@@ -10,6 +10,7 @@ import importlib
 import threading
 import json
 from Ais.core.opengl_classes import Texture
+from Ais.core.util import generate_thumbnail
 from scipy.ndimage import rotate, zoom, binary_dilation
 import datetime
 import time
@@ -83,14 +84,23 @@ class SEModel:
         for interaction in self.interactions:
             ModelInteraction.all.remove(interaction)
 
-    def save(self, file_path):
-        # Split the file_path into directory and file
+    def save(self, file_path, validation_slice=None):
         with tempfile.TemporaryDirectory() as temp_dir:
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             model_path = os.path.join(temp_dir, base_name + '_weights.h5')
             metadata_path = os.path.join(temp_dir, base_name + "_metadata.json")
+            slice_path = None
+            thumbnail_path = None
 
             self.model.save(model_path)
+            if validation_slice is not None:
+                slice_path = os.path.join(temp_dir, base_name + "_slice.tiff")
+                tifffile.imwrite(slice_path, validation_slice)
+
+                thumbnail_path = os.path.join(temp_dir, base_name + "_preview.png")
+                segmentation = self.apply_to_slice(validation_slice, 1.0)
+                thumbnail = generate_thumbnail(validation_slice, segmentation, self.colour)
+                thumbnail.save(thumbnail_path)
 
             # Save metadata
             metadata = {
@@ -121,20 +131,21 @@ class SEModel:
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f)
 
-            with tarfile.open(file_path, 'w:gz') as archive:
+            with tarfile.open(file_path, 'w') as archive:
                 archive.add(model_path, arcname=os.path.basename(model_path))
                 archive.add(metadata_path, arcname=os.path.basename(metadata_path))
-
+                if slice_path:
+                    archive.add(slice_path, arcname=os.path.basename(slice_path))
+                    archive.add(thumbnail_path, arcname=os.path.basename(thumbnail_path))
 
     def load(self, file_path):
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
-                with tarfile.open(file_path, 'r:gz') as archive:
+                with tarfile.open(file_path, 'r') as archive:
                     archive.extractall(path=temp_dir)
 
-                base_name = os.path.splitext(os.path.basename(file_path))[0]
-                model_file = os.path.join(temp_dir, base_name + '_weights.h5')
-                metadata_file = os.path.join(temp_dir, base_name + '_metadata.json')
+                model_file = glob.glob(os.path.join(temp_dir, "*_weights.h5"))[0]
+                metadata_file = glob.glob(os.path.join(temp_dir, "*_metadata.json"))[0]
 
                 # Load the Keras model
                 self.model = tf.keras.models.load_model(model_file)

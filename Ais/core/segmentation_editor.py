@@ -1030,7 +1030,7 @@ class SegmentationEditor:
                                     if model_path != "":
                                         if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
                                             model_path += cfg.filetype_semodel
-                                        m.save(model_path)
+                                        m.save(model_path, cfg.se_active_frame.data)
                             if block_save_button:
                                 imgui.pop_style_color(4)
                             imgui.same_line(spacing=8)
@@ -2112,7 +2112,7 @@ class SegmentationEditor:
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 # Extract the .tar.gz archive to the temporary directory
-                with tarfile.open(path, 'r:gz') as tar:
+                with tarfile.open(path, 'r') as tar:
                     tar.extractall(path=temp_dir)
 
                 # Assuming the first file is always the interactions JSON,
@@ -2171,7 +2171,7 @@ class SegmentationEditor:
                     json.dump(interaction_dict_list, outfile, indent=2)
 
                 # Create a .tar.gz archive and add all the model and JSON files
-                with tarfile.open(path, 'w:gz') as tar:
+                with tarfile.open(path, 'w') as tar:
                     for file_path in model_paths + [json_path]:
                         tar.add(file_path, arcname=os.path.basename(file_path))
 

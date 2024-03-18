@@ -13,6 +13,30 @@ from skimage.segmentation import watershed
 timer = 0.0
 
 
+def generate_thumbnail(data, overlay, colour):
+    s = min(data.shape)
+    sqdata = data[:s, :s]
+    overlay = overlay[:s, :s]
+    if cfg.se_active_frame:
+        sqdata -= cfg.se_active_frame.contrast_lims[0]
+        sqdata = sqdata * 255 / cfg.se_active_frame.contrast_lims[1]
+    else:
+        sqdata -= np.amin(sqdata)
+        sqdata = sqdata * 255 / np.amax(sqdata)
+    sqdata = np.clip(sqdata, 0, 255)
+    mask = overlay > 0.5
+    thumbnail = np.zeros((*sqdata.shape, 3), dtype=np.uint8)
+    thumbnail[:, :, 0] = sqdata
+    thumbnail[:, :, 1] = sqdata
+    thumbnail[:, :, 2] = sqdata
+    thumbnail[mask, 0] = colour[0] * 255
+    thumbnail[mask, 1] = colour[1] * 255
+    thumbnail[mask, 2] = colour[2] * 255
+    thumbnail = Image.fromarray(thumbnail)
+    thumbnail = thumbnail.resize((512, 512))
+    return thumbnail
+
+
 def coords_from_tsv(coords_path):
     coords = []
     with open(coords_path, 'r') as file:
