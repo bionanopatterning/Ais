@@ -1234,7 +1234,7 @@ class SegmentationEditor:
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.text("Models to include")
                 n_available_models = sum([m.compiled for m in cfg.se_models])
-                c_height = (1 if n_available_models == 0 else 2) + n_available_models * 21
+                c_height = (1 if n_available_models == 0 else 9) + n_available_models * 21
                 imgui.begin_child("models_included", 0.0, c_height, True)
                 for m in cfg.se_models:
                     if not m.compiled:

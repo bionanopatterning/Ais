@@ -55,7 +55,7 @@ class SEModel:
         self.model_enum = SEModel.DEFAULT_MODEL_ENUM
         self.epochs = 25
         self.batch_size = 32
-        self.train_data_path = ""
+        self.train_data_path = "(path to training dataset)"
         self.active = True
         self.export = True
         self.blend = False

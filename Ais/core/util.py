@@ -15,14 +15,16 @@ timer = 0.0
 
 def generate_thumbnail(data, overlay, colour):
     s = min(data.shape)
-    sqdata = data[:s, :s]
+    sqdata = data[:s, :s].astype(np.float32)
     overlay = overlay[:s, :s]
     if cfg.se_active_frame:
         sqdata -= cfg.se_active_frame.contrast_lims[0]
-        sqdata = sqdata * 255 / cfg.se_active_frame.contrast_lims[1]
+        sqdata = sqdata / (cfg.se_active_frame.contrast_lims[1] - cfg.se_active_frame.contrast_lims[0])
+        sqdata *= 255
     else:
         sqdata -= np.amin(sqdata)
-        sqdata = sqdata * 255 / np.amax(sqdata)
+        sqdata = sqdata / np.amax(sqdata)
+        sqdata = sqdata * 255
     sqdata = np.clip(sqdata, 0, 255)
     mask = overlay > 0.5
     thumbnail = np.zeros((*sqdata.shape, 3), dtype=np.uint8)
