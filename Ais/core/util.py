@@ -248,7 +248,8 @@ def bin_mrc(path, bin_factor):
     print(f"Binning dataset by factor {b} (dtype = {data.dtype})")
     data = data[:z // b * b, :y // b * b, :x // b * b]
     _type = data.dtype
-    data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5, dtype=_type).mean(3, dtype=_type).mean(1, dtype=_type)
+    data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5).mean(3).mean(1)
+    data = data.astype(_type)
     out_path = path[:path.rfind('.mrc')]+f"_bin{b}.mrc"
     print(f"Saving dataset as: '{out_path}'")
     with mrcfile.new(out_path, overwrite=True) as mrc:

@@ -5,8 +5,7 @@ from datetime import datetime
 import sys
 import platform
 
-
-# TODO: backwards compatibility for .scnm and .scnmgroup files.
+# TODO: .tif files as input
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
