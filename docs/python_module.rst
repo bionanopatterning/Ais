@@ -3,7 +3,7 @@ __________
 
 Ais was originally created as a part of our cryoCLEM processing suite `scNodes <https://github.com/bionanopatterning/scNodes>`_. As such, the naming system of Ais as a standalone python package can be a little bit confusing. Here we outline some of the classes and functions of Ais that you may be useful in case you want to strip certain functionality from Ais; for example, to create a script for batch processing that can be called from the command line (see below).
 
-Ais imports two filetypes for segmentation (as of October 27th, 2023; we will probably include .tif at some point): .mrc files and .scns files. When importing a .mrc and saving the dataset, a .scns file is created that links to that dataset. When the original .mrc file is moved, the link in the .scns becomes incorrect. By right-clicking a dataset in the Datasets panel of the main menu and selecting the 'Relink dataset' this link can be repaired.
+Ais imports two filetypes for segmentation: .mrc files and .scns files. When importing a .mrc and saving the dataset, a .scns file is created that links to that dataset. When the original .mrc file is moved, the link in the .scns becomes incorrect. By right-clicking a dataset in the Datasets panel of the main menu and selecting the 'Relink dataset' this link can be repaired.
 
 Filetypes
 ^^^^^^^^^^^^^^
@@ -14,9 +14,9 @@ The following filetypes are created and used by Ais:
 
 **.scnt**, or 'scNodes training data', is essentially just a .tif file (they can be opened in ImageJ/FIJI) but containing some additional metadata that is read by Ais when training a neural network.
 
-**.scnm**, or 'scNodes model', are .json files containing the parameters of segmentation models; such as their colour, the A/pix they were trained on, etc. A '[model_name]_weights.h5' file also exists for every .scnm file and these files are expected to be in the same folder when loading a model into Ais.
+**.scnm**, or 'scNodes model', are .tar archives that contain one file each of the following types: .h5, the model weights, .json, the metadata (colour, name, pixel size, etc.), and .tif and .png files that are used for validation when uploading a model to aiscryoet.org.
 
-**.scnmgroup**, or 'scNodes model group' files are created when saving model groups. The .scnmgroup file links to multiple .scnm and .h5 files, as well as saved the model interactions between these groups.
+**.scnmgroup**, or 'scNodes model group' files are .tar archives that are created when saving model groups. The .scnmgroup archive contains multiple .scnm files, as well as a .json that describes the interactions between the models in the group.
 
 Models
 ^^^^^^^^^^^^^^

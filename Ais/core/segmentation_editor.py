@@ -22,6 +22,7 @@ except ImportError:
 # TODO: render surface models in Render tab _only_ when an update is required.
 # TODO: save SEMOdels as tarballs instead of in two separate files
 
+
 class SegmentationEditor:
     if True:
         CAMERA_ZOOM_STEP = 0.1
@@ -1754,7 +1755,6 @@ class SegmentationEditor:
                 # Render surface models in 3D
                 if not imgui.is_key_down(glfw.KEY_Q):
                     self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT)
-                    self.renderer.render_surface_model_particles(cfg.se_surface_models, self.camera3d)
 
                 # Render the frame
                 pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, camera3d=self.camera3d)
@@ -1765,6 +1765,9 @@ class SegmentationEditor:
                     if cfg.se_active_frame.autocontrast:
                         cfg.se_active_frame.compute_autocontrast(None, pxd)
                 SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE = False
+
+                if not imgui.is_key_down(glfw.KEY_Q):
+                    self.renderer.render_surface_model_particles(cfg.se_surface_models, self.camera3d)
 
                 # Render overlay, if possible:
                 if cfg.se_active_frame.overlay is not None:
