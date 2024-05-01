@@ -1,6 +1,10 @@
 import glfw
-from platform import system
-from OpenGL.GL import *
+
+from OpenGL.GL import (
+    glBlendFunc, glEnable, glClearColor, glClear, glViewport,
+    GL_TRUE, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_BLEND,
+    GL_MULTISAMPLE, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
+)
 
 
 class Window:
@@ -12,8 +16,8 @@ class Window:
         glfw.window_hint(glfw.CONTEXT_VERSION_MAJOR, 3)
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-        glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, OpenGL.GL.GL_TRUE)
-        glfw.window_hint(glfw.RESIZABLE, glfw.TRUE)  ## in order to avoid an issue with pyimgui multiple contexts, window sizes are fixed.
+        glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, GL_TRUE)
+        glfw.window_hint(glfw.RESIZABLE, glfw.TRUE)
         glfw.window_hint(glfw.SAMPLES, 4)
         self.glfw_window = glfw.create_window(self.width, self.height, self.title, None, None)
         self.focused = True
