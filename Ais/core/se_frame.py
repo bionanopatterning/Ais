@@ -508,6 +508,30 @@ class Segmentation:
         except Exception as e:
             print(e)
 
+    def import_slice(self, path, threshold=128):
+        data = mrcfile.mmap(path).data[self.current_slice, :, :]
+        if data.shape != (self.height, self.width):
+            raise Exception("Selected .mrc does not have the same dimensions as this Feature's parent .mrc")
+        self.slices[self.current_slice] = (data > threshold).astype(np.uint8)
+        self.edited_slices.append(self.current_slice)
+        self.boxes[self.current_slice] = list()
+        self.data = self.slices[self.current_slice]
+        self.texture.update(self.data, self.width, self.height)
+
+    def import_mrc(self, path, threshold=128):
+        data = mrcfile.read(path)
+        if data.shape != (self.parent.n_slices, self.height, self.width):
+            raise Exception("Selected .mrc does not have the same dimensions as this Feature's parent .mrc")
+        self.slices = dict()
+        self.edited_slices = list()
+        for i in range(data.shape[0]):
+            self.edited_slices.append(i)
+            self.slices[i] = (data[i, :, :] > threshold).astype(np.uint8)
+            self.boxes[i] = list()
+        self.data = self.slices[self.current_slice]
+        self.texture.update(self.data, self.width, self.height)
+
+
 
 class Transform:
     def __init__(self):

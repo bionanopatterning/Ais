@@ -96,7 +96,6 @@ class SegmentationEditor:
         EXTRACT_MIN_SPACING = 10.0  # Angstrom
         EXTRACT_SELECTED_FEATURE_TITLE = ""
         EXTRACT_ALL = True
-        EXTRACT_MIN_SPACING = 10.0
         queued_exports = list()
         export_dir = ""
 
@@ -105,6 +104,8 @@ class SegmentationEditor:
 
         SHOW_BOOT_SPRITE = True
         ICON = Image.open(os.path.join(cfg.root, "icons", "LOGO_Pom_128.png"))
+
+        FEATURE_IMPORT_MRC_THRESHOLD = 128
 
     def __init__(self, window, imgui_context, imgui_impl):
         self.window = window
@@ -807,7 +808,32 @@ class SegmentationEditor:
                             imgui.same_line(spacing=5)
                             if imgui.button("volume", (cw - 15) / 3, 15):
                                 f.save_volume()
+
+                            # Import
+                            imgui.push_id(f"{f.uid}_import")
+                            imgui.text("Import:")
+                            imgui.push_item_width((cw - 15) / 3)
+                            _, SegmentationEditor.FEATURE_IMPORT_MRC_THRESHOLD = imgui.slider_int("##fthslint", SegmentationEditor.FEATURE_IMPORT_MRC_THRESHOLD, 0, 255)
+                            imgui.same_line(spacing=5)
+                            if imgui.button("slice", (cw - 15) / 3, 15):
+                                print(1)
+                                path = filedialog.askopenfilename(filetypes=[("mrcfile", f".mrc")])
+                                if path != "":
+                                    try:
+                                        f.import_slice(path, threshold=SegmentationEditor.FEATURE_IMPORT_MRC_THRESHOLD)
+                                    except Exception as e:
+                                        cfg.set_error(e, f"Could not initialize Feature using mrc file {path}")
+                            imgui.same_line(spacing=5)
+                            if imgui.button("volume", (cw - 15) / 3, 15):
+                                print(0)
+                                path = filedialog.askopenfilename(filetypes=[("mrcfile", f".mrc")])
+                                if path != "":
+                                    try:
+                                        f.import_mrc(path, threshold=SegmentationEditor.FEATURE_IMPORT_MRC_THRESHOLD)
+                                    except Exception as e:
+                                        cfg.set_error(e, f"Could not initialize Feature using mrc file {path}")
                             imgui.pop_style_color(3)
+                            imgui.pop_id()
                             imgui.end_menu()
 
                         imgui.pop_style_color(3)
