@@ -19,50 +19,58 @@ class SEFrame:
         uid_counter = next(SEFrame.idgen)
         self.uid = int(datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')+"000") + uid_counter
         self.path = path
-        self.title = os.path.splitext(os.path.basename(path))[0]
-        self.n_slices = 0
-        self.current_slice = -1
-        self.slice_changed = False
-        self.data = None
-        self.rendered_data = None
-        self.includes_map = False
-        self.map = None
-        self.features = list()
-        self.feature_counter = 0
-        self.active_feature = None
-        self.height, self.width = mrcfile.mmap(self.path, mode="r", permissive=True).data.shape[1:3]
-        self.pixel_size = mrcfile.open(self.path, header_only=True, permissive=True).voxel_size.x / 10.0
-        if self.pixel_size == 0.0:
-            self.pixel_size = 1.0
-        self.transform = Transform()
-        self.clem_frame = None
-        self.clem_frame_path = None
-        self.overlay = None
-        self.texture = None
-        self.quad_va = None
-        self.border_va = None
-        self.interpolate = False
-        self.alpha = 1.0
-        self.filters = list()
-        self.invert = False
-        self.crop = False
-        self.crop_roi = [0, 0, self.width, self.height]
-        self.autocontrast = True
-        self.sample = True
-        self.export = False
-        self.pick = False
-        self.export_bottom = 0
-        self.export_top = None
-        self.hist_vals = list()
-        self.hist_bins = list()
-        self.corner_positions_local = []
-        self.set_slice(0, False)
-        self.setup_opengl_objects()
-        self.contrast_lims = [0, 512.0]
-        self.compute_autocontrast()
-        self.compute_histogram()
-        self.toggle_interpolation()
-        self.set_slice(self.n_slices // 2, True)
+        if os.path.exists(self.path):
+            self.title = os.path.splitext(os.path.basename(path))[0]
+            self.n_slices = 0
+            self.current_slice = -1
+            self.slice_changed = False
+            self.data = None
+            self.rendered_data = None
+            self.includes_map = False
+            self.map = None
+            self.features = list()
+            self.feature_counter = 0
+            self.active_feature = None
+            self.height, self.width = mrcfile.mmap(self.path, mode="r", permissive=True).data.shape[1:3]
+            self.pixel_size = mrcfile.open(self.path, header_only=True, permissive=True).voxel_size.x / 10.0
+            if self.pixel_size == 0.0:
+                self.pixel_size = 1.0
+            self.transform = Transform()
+            self.clem_frame = None
+            self.clem_frame_path = None
+            self.overlay = None
+            self.texture = None
+            self.quad_va = None
+            self.border_va = None
+            self.interpolate = False
+            self.alpha = 1.0
+            self.filters = list()
+            self.invert = False
+            self.crop = False
+            self.crop_roi = [0, 0, self.width, self.height]
+            self.autocontrast = True
+            self.sample = True
+            self.export = False
+            self.pick = False
+            self.export_bottom = 0
+            self.export_top = None
+            self.hist_vals = list()
+            self.hist_bins = list()
+            self.corner_positions_local = []
+            self.set_slice(0, False)
+            self.setup_opengl_objects()
+            self.contrast_lims = [0, 512.0]
+            self.compute_autocontrast()
+            self.compute_histogram()
+            self.toggle_interpolation()
+            self.set_slice(self.n_slices // 2, True)
+
+    def __getstate(self):
+        state = self.__dict__.copy()
+        return state
+
+    def __setstate(self, state):
+        self.__dict__.update(state)
 
     def setup_opengl_objects(self):
         self.texture = Texture(format="r32f")
@@ -513,7 +521,8 @@ class Segmentation:
         if data.shape != (self.height, self.width):
             raise Exception("Selected .mrc does not have the same dimensions as this Feature's parent .mrc")
         self.slices[self.current_slice] = (data > threshold).astype(np.uint8)
-        self.edited_slices.append(self.current_slice)
+        if self.current_slice not in self.edited_slices:
+            self.edited_slices.append(self.current_slice)
         self.boxes[self.current_slice] = list()
         self.data = self.slices[self.current_slice]
         self.texture.update(self.data, self.width, self.height)

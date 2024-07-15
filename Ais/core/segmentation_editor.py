@@ -554,6 +554,14 @@ class SegmentationEditor:
                             pyperclip.copy(s.path)
                         if s.overlay is not None and s.overlay.update_function is not None and imgui.menu_item("Update overlay")[0]:
                             s.overlay.update()
+                        if s.overlay is not None and imgui.menu_item("Export overlay (.tif)")[0]:
+                            filename = filedialog.asksaveasfilename()
+                            if filename != "":
+                                try:
+                                    tifffile.imwrite(os.path.splitext(filename)[0]+".tif", s.overlay.pxd[:, :, 0:3])
+                                except Exception as e:
+                                    cfg.set_error(e, "Could not export overlay as .tif - see below:")
+
                         if imgui.begin_menu("Generate binned version"):
                             path = s.path
                             for i in [2, 3, 4, 8]:
@@ -2118,7 +2126,8 @@ class SegmentationEditor:
         else:
             all_imgs = np.array(positive + negative)
         tifffile.imwrite(path, all_imgs, description=f"apix={apix:.2f}")
-
+        process.set_progress(1.0)
+        
     @staticmethod
     def seframe_from_clemframe(clemframe):
         if not os.path.exists(clemframe.path):
