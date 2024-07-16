@@ -23,12 +23,13 @@ Table of contents
 __________
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
 
    installation
    annotation
    creating_models
+   sharing_models
    batch_processing
    rendering
    picking

@@ -33,3 +33,9 @@ Installing cuDNN: https://docs.nvidia.com/deeplearning/cudnn/install-guide/index
 
 When running Ais from within an IDE some paths may need to be manually specified. In PyCharm, add the path to the zlib .dll to the run configuration environment variables as follows to enable tensorflow using the GPU:
 LIBRARY_PATH=C:\Program Files\zlib123dllx64\dll_x64
+
+
+Settings
+^^^^^^^^^^^^
+
+To be able to directly port 3D scenes into Blender or ChimeraX, the paths to the Blender and ChimeraX executables must be specified. These can be set via the main menu bar -> Settings -> 3rd party applications.

@@ -91,19 +91,113 @@ Important note: the first function that must always be called to enable Ais func
        time.sleep(0.1)
 
 
+Implementing custom model architectures
+^^^^^^^^^^^^
+
+Adding a Keras model
+#########
+
+Most models in the standard Ais library are Keras models (tensorflow.keras). Adding an extra keras model with a new architecture is relatively straightforward and can be achieved by adding a .py file to Ais/models directory. The .py file requires three components: a title for the model, a boolean that specifies whether the model should be available in the software, and a function 'create' that returns a keras model. The implementation of the VGGNet model (vggnet.py) is copied below as an example.
 
 
 
+::
+
+    from tensorflow.keras.models import Model
+    from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
+    from tensorflow.keras.optimizers import Adam
+
+    title = "VGGNet"
+    include = True
+
+    def create(input_shape):
+        inputs = Input(input_shape)
+
+        # Block 1
+        conv1 = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
+        conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(conv1)
+        pool1 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+        # Block 2
+        conv3 = Conv2D(128, (3, 3), activation='relu', padding='same')(pool1)
+        conv4 = Conv2D(128, (3, 3), activation='relu', padding='same')(conv3)
+        pool2 = MaxPooling2D(pool_size=(2, 2))(conv4)
+
+        # Block 3
+        conv5 = Conv2D(256, (3, 3), activation='relu', padding='same')(pool2)
+        conv6 = Conv2D(256, (3, 3), activation='relu', padding='same')(conv5)
+        pool3 = MaxPooling2D(pool_size=(2, 2))(conv6)
+
+        # Upsampling and Decoding
+        up1 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(pool3)
+        conv7 = Conv2D(128, (3, 3), activation='relu', padding='same')(up1)
+
+        up2 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(conv7)
+        conv8 = Conv2D(64, (3, 3), activation='relu', padding='same')(up2)
+
+        up3 = Conv2DTranspose(1, (2, 2), strides=(2, 2), padding='same')(conv8)
+        output = Conv2D(1, (1, 1), activation='sigmoid')(up3)
+
+        # create the model
+        model = Model(inputs=[inputs], outputs=[output])
+        model.compile(optimizer=Adam(), loss='binary_crossentropy')
+
+        return model
+
+Adding a non-Keras model
+#########
+
+Adding a non-Keras model is also possible but requires a little bit of extra work. Only a small number of methods of the Keras model object type are directly accessed by Ais. These are: count_params, fit, predict, save, and load. Adding a custom model thus requires adding a .py file to the Ais/models that contains four components: a title, a boolean that specifies whether the model is available in the software, and a function 'create' that returns model object (these are as before, with adding a keras model), and additionally a definition of a class that implements the required methods. The return types of these methods should be the same as those returned by the corresponding Keras methods. The contents of the model_template.py template file are copied below as an example.
+
+::
+
+    title = "Template_model"
+    include = False
 
 
+    def create(input_shape):
+        return TemplateModel(input_shape)
 
 
+    class TemplateModel:
+        def __init__(self, input_shape):
+            self.img_shape = input_shape
+            self.generator, self.discriminator = self.compile_custom_model()
 
+        def compile_custom_model(self):
+            # e.g.: compile generator, compile discriminator, return.
+            return 0, 0
 
+        def count_params(self):
+            # e.g. return self.generator.count_params()
+            # for the default models, the number of parameters that is returned is the amount that are involved in processing, not in training. So for e.g. a GAN, the discriminator params are not included.
+            return 0
 
+        def fit(self, train_x, train_y, epochs, batch_size=1, shuffle=True, callbacks=[]):
+            for c in callbacks:
+                c.params['epochs'] = epochs
 
+            # fit model, e.g.:
+            for e in range(epochs):
+                for i in range(len(train_x) // batch_size):
+                    # fit batch
+                    pass
 
+                    logs = {'loss': 0.0}
+                    for c in callbacks:
+                        c.on_batch_end(i, logs)
 
+        def predict(self, images):
+            # e.g.: return self.generator.predict(images)
+            return None
+
+        def save(self, path):
+            pass
+
+        def load(self, path):
+            pass
+
+A more concrete example of the implementation of a custom model can be found in `Ais/models/pix2pix.py <https://github.com/bionanopatterning/Ais/blob/master/Ais/models/pix2pix.py>`_. The pix2pix model is implemented in Keras, but since it internally requires the use of two separate Keras model objects (the generator and the discriminator), implementing it in Ais was a matter of wrapping the pix2pix models in a custom class.
 
 
 

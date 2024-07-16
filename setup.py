@@ -12,7 +12,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name='Ais-cryoET',
-    version='1.0.26',
+    version='1.0.27',
     packages=find_packages(),
     entry_points={'console_scripts': ['ais=Ais.main:main', 'ais-cryoet=Ais.main:main']},
     url='https://github.com/bionanopatterning/Ais',

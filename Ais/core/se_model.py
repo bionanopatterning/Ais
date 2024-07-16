@@ -276,7 +276,8 @@ class SEModel:
                 return
 
             # train
-            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True,
+            validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
+            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split,
                            callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self),
                                       StopTrainingCallback(process.stop_request)])
             process.set_progress(1.0)
@@ -297,8 +298,9 @@ class SEModel:
         self.update_info()
 
     def update_info(self):
-        self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f})"
-        self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f})"
+        validation_split_tag = "" if ("VALIDATION_SPLIT" not in self.bcprms or self.bcprms["VALIDATION_SPLIT"] == 0.0) else f"|{self.bcprms['VALIDATION_SPLIT']*100.0:.i}%"
+        self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+        self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
 
     def get_model_title(self):
         return SEModel.AVAILABLE_MODELS[self.model_enum]
@@ -519,11 +521,21 @@ class TrainingProgressCallback(Callback):
         self.batches_in_epoch = self.n_samples // self.batch_size
         self.current_epoch = epoch
 
+    def on_epoch_end(self, epoch, logs=None):
+        if "VALIDATION_LOSS" in self.se_model.bcprms and not self.se_model.bcprms["VALIDATION_LOSS"] == 0.0:
+            return
+        if logs is not None:
+            val_loss = logs.get('val_loss')
+            if val_loss is not None:
+                self.se_model.loss = val_loss
+                self.se_model.update_info()
+
     def on_batch_end(self, batch, logs=None):
         progress_in_current_epoch = (batch + 1) / self.batches_in_epoch
         total_progress = (self.current_epoch + progress_in_current_epoch) / self.params['epochs']
         self.process.set_progress(total_progress)
-        self.se_model.loss = logs['loss']
+        if "VALIDATION_LOSS" not in self.se_model.bcprms or self.se_model.bcprms["VALIDATION_LOSS"] == 0.0:
+            self.se_model.loss = logs['loss']
         self.se_model.update_info()
 
 

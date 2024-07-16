@@ -156,7 +156,6 @@ class SegmentationEditor:
         for i in range(4):
             self.crop_handles.append(WorldSpaceIcon(i))
 
-
         if True:
             icon_dir = os.path.join(cfg.root, "icons")
 
@@ -1071,6 +1070,7 @@ class SegmentationEditor:
                             imgui.same_line(spacing=8)
                             if imgui.button("train", (cw - 16) / 3, 20):
                                 if not block_buttons:
+                                    m.bcprms["VALIDATION_SPLIT"] = int(cfg.settings["VALIDATION_SPLIT"]) / 100.0
                                     m.train()
                             if block_buttons:
                                 imgui.pop_style_color(4)
@@ -1631,16 +1631,16 @@ class SegmentationEditor:
                         except Exception as e:
                             cfg.set_error(e, "Could not save model group, see details below.")
                     imgui.separator()
-                    if imgui.menu_item("Export validation slice")[0]:
-                        try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("tifffile", ".tiff")])
-                            if filename != '':
-                                if filename[-5:] != '.tiff':
-                                    filename += '.tiff'
-                                tifffile.imwrite(filename, cfg.se_active_frame.data.astype(np.float32))
-                        except Exception as e:
-                            cfg.set_error(e, "Could not export current slice as .tiff, see details below.")
-                    imgui.separator()
+                    # if imgui.menu_item("Export validation slice")[0]:
+                    #     try:
+                    #         filename = filedialog.asksaveasfilename(filetypes=[("tifffile", ".tiff")])
+                    #         if filename != '':
+                    #             if filename[-5:] != '.tiff':
+                    #                 filename += '.tiff'
+                    #             tifffile.imwrite(filename, cfg.se_active_frame.data.astype(np.float32))
+                    #     except Exception as e:
+                    #         cfg.set_error(e, "Could not export current slice as .tiff, see details below.")
+                    # imgui.separator()
                     imgui.text(f'version {cfg.version}')
                     imgui.end_menu()
 
@@ -1649,6 +1649,59 @@ class SegmentationEditor:
                         select, _ = imgui.menu_item(scn_cfg.editors[i], None, False)
                         if select:
                             scn_cfg.active_editor = i
+                    imgui.end_menu()
+                if imgui.begin_menu("Settings"):
+                    if imgui.begin_menu("Validation splits"):
+                        split_setting = cfg.settings["VALIDATION_SPLIT"]
+                        split_options = {'no split': "0", 'split 10%': "10", 'split 20%': "20", 'split 50%': "50"}
+                        for k in split_options:
+                            if imgui.menu_item(k, None, split_setting == split_options[k])[0]:
+                                cfg.edit_setting("VALIDATION_SPLIT", split_options[k])
+                        imgui.end_menu()
+
+                    if imgui.begin_menu("3rd party applications"):
+                        if imgui.begin_menu("Blender"):
+                            blender_path = cfg.settings["BLENDER_EXE"]
+
+                            if not os.path.exists(blender_path):
+                                imgui.push_style_color(imgui.COLOR_TEXT, 0.8, 0.0, 0.0, 1.0)
+                                imgui.text("Blender .exe not found!")
+                                imgui.pop_style_color()
+                            else:
+                                imgui.push_style_color(imgui.COLOR_TEXT, 0.0, 0.0, 0.8, 1.0)
+                                imgui.text(cfg.settings["BLENDER_EXE"])
+                                imgui.pop_style_color()
+                            imgui.separator()
+                            if imgui.menu_item("Set path to .exe")[0]:
+                                path = filedialog.askopenfilename(filetypes=[("Blender executable", ".exe")])
+                                if path != "":
+                                    cfg.edit_setting("BLENDER_EXE", path)
+                            if os.path.exists(blender_path) and imgui.menu_item("Launch")[0]:
+                                subprocess.Popen([cfg.settings["BLENDER_EXE"]])
+
+                            imgui.end_menu()
+                        if imgui.begin_menu("ChimeraX"):
+                            chimerax_path = cfg.settings["CHIMERAX_EXE"]
+
+                            if not os.path.exists(chimerax_path):
+                                imgui.push_style_color(imgui.COLOR_TEXT, 0.8, 0.0, 0.0, 1.0)
+                                imgui.text("ChimeraX .exe not found!")
+                                imgui.pop_style_color()
+                            else:
+                                imgui.push_style_color(imgui.COLOR_TEXT, 0.0, 0.0, 0.8, 1.0)
+                                imgui.text(cfg.settings["CHIMERAX_EXE"])
+                                imgui.pop_style_color()
+                            imgui.separator()
+                            if imgui.menu_item("Set path to .exe")[0]:
+                                path = filedialog.askopenfilename(filetypes=[("ChimeraX executable", ".exe")])
+                                if path != "":
+                                    cfg.edit_setting("CHIMERAX_EXE", path)
+
+                            if os.path.exists(chimerax_path) and imgui.menu_item("Launch")[0]:
+                                subprocess.Popen([cfg.settings["CHIMERAX_EXE"]])
+                            imgui.end_menu()
+                        imgui.end_menu()
+
                     imgui.end_menu()
                 if imgui.begin_menu("Controls"):
                     imgui.text(cfg.controls_info_text)

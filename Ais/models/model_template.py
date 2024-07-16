@@ -17,10 +17,9 @@ def create(input_shape):
     return TemplateModel(input_shape)
 
 
-class TemplateModel:  # note that inheriting from tensorflow.keras.models.Model may be useful.
+class TemplateModel:
     def __init__(self, input_shape):
         self.img_shape = input_shape
-        ## in the below example we pretend that we're implementing a GAN here
         self.generator, self.discriminator = self.compile_custom_model()
 
     def compile_custom_model(self):
