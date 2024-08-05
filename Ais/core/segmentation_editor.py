@@ -106,6 +106,9 @@ class SegmentationEditor:
         ICON = Image.open(os.path.join(cfg.root, "icons", "LOGO_Pom_128.png"))
 
         FEATURE_IMPORT_MRC_THRESHOLD = 128
+        PATH_VIEWER_OPEN = False
+        PATH_VIEWER_OPEN_FIND = ""
+        PATH_VIEWER_OPEN_REPLACE = ""
 
     def __init__(self, window, imgui_context, imgui_impl):
         cfg.start_log()
@@ -447,6 +450,7 @@ class SegmentationEditor:
                     SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
                     if seframe.includes_map:
                         seframe.path = filename[:-len(cfg.filetype_segmentation)]+".mrc"  # 'virtual' file path, pointing at the location of the .scns file but ending with .mrc s.t. model output regex doesn't get messed up
+                    seframe.scns_path = filename
                 self.parse_available_features()
         except Exception as e:
             cfg.set_error(e, "Error importing dataset, see details below:")
@@ -461,9 +465,15 @@ class SegmentationEditor:
                     initialfile=default_name)
             else:
                 filename = default_name
+                if hasattr(cfg.se_active_frame, "scns_path"):
+                    if cfg.se_active_frame.scns_path != "n/a":
+                        filename = cfg.se_active_frame.scns_path
+                        print(f"Quick-saved file as {filename}")
             if filename != '':
                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                     filename += cfg.filetype_segmentation
+                if hasattr(cfg.se_active_frame, "scns_path"):
+                    cfg.se_active_frame.scns_path = filename
                 with open(filename, 'wb') as pickle_file:
                     pickle.dump(cfg.se_active_frame, pickle_file)
 
@@ -1703,6 +1713,10 @@ class SegmentationEditor:
                             imgui.end_menu()
                         imgui.end_menu()
 
+                    if imgui.begin_menu("File linking"):
+                        if imgui.menu_item("Open path viewer")[0]:
+                            SegmentationEditor.PATH_VIEWER_OPEN = True
+                        imgui.end_menu()
                     imgui.end_menu()
                 if imgui.begin_menu("Controls"):
                     imgui.text(cfg.controls_info_text)
@@ -1778,6 +1792,82 @@ class SegmentationEditor:
 
             imgui.pop_style_var(3)
             imgui.pop_style_color(5)
+
+        def popup_windows():
+            if SegmentationEditor.PATH_VIEWER_OPEN:
+                window_width = 900
+                window_max_height = 450
+                imgui.set_next_window_position(cfg.window_width - window_width, 17, imgui.APPEARING)
+                imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
+                _, SegmentationEditor.PATH_VIEWER_OPEN = imgui.begin("Path viewer", True, imgui.WINDOW_NO_SCROLLBAR)
+                w_col1 = 93
+                w_col2 = 380
+                w_col3 = 380
+
+                imgui.push_style_color(imgui.COLOR_TABLE_HEADER_BACKGROUND, *cfg.COLOUR_HEADER)
+                imgui.push_style_color(imgui.COLOR_SCROLLBAR_BACKGROUND, *cfg.COLOUR_HEADER)
+                imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, 1.0, 1.0, 1.0, 0.0)
+                imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                with imgui.begin_table("pvctable", 3, imgui.TABLE_RESIZABLE | imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_BORDERS_INNER | imgui.TABLE_SCROLL_Y, 0.0, 200.0):
+                    imgui.table_setup_column("ID", imgui.TABLE_COLUMN_WIDTH_FIXED, w_col1)
+                    imgui.table_setup_column(".mrc path", 0)
+                    imgui.table_setup_column(".scns path", 0)
+                    imgui.table_setup_scroll_freeze(0, 1)
+                    imgui.table_headers_row()
+
+                    for s in cfg.se_frames:
+                        imgui.table_next_row()
+                        imgui.table_next_column()
+                        h_id_str = hex(s.uid)
+                        if len(h_id_str) > 8:
+                            h_id_str = h_id_str[8:]
+                        imgui.set_next_item_width(w_col1)
+                        imgui.input_text(f"##{s.uid}col1", h_id_str, 1024, imgui.INPUT_TEXT_READ_ONLY)
+
+                        imgui.table_next_column()
+                        mrc_found = False
+                        highlight = SegmentationEditor.PATH_VIEWER_OPEN_FIND in s.path if SegmentationEditor.PATH_VIEWER_OPEN_FIND != "" else False
+                        if os.path.exists(s.path):
+                            mrc_found = True
+                        if not mrc_found:
+                            imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_NEGATIVE)
+                        if highlight:
+                            imgui.table_set_background_color(imgui.TABLE_BACKGROUND_TARGET_CELL_BG, imgui.color_convert_float4_to_u32(*cfg.COLOUR_HIGHLIGHT), 1)
+                        imgui.set_next_item_width(w_col2)
+                        imgui.input_text(f"##{s.uid}col2", s.path, 1024, imgui.INPUT_TEXT_READ_ONLY)
+
+                        if not mrc_found:
+                            imgui.pop_style_color(1)
+
+                        imgui.table_next_column()
+                        imgui.set_next_item_width(w_col3 - 2)
+                        if hasattr(s, "scns_path"):
+                            imgui.input_text(f"##{s.uid}col3", s.scns_path, 1024, imgui.INPUT_TEXT_READ_ONLY)
+                        else:
+                            imgui.input_text(f"##{s.uid}col3", "n/a", 1024, imgui.INPUT_TEXT_READ_ONLY)
+                imgui.pop_style_color(3)
+                imgui.pop_style_var(1)
+
+                imgui.align_text_to_frame_padding()
+                imgui.text("Find:")
+                imgui.same_line(position=70)
+                imgui.set_next_item_width(imgui.get_content_region_available_width())
+                _, SegmentationEditor.PATH_VIEWER_OPEN_FIND = imgui.input_text("##pathviewfind", SegmentationEditor.PATH_VIEWER_OPEN_FIND, 1024)
+                imgui.align_text_to_frame_padding()
+                imgui.text("Replace:")
+                imgui.same_line(position=70)
+                imgui.set_next_item_width(imgui.get_content_region_available_width())
+                _, SegmentationEditor.PATH_VIEWER_OPEN_REPLACE = imgui.input_text("##pathviewrepl", SegmentationEditor.PATH_VIEWER_OPEN_REPLACE, 1024)
+                imgui.new_line()
+                imgui.same_line(position = imgui.get_content_region_available_width() - 160)
+
+                imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
+                if imgui.button("Apply to .mrc paths", 170):
+                    for s in cfg.se_frames:
+                        if SegmentationEditor.PATH_VIEWER_OPEN_FIND in s.path:
+                            s.path = s.path.replace(SegmentationEditor.PATH_VIEWER_OPEN_FIND, SegmentationEditor.PATH_VIEWER_OPEN_REPLACE)
+                imgui.pop_style_var(1)
+                imgui.end()
 
         # START GUI:
         # Menu bar
@@ -1903,6 +1993,7 @@ class SegmentationEditor:
         slicer_window()
         self._warning_window()
         boot_sprite()
+        popup_windows()
         imgui.pop_style_color(32)
         imgui.pop_style_var(1)
 

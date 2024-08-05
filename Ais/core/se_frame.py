@@ -19,6 +19,7 @@ class SEFrame:
         uid_counter = next(SEFrame.idgen)
         self.uid = int(datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')+"000") + uid_counter
         self.path = path
+        self.scns_path = "n/a"
         if os.path.exists(self.path):
             self.title = os.path.splitext(os.path.basename(path))[0]
             self.n_slices = 0
