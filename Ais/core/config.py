@@ -84,7 +84,6 @@ def write_to_log(text):
 
 
 def start_log():
-    print("starting log")
     with open(log_path, "w") as f:
         f.write(app_name+" version "+version+" "+license+"\n"+datetime.now().strftime("%m/%d/%Y, %H:%M:%S")+"\n")
         f.write(f"OS: {platform.platform()}\n")
