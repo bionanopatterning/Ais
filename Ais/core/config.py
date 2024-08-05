@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 import sys
 import platform
+import shutil
 
 # TODO: .tif files as input
 
@@ -12,8 +13,9 @@ root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
 version = "1.0.27"
 license = "GNU GPL v3"
-log_title = "Ais.log"
-log_path = os.path.join(root, log_title)
+log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
+settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
+os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
 filetype_segmentation = ".scns"
 filetype_traindata = ".scnt"
@@ -64,6 +66,7 @@ controls_info_text = \
     "key up:         previous dataset\n" \
     "key down:       next dataset\n"
 
+
 def set_error(error_object, error_message):
     global error_msg, error_obj, error_new, error_logged
     error_msg = error_message + "\n\n"
@@ -81,15 +84,19 @@ def write_to_log(text):
 
 
 def start_log():
+    print("starting log")
     with open(log_path, "w") as f:
         f.write(app_name+" version "+version+" "+license+"\n"+datetime.now().strftime("%m/%d/%Y, %H:%M:%S")+"\n")
-        f.write(f"OS: {platform.platform()}")
+        f.write(f"OS: {platform.platform()}\n")
         f.write(f"Python version: {sys.version}")
 
 
 def parse_settings():
+    # If settings file not found, copy the one from core to the right location.
+    if not os.path.exists(settings_path):
+        shutil.copy(os.path.join(root, "core", "settings.txt"), settings_path)
     sdict = dict()
-    with open(os.path.join(root, "core", "settings.txt"), 'r') as f:
+    with open(settings_path, 'r') as f:
         for line in f:
             key, value = line.strip().split('=')
             sdict[key] = value
@@ -102,14 +109,15 @@ settings = parse_settings()
 def edit_setting(key, value):
     global settings
     settings[key] = value
-    with open(os.path.join(root, "core", "settings.txt"), 'r') as f:
+    with open(settings_path, 'r') as f:
         lines = f.readlines()
     for i, line in enumerate(lines):
         if line.startswith(key+"="):
             lines[i] = f"{key}={value}\n"
 
-    with open(os.path.join(root, "core", "settings.txt"), 'w') as f:
+    with open(settings_path, 'w') as f:
         f.writelines(lines)
+
 
 COLOUR_TEST_A = (1.0, 0.0, 1.0, 1.0)
 COLOUR_TEST_B = (0.0, 1.0, 1.0, 1.0)

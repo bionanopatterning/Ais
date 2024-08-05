@@ -108,6 +108,7 @@ class SegmentationEditor:
         FEATURE_IMPORT_MRC_THRESHOLD = 128
 
     def __init__(self, window, imgui_context, imgui_impl):
+        cfg.start_log()
         self.window = window
         self.window.clear_color = cfg.COLOUR_WINDOW_BACKGROUND
         self.window.make_current()
