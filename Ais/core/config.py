@@ -11,7 +11,7 @@ import shutil
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.27"
+version = "1.0.30"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -42,6 +42,8 @@ se_models = list()
 se_active_model = None
 se_path = "..."
 se_surface_models = list()
+
+se_model_handle_overlap_mode = 0
 
 controls_info_text = \
     "left mouse:     draw\n" \

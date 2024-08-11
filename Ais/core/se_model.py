@@ -353,13 +353,26 @@ class SEModel:
         w, h = size
         out_image = np.zeros((w + pad_w, h + pad_h))
         count = np.zeros((w + pad_w, h + pad_h), dtype=int)
+        # 240809: apply a mask to all the segmented boxes so that only center (best) bit us used
+        box_size = boxes[0].shape[0]
+        mask = np.ones((box_size, box_size), dtype=int)
+        overlap = 1 - (stride / box_size)
+        margin = int(overlap * box_size / 2)
+        if margin > 0:
+            mask[-margin:, :] = 0.0
+            mask[:margin, :] = 0.0
+            mask[:, -margin:] = 0.0
+            mask[:, :margin] = 0.0
+
+        if cfg.se_model_handle_overlap_mode == 0:
+            mask[:, :] = 1
         i = 0
         for x in range(0, w + pad_w - self.box_size + 1, stride):
             for y in range(0, h + pad_h - self.box_size + 1, stride):
-                out_image[x:x + self.box_size, y:y + self.box_size] += boxes[i]
-                count[x:x + self.box_size, y:y + self.box_size] += 1
+                out_image[x:x + self.box_size, y:y + self.box_size] += boxes[i] * mask
+                count[x:x + self.box_size, y:y + self.box_size] += mask
                 i += 1
-        c_mask = count == 0   # edited 231018 to set count=1 tiles to all zero, to get rid of the border errors.
+        c_mask = count == 0
         count[c_mask] = 1  # edited 231018
         out_image[c_mask] = 0  # edited 231018
         out_image = out_image / count

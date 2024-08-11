@@ -43,6 +43,7 @@ def select_directory(label, path):
     changed, new_path = imgui.input_text(f"##_{path}", path, 256)
     imgui.same_line()
     if imgui.button(label, 55, 19):
+        changed = True
         try:
             selected_dir = filedialog.askdirectory()
             if selected_dir is not None and selected_dir != "":

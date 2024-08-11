@@ -32,7 +32,7 @@ __________
    sharing_models
    batch_processing
    rendering
-   picking
+   extracting_particles_and_meshes
    python_module
 
 Help

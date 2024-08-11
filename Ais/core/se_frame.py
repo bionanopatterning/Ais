@@ -8,7 +8,7 @@ import Ais.core.settings as settings
 from Ais.core.se_model import BackgroundProcess
 from skimage import measure
 from scipy.ndimage import label, binary_dilation
-
+from Ais.core.util import coords_from_star
 
 class SEFrame:
     idgen = count(0)
@@ -603,7 +603,7 @@ class SurfaceModel:
                        (0 / 255, 255 / 255, 0 / 255)]
     DEFAULT_COLOURS_IDX = 0
 
-    def __init__(self, path, pixel_size):
+    def __init__(self, path, pixel_size, no_gpu=False):
         self.uid = next(SurfaceModel.idgen)
         self.path = path
         self.title = os.path.splitext(os.path.basename(self.path))[0]
@@ -611,6 +611,7 @@ class SurfaceModel:
         self.colour = (0.0, 0.0, 0.0)
         self.vertices = list()
         self.indices = list()
+        self.no_gpu = no_gpu
 
         # check whether there are any models or features with the same name, if so, give it that color:
         self.set_colour()
@@ -644,12 +645,19 @@ class SurfaceModel:
         # is there a coordinate file?
         self.particles = list()
         txt_file = os.path.splitext(self.path)[0]+"_coords.txt"
+        star_file = os.path.splitext(self.path)[0] + "_coords.star"
         if os.path.exists(txt_file):
-            print(f"parsing coordinates for SurfaceModel object with path {self.path}")
+            print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
             with open(txt_file, 'r') as f:
                 for line in f:
                     xyz = [int(val) for val in line.strip().split('\t')]
                     self.particles.append(xyz)
+        elif os.path.exists(star_file):
+            print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
+            with open(star_file, 'r') as f:
+                coordinates = coords_from_star(star_file)
+                if isinstance(coordinates, list):
+                    self.particles = coordinates
 
     def set_colour(self):
         if self.title in SurfaceModel.COLOURS:
@@ -704,10 +712,11 @@ class SurfaceModel:
             x = X[i]
             l = labels[z, y, x]
             if l not in new_blobs:
-                new_blobs[l] = SurfaceModelBlob(data, self.level, self.pixel_size * self.bin, origin)
+                new_blobs[l] = SurfaceModelBlob(data, self.level, self.pixel_size * self.bin, origin, no_gpu=self.no_gpu)
             new_blobs[l].x.append(x)
             new_blobs[l].y.append(y)
             new_blobs[l].z.append(z)
+
         process.set_progress(0.2)
 
         # 3: upload surface blobs one by one.
@@ -780,11 +789,12 @@ class SurfaceModel:
 
 
 class SurfaceModelBlob:
-    def __init__(self, data, level, pixel_size, origin):
+    def __init__(self, data, level, pixel_size, origin, no_gpu=False):
         self.data = data
         self.level = level
         self.pixel_size = pixel_size
         self.origin = origin
+        self.no_gpu = no_gpu
         self.x = list()
         self.y = list()
         self.z = list()
@@ -793,7 +803,8 @@ class SurfaceModelBlob:
         self.vertices = list()
         self.normals = list()
         self.vao_data = list()
-        self.va = VertexArray(attribute_format="xyznxnynz")
+        if not no_gpu:
+            self.va = VertexArray(attribute_format="xyznxnynz")
         self.va_requires_update = False
         self.complete = False
         self.hide = False
@@ -830,7 +841,7 @@ class SurfaceModelBlob:
         self.va_requires_update = True
 
     def update_if_necessary(self):
-        if self.va_requires_update:
+        if self.va_requires_update and not self.no_gpu:
             self.va.update(VertexBuffer(self.vao_data), IndexBuffer(self.indices, long=True))
             self.va_requires_update = False
             self.complete = True

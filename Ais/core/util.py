@@ -9,7 +9,6 @@ import mrcfile
 from scipy.ndimage import label, distance_transform_edt
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
-
 timer = 0.0
 
 
@@ -48,6 +47,39 @@ def coords_from_tsv(coords_path):
     return coords
 
 
+def coords_from_star(coords_path):
+    try:
+        coords = list()
+        with open(coords_path, 'r') as file:
+            for line in file:
+                parts = line.split(sep='\t')
+                if len(parts) == 5:
+                    x = int(parts[2])
+                    y = int(parts[3])
+                    z = int(parts[4])
+                    coords.append((x, y, z))
+        return coords
+    except Exception as e:
+        cfg.set_error(e, f"Could not parse coordinates from star file {coords_path}")
+        return []
+
+
+def coords_from_tsv_to_star(tsv_path, delete_tsv=False):
+    tomo_name = tsv_path[:tsv_path.rfind("__")]
+    print(f"Saving to {os.path.splitext(tsv_path)[0]+'.star'}")
+    with open(os.path.splitext(tsv_path)[0]+".star", 'w') as f:
+        f.write("data_particles\n\n\nloop_\n_rlnTomoName #1\n_rlnTomoParticleId\n_rlnCoordinateX #2\n_rlnCoordinateY #3\n_rlnCoordinateZ #4\n\n")
+        coords = np.loadtxt(tsv_path, delimiter='\t').astype(int)
+        N = coords.shape[0]
+        if N == 1:
+            f.write(f"{tomo_name}\t{1}\t{coords[0]}\t{coords[1]}\t{coords[2]}\n")
+        else:
+            for n in range(N):
+                f.write(f"{tomo_name}\t{n+1}\t{coords[n, 0]}\t{coords[n, 1]}\t{coords[n, 2]}\n")
+    if delete_tsv:
+        os.remove(tsv_path)
+
+
 def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=False, normalize=True):
     coords = coords_from_tsv(coords_path)
     coords = np.array(coords) * unbin
@@ -71,12 +103,12 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None):
+def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False):
     """
     min_spacing: in nanometer
     min_size: in cubic nanometer
     """
-    print("get_maxima_3d_watershed")
+    print(f"{mrcpath}\n\tget_maxima_3d_watershed")
     if array is None:
         data = mrcfile.read(mrcpath)
         if process:
@@ -190,13 +222,19 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
             out_path = os.path.join(save_dir, os.path.basename(mrcpath)[:-4] + "_coords.txt")
-        print(f"\toutputting coordinates to {out_path}")
+        if not output_star:
+            print(f"\toutputting coordinates to {out_path}")
+        else:
+            print(f"\toutputting coordinates to {os.path.splitext(out_path)+'.star'}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
                 x = int(coordinates[i][0])
                 y = int(coordinates[i][1])
                 z = int(coordinates[i][2])
                 out_file.write(f"{x}\t{y}\t{z}\n")
+        if output_star:
+            print("CHANGING TO STAR")
+            coords_from_tsv_to_star(out_path, delete_tsv=True)
         if process:
             process.set_progress(0.99)
         print(f"\tdone\n")
