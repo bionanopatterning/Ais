@@ -298,7 +298,7 @@ class SEModel:
         self.update_info()
 
     def update_info(self):
-        validation_split_tag = "" if ("VALIDATION_SPLIT" not in self.bcprms or self.bcprms["VALIDATION_SPLIT"] == 0.0) else f"|{self.bcprms['VALIDATION_SPLIT']*100.0:.i}%"
+        validation_split_tag = "" if ("VALIDATION_SPLIT" not in self.bcprms or self.bcprms["VALIDATION_SPLIT"] == 0.0) else f"|{int(self.bcprms['VALIDATION_SPLIT']*100.0)}%"
         self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
         self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
 
@@ -412,7 +412,7 @@ class SEModel:
 
     @staticmethod
     def load_models():
-        model_files = glob.glob(os.path.join(cfg.root, "models", "*.py"))
+        model_files = sorted(glob.glob(os.path.join(cfg.root, "models", "*.py")))
         for file in model_files:
             try:
                 module_name = os.path.basename(file)[:-3]
@@ -424,7 +424,7 @@ class SEModel:
         SEModel.MODELS_LOADED = True
         SEModel.AVAILABLE_MODELS = list(SEModel.MODELS.keys())
         if 'VGGNet' in SEModel.AVAILABLE_MODELS:
-            SEModel.DEFAULT_MODEL_ENUM = SEModel.AVAILABLE_MODELS.index('VGGNet')
+            SEModel.DEFAULT_MODEL_ENUM = SEModel.AVAILABLE_MODELS.index('VGGNet M')
 
     def __eq__(self, other):
         if isinstance(other, SEModel):

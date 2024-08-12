@@ -2,25 +2,25 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
 from tensorflow.keras.optimizers import Adam
 
-title = "VGGNet double"
+title = "VGGNet S"
 include = True
 
 def create(input_shape):
     inputs = Input(input_shape)
 
     # Block 1
-    conv1 = Conv2D(128, (3, 3), activation='relu', padding='same')(inputs)
-    conv2 = Conv2D(128, (3, 3), activation='relu', padding='same')(conv1)
+    conv1 = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
+    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(conv1)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv2)
 
     # Block 2
-    conv3 = Conv2D(256, (3, 3), activation='relu', padding='same')(pool1)
-    conv4 = Conv2D(256, (3, 3), activation='relu', padding='same')(conv3)
+    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same')(pool1)
+    conv4 = Conv2D(128, (3, 3), activation='relu', padding='same')(conv3)
     pool2 = MaxPooling2D(pool_size=(2, 2))(conv4)
 
     # Block 3
-    conv5 = Conv2D(512, (3, 3), activation='relu', padding='same')(pool2)
-    conv6 = Conv2D(512, (3, 3), activation='relu', padding='same')(conv5)
+    conv5 = Conv2D(256, (3, 3), activation='relu', padding='same')(pool2)
+    conv6 = Conv2D(256, (3, 3), activation='relu', padding='same')(conv5)
     pool3 = MaxPooling2D(pool_size=(2, 2))(conv6)
 
     # Upsampling and Decoding
