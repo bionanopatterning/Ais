@@ -5,6 +5,7 @@ import numpy as np
 from itertools import count
 import glob
 import os
+import sys
 import Ais.core.config as cfg
 import importlib
 import threading
@@ -16,6 +17,7 @@ import datetime
 import time
 import tarfile
 import tempfile
+
 # Note 230522: getting tensorflow to use the GPU is a pain. Eventually it worked with:
 # Python 3.9, CUDA D11.8, cuDNN 8.6, tensorflow 2.8.0, protobuf 3.20.0, and adding
 # LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
@@ -412,11 +414,20 @@ class SEModel:
 
     @staticmethod
     def load_models():
-        model_files = sorted(glob.glob(os.path.join(cfg.root, "models", "*.py")))
+        model_files = glob.glob(os.path.join(cfg.root, "models", "*.py"))
+        model_files_user = glob.glob(os.path.join(os.path.dirname(cfg.settings_path), "models", "*.py"))
+        model_files = sorted(model_files + model_files_user, key=lambda x: os.path.basename(x))
         for file in model_files:
+            module_name = os.path.basename(file)[:-3]
             try:
-                module_name = os.path.basename(file)[:-3]
-                mod = importlib.import_module(("Ais." if not cfg.frozen else "")+"models."+module_name)
+                # if in default library:
+                if os.path.dirname(file) == os.path.join(cfg.root, "models"):
+                    mod = importlib.import_module(("Ais." if not cfg.frozen else "")+"models."+module_name)
+                else:
+                    spec = importlib.util.spec_from_file_location(module_name, file)
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = mod
+                    spec.loader.exec_module(mod)
                 if mod.include:
                     SEModel.MODELS[mod.title] = mod.create
             except Exception as e:

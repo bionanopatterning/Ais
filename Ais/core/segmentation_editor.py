@@ -11,6 +11,7 @@ from Ais.core.util import clamp, bin_mrc
 import pyperclip
 import os
 import subprocess
+import shutil
 from time import sleep
 from Ais.core.util import get_maxima_3d_watershed, icosphere_va
 EMBEDDED = False
@@ -68,6 +69,9 @@ class SegmentationEditor:
         RENDER_STYLES = ["Cartoon", "Phong", "Flat", "Misc."]
         RENDER_BOX = False
         RENDER_PARTICLES_XRAY = False
+        RENDER_SILHOUETTES = True
+        RENDER_SILHOUETTES_THRESHOLD = 0.1
+        RENDER_SILHOUETTES_ALPHA = 1.0
         RENDER_CLEAR_COLOUR = cfg.COLOUR_WINDOW_BACKGROUND[:3]
         RENDER_LIGHT_COLOUR = (1.0, 1.0, 1.0)
         VIEW_REQUIRES_UPDATE = True
@@ -436,25 +440,31 @@ class SegmentationEditor:
     def import_dataset(self, filename):
         # TODO: upon import, if scNodes, if has overlay and overlay.clem_frame.path found in any CLEMFrame's path, link CLEMFrame and SEFrame s.t. overlay can be updated.
         SegmentationEditor.SHOW_BOOT_SPRITE = False
-        try:
-            _, ext = os.path.splitext(filename)
-            if ext == ".mrc":
-                cfg.se_frames.append(SEFrame(filename))
-                SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
-                self.parse_available_features()
-            elif ext == cfg.filetype_segmentation:
-                with open(filename, 'rb') as pickle_file:
-                    seframe = pickle.load(pickle_file)
-                    seframe.on_load()
-                    seframe.slice_changed = False
-                    cfg.se_frames.append(seframe)
+        print(filename)
+        if isinstance(filename, str):
+            filename = (filename)
+        if not isinstance(filename, tuple):
+            return
+        for f in filename:
+            try:
+                _, ext = os.path.splitext(f)
+                if ext == ".mrc":
+                    cfg.se_frames.append(SEFrame(f))
                     SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
-                    if seframe.includes_map:
-                        seframe.path = filename[:-len(cfg.filetype_segmentation)]+".mrc"  # 'virtual' file path, pointing at the location of the .scns file but ending with .mrc s.t. model output regex doesn't get messed up
-                    seframe.scns_path = filename
-                self.parse_available_features()
-        except Exception as e:
-            cfg.set_error(e, "Error importing dataset, see details below:")
+                    self.parse_available_features()
+                elif ext == cfg.filetype_segmentation:
+                    with open(f, 'rb') as pickle_file:
+                        seframe = pickle.load(pickle_file)
+                        seframe.on_load()
+                        seframe.slice_changed = False
+                        cfg.se_frames.append(seframe)
+                        SegmentationEditor.set_active_dataset(cfg.se_frames[-1])
+                        if seframe.includes_map:
+                            seframe.path = f[:-len(cfg.filetype_segmentation)]+".mrc"  # 'virtual' file path, pointing at the location of the .scns file but ending with .mrc s.t. model output regex doesn't get messed up
+                        seframe.scns_path = f
+                    self.parse_available_features()
+            except Exception as e:
+                cfg.set_error(e, "Error importing dataset, see details below:")
 
     @staticmethod
     def save_dataset(dialog=False):
@@ -1512,30 +1522,36 @@ class SegmentationEditor:
                 imgui.align_text_to_frame_padding()
                 imgui.text("Volume render style:")
                 imgui.same_line()
-                imgui.push_item_width(cw - 145)
+                imgui.push_item_width(cw - 147)
                 _, SegmentationEditor.SELECTED_RENDER_STYLE = imgui.combo("##Graphics style", SegmentationEditor.SELECTED_RENDER_STYLE, SegmentationEditor.RENDER_STYLES)
                 imgui.pop_item_width()
                 _, SegmentationEditor.RENDER_CLEAR_COLOUR = imgui.color_edit3("##clrclr", *SegmentationEditor.RENDER_CLEAR_COLOUR[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                 imgui.same_line()
                 imgui.align_text_to_frame_padding()
                 imgui.text(" Background colour     ")
-                imgui.same_line()
-                _, SegmentationEditor.LIGHT_SPOT.colour = imgui.color_edit3("##lightclr", *SegmentationEditor.LIGHT_SPOT.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
-                imgui.same_line()
-                imgui.align_text_to_frame_padding()
-                imgui.text(" Light colour")
+                if SegmentationEditor.SELECTED_RENDER_STYLE in [0, 1]:
+                    imgui.same_line()
+                    _, SegmentationEditor.LIGHT_SPOT.colour = imgui.color_edit3("##lightclr", *SegmentationEditor.LIGHT_SPOT.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                    imgui.same_line()
+                    imgui.align_text_to_frame_padding()
+                    imgui.text(" Light colour")
 
+                    imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
+                    imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                    imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 10)
+                    imgui.push_item_width(cw)
+                    _, SegmentationEditor.LIGHT_AMBIENT_STRENGTH = imgui.slider_float("##ambient lighting", SegmentationEditor.LIGHT_AMBIENT_STRENGTH, 0.0, 1.0, f"ambient strength = %.2f")
+                    _, SegmentationEditor.LIGHT_SPOT.strength = imgui.slider_float("##spot lighting", SegmentationEditor.LIGHT_SPOT.strength, 0.0, 1.0, f"spot strength = %.2f")
+                    _yaw, SegmentationEditor.LIGHT_SPOT.yaw = imgui.drag_float("##yaw", SegmentationEditor.LIGHT_SPOT.yaw, 0.5, format=f"spot yaw = %.1f")
+                    _pitch, SegmentationEditor.LIGHT_SPOT.pitch = imgui.slider_float("##pitch", SegmentationEditor.LIGHT_SPOT.pitch, -90.0, 90.0, format=f"spot pitch = %.1f")
+                    imgui.pop_item_width()
+                    imgui.pop_style_var(3)
+
+                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0)
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 10)
-                imgui.push_item_width(cw)
-                _, SegmentationEditor.LIGHT_AMBIENT_STRENGTH = imgui.slider_float("##ambient lighting", SegmentationEditor.LIGHT_AMBIENT_STRENGTH, 0.0, 1.0, f"ambient strength = %.2f")
-                _, SegmentationEditor.LIGHT_SPOT.strength = imgui.slider_float("##spot lighting", SegmentationEditor.LIGHT_SPOT.strength, 0.0, 1.0, f"spot strength = %.2f")
-                _yaw, SegmentationEditor.LIGHT_SPOT.yaw = imgui.drag_float("##yaw", SegmentationEditor.LIGHT_SPOT.yaw, 0.5, format=f"spot yaw = %.1f")
-                _pitch, SegmentationEditor.LIGHT_SPOT.pitch = imgui.slider_float("##pitch", SegmentationEditor.LIGHT_SPOT.pitch, -90.0, 90.0, format=f"spot pitch = %.1f")
-                imgui.pop_item_width()
 
-                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0)
                 _, SegmentationEditor.RENDER_BOX = imgui.checkbox(" render bounding box   ", SegmentationEditor.RENDER_BOX)
 
                 imgui.same_line()
@@ -1543,7 +1559,14 @@ class SegmentationEditor:
                 _r, _render_frame = imgui.checkbox("render frame", _render_frame)
                 if _r:
                     SegmentationEditor.PICKING_FRAME_ALPHA = float(_render_frame)
-                _, SegmentationEditor.RENDER_PARTICLES_XRAY = imgui.checkbox(" particle x-ray", SegmentationEditor.RENDER_PARTICLES_XRAY)
+                _, SegmentationEditor.RENDER_PARTICLES_XRAY = imgui.checkbox(" particle x-ray        ", SegmentationEditor.RENDER_PARTICLES_XRAY)
+                imgui.same_line()
+                _, SegmentationEditor.RENDER_SILHOUETTES = imgui.checkbox("draw edges", SegmentationEditor.RENDER_SILHOUETTES)
+                if SegmentationEditor.RENDER_SILHOUETTES:
+                    imgui.set_next_item_width(cw)
+                    _, SegmentationEditor.RENDER_SILHOUETTES_THRESHOLD = imgui.slider_float("##edge threshold", SegmentationEditor.RENDER_SILHOUETTES_THRESHOLD, 0.01, 10.0, f"threshold = %.2f")
+                    imgui.set_next_item_width(cw)
+                    _, SegmentationEditor.RENDER_SILHOUETTES_ALPHA = imgui.slider_float("##edge alpha", SegmentationEditor.RENDER_SILHOUETTES_ALPHA, 0.0, 1.0, f"contrast = %.2f")
                 imgui.pop_style_var(4)
                 imgui.pop_style_color(1)
 
@@ -1601,9 +1624,9 @@ class SegmentationEditor:
 
             if imgui.core.begin_main_menu_bar():
                 if imgui.begin_menu("File"):
-                    if imgui.menu_item("Import dataset")[0]:
+                    if imgui.menu_item("Import datasets")[0]:
                         try:
-                            filename = filedialog.askopenfilename(filetypes=[("scNodes segmentable", f".mrc {cfg.filetype_segmentation}")])
+                            filename = filedialog.askopenfilenames(filetypes=[("scNodes segmentable", f".mrc {cfg.filetype_segmentation}")])
                             if filename != '':
                                 self.import_dataset(filename)
                         except Exception as e:
@@ -1740,7 +1763,30 @@ class SegmentationEditor:
                         if imgui.menu_item("Open path viewer")[0]:
                             SegmentationEditor.PATH_VIEWER_OPEN = True
                         imgui.end_menu()
+
+                    if imgui.begin_menu("Model library"):
+                        imgui.text(os.path.join(os.path.dirname(cfg.settings_path), "models"))
+                        imgui.separator()
+                        custom_models = glob.glob(os.path.join(os.path.dirname(cfg.settings_path), "models", "*.py"))
+                        for m in custom_models:
+                            if imgui.begin_menu(os.path.splitext(os.path.basename(m))[0]):
+                                if imgui.menu_item("Reload")[0]:
+                                    SEModel.load_models()
+                                if imgui.menu_item("Delete")[0]:
+                                    os.remove(m)
+                                imgui.end_menu()
+                        if imgui.menu_item("Install a model")[0]:
+                            try:
+                                path = filedialog.askopenfilename(filetypes=[("Ais model (.py)", ".py")])
+                                if path != "":
+                                    user_library = os.path.join(os.path.dirname(cfg.settings_path), "models")
+                                    shutil.copy(path, os.path.join(user_library, os.path.basename(path)))
+                                    SEModel.load_models()
+                            except Exception as e:
+                                cfg.set_error(e, "Something went wrong adding a model to the library - see below.")
+                        imgui.end_menu()
                     imgui.end_menu()
+
                 if imgui.begin_menu("Controls"):
                     imgui.text(cfg.controls_info_text)
                     imgui.end_menu()
@@ -1954,7 +2000,7 @@ class SegmentationEditor:
 
                 # Render surface models in 3D
                 if not imgui.is_key_down(glfw.KEY_Q):
-                    self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT)
+                    self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT, window_size=(self.window.width, self.window.height))
 
                 # Render the frame
                 pxd = SegmentationEditor.renderer.render_filtered_frame(cfg.se_active_frame, self.camera, self.window, self.filters, camera3d=self.camera3d)
@@ -2679,6 +2725,7 @@ class Renderer:
         self.ray_trace_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_ray_trace_shader.glsl"))
         self.overlay_blend_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_blend_shader.glsl"))
         self.particle_shader = Shader(os.path.join(cfg.root, "shaders", "se_particle_shader.glsl"))
+        self.edge_shader = Shader(os.path.join(cfg.root, "shaders", "se_depth_edge_detect.glsl"))
         self.line_list = list()
         self.line_list_s = list()
         self.line_va = VertexArray(None, None, attribute_format="xyrgb")
@@ -2687,6 +2734,8 @@ class Renderer:
         self.fbo3 = FrameBuffer(100, 100)
         self.ray_trace_fbo_a = FrameBuffer()
         self.ray_trace_fbo_b = FrameBuffer()
+        self.img_fbo = FrameBuffer()
+        self.img_fbo_size = [0.0, 0.0]
         self.ndc_screen_va = VertexArray(attribute_format="xy")
         self.ndc_screen_va.update(VertexBuffer([-1, -1, 1, -1, 1, 1, -1, 1]), IndexBuffer([0, 1, 2, 0, 2, 3]))
         self.ray_trace_fbo_size = [0.0, 0.0]
@@ -2711,6 +2760,7 @@ class Renderer:
             self.ray_trace_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_ray_trace_shader.glsl"))
             self.overlay_blend_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_blend_shader.glsl"))
             self.particle_shader = Shader(os.path.join(cfg.root, "shaders", "se_particle_shader.glsl"))
+            self.edge_shader = Shader(os.path.join(cfg.root, "shaders", "se_depth_edge_detect.glsl"))
         finally:
             pass
 
@@ -2954,8 +3004,12 @@ class Renderer:
         self.icon_shader.unbind()
         h_va.unbind()
 
-    def render_surface_models(self, surface_models, camera, ambient_strength, spot_light):
-        glEnable(GL_DEPTH_TEST)
+    def render_surface_models(self, surface_models, camera, ambient_strength, spot_light, window_size):
+        # IF required, prepare new image in the FBO
+        if self.img_fbo_size != window_size:
+            self.img_fbo_size = window_size
+            self.img_fbo = FrameBuffer(window_size[0], window_size[1], "rgba32f")
+
         self.surface_model_shader.bind()
         self.surface_model_shader.uniformmat4("vpMat", camera.matrix)
         self.surface_model_shader.uniform3f("viewDir", camera.get_view_direction())
@@ -2977,6 +3031,24 @@ class Renderer:
                     blob.va.unbind()
         self.surface_model_shader.unbind()
         glDisable(GL_DEPTH_TEST)
+        # copy default FBO depth to img_fbo
+
+        if SegmentationEditor.RENDER_SILHOUETTES and len(alpha_sorted_surface_models) > 0:
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, 0)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self.img_fbo.framebufferObject)
+            glBlitFramebuffer(0, 0, window_size[0], window_size[1], 0, 0, window_size[0], window_size[1], GL_DEPTH_BUFFER_BIT, GL_NEAREST)
+            glBindFramebuffer(GL_FRAMEBUFFER, 0)
+            self.edge_shader.bind()
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.img_fbo.depth_texture_renderer_id)
+            self.edge_shader.uniform1f("threshold", SegmentationEditor.RENDER_SILHOUETTES_THRESHOLD)
+            self.edge_shader.uniform1f("edge_alpha", SegmentationEditor.RENDER_SILHOUETTES_ALPHA)
+            self.edge_shader.uniform1f("zmin", camera.clip_near)
+            self.edge_shader.uniform1f("zmax", camera.clip_far)
+            self.ndc_screen_va.bind()
+            glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+            self.ndc_screen_va.unbind()
+            self.edge_shader.unbind()
 
     def render_surface_model_particles(self, surface_models, camera):
         if SegmentationEditor.RENDER_PARTICLES_XRAY:
@@ -3001,8 +3073,6 @@ class Renderer:
         self.particle_va.unbind()
         self.particle_shader.unbind()
         glDisable(GL_DEPTH_TEST)
-
-
 
     def render_line_va(self, va, camera):
         glEnable(GL_DEPTH_TEST)
@@ -3553,6 +3623,7 @@ class QueuedExport:
         if self.process.thread is not None:
             self.process.stop_request.set()
 
+
 class QueuedMeshExtract:
     def __init__(self, mrcpath, threshold, min_size, save_dir, binning=1, pixel_size=1.0):
         self.title = mrcpath
@@ -3592,6 +3663,7 @@ class QueuedMeshExtract:
     def stop(self):
         if self.process.thread is not None:
             self.process.stop_request.set()
+
 
 class QueuedExtract:
     def __init__(self, mrcpath, threshold, min_size, min_spacing, save_dir, binning=1, star_format=True):

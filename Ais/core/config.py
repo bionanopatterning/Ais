@@ -11,7 +11,7 @@ import shutil
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.30"
+version = "1.0.32"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -96,6 +96,8 @@ def parse_settings():
     # If settings file not found, copy the one from core to the right location.
     if not os.path.exists(settings_path):
         shutil.copy(os.path.join(root, "core", "settings.txt"), settings_path)
+    if not os.path.exists(os.path.join(os.path.dirname(settings_path), "models")):
+        os.mkdir(os.path.join(os.path.dirname(settings_path), "models"))
     sdict = dict()
     with open(settings_path, 'r') as f:
         for line in f:
