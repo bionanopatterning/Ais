@@ -366,7 +366,7 @@ class SEModel:
             mask[:, -margin:] = 0.0
             mask[:, :margin] = 0.0
 
-        if cfg.se_model_handle_overlap_mode == 0:
+        if cfg.settings["OVERLAP_MODE"] == 0:
             mask[:, :] = 1
         i = 0
         for x in range(0, w + pad_w - self.box_size + 1, stride):
@@ -381,7 +381,14 @@ class SEModel:
         out_image = out_image[:w, :h]
         scale_fac = self.apix / (original_pixel_size * 10.0)
         #out_image = zoom(out_image, scale_fac)
-        return out_image[:w, :h]
+        out_image = out_image[:w, :h]
+        if cfg.settings["TRIM_EDGES"]:
+            margin = box_size // 2
+            out_image[:margin, :] = 0
+            out_image[-margin:, :] = 0
+            out_image[:, :margin] = 0
+            out_image[:, -margin:] = 0
+        return out_image
 
     def apply_to_slice(self, image, pixel_size):
         # tile
@@ -434,7 +441,7 @@ class SEModel:
                 cfg.set_error(e, "Could not load SegmentationEditor model at path: "+file)
         SEModel.MODELS_LOADED = True
         SEModel.AVAILABLE_MODELS = list(SEModel.MODELS.keys())
-        if 'VGGNet' in SEModel.AVAILABLE_MODELS:
+        if 'VGGNet M' in SEModel.AVAILABLE_MODELS:
             SEModel.DEFAULT_MODEL_ENUM = SEModel.AVAILABLE_MODELS.index('VGGNet M')
 
     def __eq__(self, other):

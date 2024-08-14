@@ -1701,16 +1701,16 @@ class SegmentationEditor:
                             imgui.end_menu()
 
                         if imgui.begin_menu("Overlap mode"):
-                            if imgui.menu_item("best", None, cfg.se_model_handle_overlap_mode == 1)[0]:
-                                cfg.se_model_handle_overlap_mode = 1
+                            if imgui.menu_item("best", None, cfg.settings["OVERLAP_MODE"] == "1")[0]:
+                                cfg.edit_setting("OVERLAP_MODE", "1")
                             self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
                                          "the tiles processed by the neural network, and the data then detiled back\n"
                                          "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
                                          "del parameters) is handled either by averaging the overlapping regions of\n"
                                          "and image, or by retaining predictions closest to the center of a box,\n"
                                          "where model predictions are typically the best quality.")
-                            if imgui.menu_item("average", None, cfg.se_model_handle_overlap_mode == 0)[0]:
-                                cfg.se_model_handle_overlap_mode = 0
+                            if imgui.menu_item("average", None, cfg.settings["OVERLAP_MODE"] == "0")[0]:
+                                cfg.edit_setting("OVERLAP_MODE", "0")
                             self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
                                          "the tiles processed by the neural network, and the data then detiled back\n"
                                          "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
@@ -1718,6 +1718,12 @@ class SegmentationEditor:
                                          "and image, or by retaining predictions closest to the center of a box,\n"
                                          "where model predictions are typically the best quality.")
                             imgui.end_menu()
+                        if imgui.menu_item("Trim edges", None, cfg.settings["TRIM_EDGES"] == "1")[0]:
+                            cfg.edit_setting("TRIM_EDGES", "0" if cfg.settings["TRIM_EDGES"] == "1" else "1")
+                        self.tooltip("When active, the margins of output segmentations are forced to zero.\n"
+                                     "The size of the margin equals half the model's box size.")
+
+
 
                         if imgui.begin_menu("Model library"):
                             imgui.text(os.path.join(os.path.dirname(cfg.settings_path), "models"))

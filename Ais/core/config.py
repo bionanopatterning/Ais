@@ -98,11 +98,29 @@ def parse_settings():
         shutil.copy(os.path.join(root, "core", "settings.txt"), settings_path)
     if not os.path.exists(os.path.join(os.path.dirname(settings_path), "models")):
         os.mkdir(os.path.join(os.path.dirname(settings_path), "models"))
+
     sdict = dict()
     with open(settings_path, 'r') as f:
         for line in f:
             key, value = line.strip().split('=')
             sdict[key] = value
+
+    # Read settings - if any parameters are missing, insert them.
+    default_settings = dict()
+    with open(os.path.join(root, "core", "settings.txt"), 'r') as f:
+        for line in f:
+            key, value = line.strip().split('=')
+            default_settings[key] = value
+
+    for key in default_settings:
+        if key not in sdict:
+            sdict[key] = default_settings[key]
+    lines = list()
+    for key in sdict:
+        lines.append(f"{key}={sdict[key]}\n")
+    with open(settings_path, 'w') as f:
+        f.writelines(lines)
+
     return sdict
 
 
@@ -111,7 +129,7 @@ settings = parse_settings()
 
 def edit_setting(key, value):
     global settings
-    settings[key] = value
+    settings[key] = f"{value}"
     with open(settings_path, 'r') as f:
         lines = f.readlines()
     for i, line in enumerate(lines):
@@ -120,7 +138,8 @@ def edit_setting(key, value):
 
     with open(settings_path, 'w') as f:
         f.writelines(lines)
-
+    for key in settings:
+        print(key, settings[key], type(settings[key]))
 
 COLOUR_TEST_A = (1.0, 0.0, 1.0, 1.0)
 COLOUR_TEST_B = (0.0, 1.0, 1.0, 1.0)

@@ -36,7 +36,7 @@ void main()
     bool not_in_roi = (fUV.x < xLims.r) || (fUV.y < yLims.r) || (fUV.x > xLims.g) || (fUV.y > yLims.g);
     if (not_in_roi)
     {
-        fragmentColor = vec4(contrastValue, contrastValue, contrastValue, alpha * 0.8);
+        fragmentColor = vec4(contrastValue, contrastValue, contrastValue, alpha * 0.9);
     }
     else
     {
