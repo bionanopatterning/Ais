@@ -138,8 +138,6 @@ def edit_setting(key, value):
 
     with open(settings_path, 'w') as f:
         f.writelines(lines)
-    for key in settings:
-        print(key, settings[key], type(settings[key]))
 
 COLOUR_TEST_A = (1.0, 0.0, 1.0, 1.0)
 COLOUR_TEST_B = (0.0, 1.0, 1.0, 1.0)

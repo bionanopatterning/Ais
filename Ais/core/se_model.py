@@ -382,7 +382,7 @@ class SEModel:
         scale_fac = self.apix / (original_pixel_size * 10.0)
         #out_image = zoom(out_image, scale_fac)
         out_image = out_image[:w, :h]
-        if cfg.settings["TRIM_EDGES"]:
+        if cfg.settings["TRIM_EDGES"] == "1":
             margin = box_size // 2
             out_image[:margin, :] = 0
             out_image[-margin:, :] = 0
