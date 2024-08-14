@@ -440,9 +440,8 @@ class SegmentationEditor:
     def import_dataset(self, filename):
         # TODO: upon import, if scNodes, if has overlay and overlay.clem_frame.path found in any CLEMFrame's path, link CLEMFrame and SEFrame s.t. overlay can be updated.
         SegmentationEditor.SHOW_BOOT_SPRITE = False
-        print(filename)
         if isinstance(filename, str):
-            filename = (filename)
+            filename = (filename, )
         if not isinstance(filename, tuple):
             return
         for f in filename:
@@ -2245,7 +2244,8 @@ class SegmentationEditor:
 
             print(f"Exporting {'coordinates' if not mesh else 'meshes'} for the following datasets:\n")
             for d in datasets:
-                print(d+"\n")
+                print("\t"+d)
+            print()
 
             if not mesh:
                 for d in datasets:
@@ -3645,12 +3645,12 @@ class QueuedMeshExtract:
             surface_model.bin = self.binning
             surface_model._generate_model(process)
             self.check_stop_request()
-            surface_model.save_as_obj(path=os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0]+".obj"))
-            print(f"saved: {os.path.splitext(os.path.basename(self.path))[0]+'.obj'}")
+            path = os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0])+".obj"
+            surface_model.save_as_obj(path=path)
+            print(f"saved: {path}")
         except Exception as e:
             cfg.set_error(e, "Error in QueuedMeshExtract (exporting a segmentation as a 3D mesh) - see details below.")
         self.process.set_progress(1.0)
-
 
     def check_stop_request(self):
         if self.process.stop_request.is_set():
