@@ -114,6 +114,7 @@ class SegmentationEditor:
         PATH_VIEWER_OPEN = False
         PATH_VIEWER_OPEN_FIND = ""
         PATH_VIEWER_OPEN_REPLACE = ""
+        SHOW_IMGUI_DEBUG = False
 
     def __init__(self, window, imgui_context, imgui_impl):
         cfg.start_log()
@@ -1690,31 +1691,57 @@ class SegmentationEditor:
                             scn_cfg.active_editor = i
                     imgui.end_menu()
                 if imgui.begin_menu("Settings"):
-                    if imgui.begin_menu("Validation splits"):
-                        split_setting = cfg.settings["VALIDATION_SPLIT"]
-                        split_options = {'no split': "0", 'split 10%': "10", 'split 20%': "20", 'split 50%': "50"}
-                        for k in split_options:
-                            if imgui.menu_item(k, None, split_setting == split_options[k])[0]:
-                                cfg.edit_setting("VALIDATION_SPLIT", split_options[k])
+                    if imgui.begin_menu("Model settings"):
+                        if imgui.begin_menu("Validation splits"):
+                            split_setting = cfg.settings["VALIDATION_SPLIT"]
+                            split_options = {'no split': "0", 'split 10%': "10", 'split 20%': "20", 'split 50%': "50"}
+                            for k in split_options:
+                                if imgui.menu_item(k, None, split_setting == split_options[k])[0]:
+                                    cfg.edit_setting("VALIDATION_SPLIT", split_options[k])
+                            imgui.end_menu()
+
+                        if imgui.begin_menu("Overlap mode"):
+                            if imgui.menu_item("best", None, cfg.se_model_handle_overlap_mode == 1)[0]:
+                                cfg.se_model_handle_overlap_mode = 1
+                            self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
+                                         "the tiles processed by the neural network, and the data then detiled back\n"
+                                         "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
+                                         "del parameters) is handled either by averaging the overlapping regions of\n"
+                                         "and image, or by retaining predictions closest to the center of a box,\n"
+                                         "where model predictions are typically the best quality.")
+                            if imgui.menu_item("average", None, cfg.se_model_handle_overlap_mode == 0)[0]:
+                                cfg.se_model_handle_overlap_mode = 0
+                            self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
+                                         "the tiles processed by the neural network, and the data then detiled back\n"
+                                         "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
+                                         "del parameters) is handled either by averaging the overlapping regions of\n"
+                                         "and image, or by retaining predictions closest to the center of a box,\n"
+                                         "where model predictions are typically the best quality.")
+                            imgui.end_menu()
+
+                        if imgui.begin_menu("Model library"):
+                            imgui.text(os.path.join(os.path.dirname(cfg.settings_path), "models"))
+                            imgui.separator()
+                            custom_models = glob.glob(os.path.join(os.path.dirname(cfg.settings_path), "models", "*.py"))
+                            for m in custom_models:
+                                if imgui.begin_menu(os.path.splitext(os.path.basename(m))[0]):
+                                    if imgui.menu_item("Reload")[0]:
+                                        SEModel.load_models()
+                                    if imgui.menu_item("Delete")[0]:
+                                        os.remove(m)
+                                    imgui.end_menu()
+                            if imgui.menu_item("Install a model")[0]:
+                                try:
+                                    path = filedialog.askopenfilename(filetypes=[("Ais model (.py)", ".py")])
+                                    if path != "":
+                                        user_library = os.path.join(os.path.dirname(cfg.settings_path), "models")
+                                        shutil.copy(path, os.path.join(user_library, os.path.basename(path)))
+                                        SEModel.load_models()
+                                except Exception as e:
+                                    cfg.set_error(e, "Something went wrong adding a model to the library - see below.")
+                            imgui.end_menu()
                         imgui.end_menu()
-                    if imgui.begin_menu("Overlap mode"):
-                        if imgui.menu_item("best", None, cfg.se_model_handle_overlap_mode == 1)[0]:
-                            cfg.se_model_handle_overlap_mode = 1
-                        self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
-                                     "the tiles processed by the neural network, and the data then detiled back\n"
-                                     "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
-                                     "del parameters) is handled either by averaging the overlapping regions of\n"
-                                     "and image, or by retaining predictions closest to the center of a box,\n"
-                                     "where model predictions are typically the best quality.")
-                        if imgui.menu_item("average", None, cfg.se_model_handle_overlap_mode == 0)[0]:
-                            cfg.se_model_handle_overlap_mode = 0
-                        self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
-                                     "the tiles processed by the neural network, and the data then detiled back\n"
-                                     "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
-                                     "del parameters) is handled either by averaging the overlapping regions of\n"
-                                     "and image, or by retaining predictions closest to the center of a box,\n"
-                                     "where model predictions are typically the best quality.")
-                        imgui.end_menu()
+
                     if imgui.begin_menu("3rd party applications"):
                         if imgui.begin_menu("Blender"):
                             blender_path = cfg.settings["BLENDER_EXE"]
@@ -1758,32 +1785,16 @@ class SegmentationEditor:
                             imgui.end_menu()
                         imgui.end_menu()
 
-                    if imgui.begin_menu("File linking"):
-                        if imgui.menu_item("Open path viewer")[0]:
+                    if imgui.begin_menu("File manager"):
+                        if imgui.menu_item("Open file manager")[0]:
                             SegmentationEditor.PATH_VIEWER_OPEN = True
                         imgui.end_menu()
 
-                    if imgui.begin_menu("Model library"):
-                        imgui.text(os.path.join(os.path.dirname(cfg.settings_path), "models"))
-                        imgui.separator()
-                        custom_models = glob.glob(os.path.join(os.path.dirname(cfg.settings_path), "models", "*.py"))
-                        for m in custom_models:
-                            if imgui.begin_menu(os.path.splitext(os.path.basename(m))[0]):
-                                if imgui.menu_item("Reload")[0]:
-                                    SEModel.load_models()
-                                if imgui.menu_item("Delete")[0]:
-                                    os.remove(m)
-                                imgui.end_menu()
-                        if imgui.menu_item("Install a model")[0]:
-                            try:
-                                path = filedialog.askopenfilename(filetypes=[("Ais model (.py)", ".py")])
-                                if path != "":
-                                    user_library = os.path.join(os.path.dirname(cfg.settings_path), "models")
-                                    shutil.copy(path, os.path.join(user_library, os.path.basename(path)))
-                                    SEModel.load_models()
-                            except Exception as e:
-                                cfg.set_error(e, "Something went wrong adding a model to the library - see below.")
+                    if imgui.begin_menu("Developer"):
+                        if imgui.menu_item("Show ImGui debug window", None, SegmentationEditor.SHOW_IMGUI_DEBUG)[0]:
+                            SegmentationEditor.SHOW_IMGUI_DEBUG = not SegmentationEditor.SHOW_IMGUI_DEBUG
                         imgui.end_menu()
+
                     imgui.end_menu()
 
                 if imgui.begin_menu("Controls"):
@@ -1875,8 +1886,9 @@ class SegmentationEditor:
                 imgui.push_style_color(imgui.COLOR_TABLE_HEADER_BACKGROUND, *cfg.COLOUR_HEADER)
                 imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, 1.0, 1.0, 1.0, 0.0)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
-                with imgui.begin_table("pvctable", 3, imgui.TABLE_NO_CLIP | imgui.TABLE_RESIZABLE | imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_BORDERS_INNER | imgui.TABLE_SCROLL_Y, 0.0, 200.0):
+                with imgui.begin_table("pvctable", 3, imgui.TABLE_RESIZABLE | imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_BORDERS_INNER | imgui.TABLE_SCROLL_Y, 0.0, 200.0):
                     imgui.table_setup_column("ID", imgui.TABLE_COLUMN_WIDTH_FIXED, w_col1)
+
                     imgui.table_setup_column(".mrc path", 0)
                     imgui.table_setup_column(".scns path", 0)
                     imgui.table_setup_scroll_freeze(0, 1)
@@ -1888,7 +1900,7 @@ class SegmentationEditor:
                         h_id_str = hex(s.uid)
                         if len(h_id_str) > 8:
                             h_id_str = h_id_str[8:]
-                        imgui.set_next_item_width(w_col1)
+                        imgui.set_next_item_width(imgui.get_column_width())
                         imgui.input_text(f"##{s.uid}col1", h_id_str, 1024, imgui.INPUT_TEXT_READ_ONLY)
 
                         imgui.table_next_column()
@@ -1900,7 +1912,7 @@ class SegmentationEditor:
                             imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_NEGATIVE)
                         if highlight:
                             imgui.table_set_background_color(imgui.TABLE_BACKGROUND_TARGET_CELL_BG, imgui.color_convert_float4_to_u32(*cfg.COLOUR_HIGHLIGHT), 1)
-                        imgui.set_next_item_width(w_col2)
+                        imgui.set_next_item_width(imgui.get_column_width())
                         imgui.input_text(f"##{s.uid}col2", s.path, 1024, imgui.INPUT_TEXT_READ_ONLY)
 
                         if not mrc_found:
@@ -1918,6 +1930,7 @@ class SegmentationEditor:
                 imgui.align_text_to_frame_padding()
                 imgui.text("Find:")
                 imgui.same_line(position=70)
+
                 imgui.set_next_item_width(imgui.get_content_region_available_width())
                 _, SegmentationEditor.PATH_VIEWER_OPEN_FIND = imgui.input_text("##pathviewfind", SegmentationEditor.PATH_VIEWER_OPEN_FIND, 1024)
                 imgui.align_text_to_frame_padding()
@@ -1936,6 +1949,8 @@ class SegmentationEditor:
                 imgui.pop_style_var(1)
                 imgui.end()
 
+            if SegmentationEditor.SHOW_IMGUI_DEBUG:
+                SegmentationEditor.SHOW_IMGUI_DEBUG = imgui.show_demo_window(closable=True)
         # START GUI:
         # Menu bar
         menu_bar()
