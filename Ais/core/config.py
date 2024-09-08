@@ -15,6 +15,7 @@ version = "1.0.34"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
+feature_lib_path = os.path.join(os.path.expanduser("~"), ".Ais", "feature_library.txt")
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
 filetype_segmentation = ".scns"
@@ -129,6 +130,31 @@ def edit_setting(key, value):
     settings[key] = value
     with open(settings_path, 'w') as f:
         json.dump(settings, f, indent=2)
+
+
+def parse_feature_library():
+    if not os.path.exists(feature_lib_path):
+        shutil.copy(os.path.join(root, "core", "feature_library.txt"), feature_lib_path)
+
+    with open(feature_lib_path, 'r') as f:
+        fdict = json.load(f)
+
+    return fdict
+
+
+feature_library = parse_feature_library()
+feature_library["a"] = 0.0
+feature_library["b"] = 0.0
+feature_library["c"] = 0.0
+feature_library["d"] = 0.0
+feature_library["e"] = 0.0
+feature_library["f"] = 0.0
+
+
+def save_feature_library():
+    with open(feature_lib_path, 'r') as f:
+        json.dump(feature_library, f, indent=2)
+
 
 COLOUR_TEST_A = (1.0, 0.0, 1.0, 1.0)
 COLOUR_TEST_B = (0.0, 1.0, 1.0, 1.0)

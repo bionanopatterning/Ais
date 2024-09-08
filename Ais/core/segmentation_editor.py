@@ -116,6 +116,8 @@ class SegmentationEditor:
         PATH_VIEWER_OPEN_REPLACE = ""
         SHOW_IMGUI_DEBUG = False
 
+        FEATURE_LIB_OPEN = False
+
     def __init__(self, window, imgui_context, imgui_impl):
         cfg.start_log()
         self.window = window
@@ -1797,6 +1799,11 @@ class SegmentationEditor:
                             self.renderer.recompile_shaders()
                         imgui.end_menu()
 
+                    if imgui.begin_menu("Feature library"):
+                        if imgui.menu_item("Open library")[0]:
+                            SegmentationEditor.FEATURE_LIB_OPEN = True
+                        imgui.end_menu()
+
                     if imgui.begin_menu("Developer"):
                         if imgui.menu_item("Show ImGui debug window", None, SegmentationEditor.SHOW_IMGUI_DEBUG)[0]:
                             SegmentationEditor.SHOW_IMGUI_DEBUG = not SegmentationEditor.SHOW_IMGUI_DEBUG
@@ -1958,6 +1965,27 @@ class SegmentationEditor:
 
             if SegmentationEditor.SHOW_IMGUI_DEBUG:
                 SegmentationEditor.SHOW_IMGUI_DEBUG = imgui.show_demo_window(closable=True)
+
+            if SegmentationEditor.FEATURE_LIB_OPEN:
+                window_width = 700
+                window_max_height = 550
+                imgui.set_next_window_position(cfg.window_width - window_width, 17, imgui.APPEARING)
+                imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
+
+                _, SegmentationEditor.FEATURE_LIB_OPEN = imgui.begin("Feature library", True, imgui.WINDOW_NO_SCROLLBAR)
+
+                imgui.text(f"Names, colours, and settings found in {'PATH_TO_FEATURE_LIBRARY'}")
+                with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y):
+
+                    for j, key in enumerate(cfg.feature_library):
+                        if j % 3 == 0:
+                            imgui.table_next_row()
+                        imgui.table_next_column()
+
+                        with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), 80, border=True):
+                            imgui.text("test")
+
+                imgui.end()
         # START GUI:
         # Menu bar
         menu_bar()
