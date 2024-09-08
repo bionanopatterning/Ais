@@ -225,7 +225,7 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         if not output_star:
             print(f"\toutputting coordinates to {out_path}")
         else:
-            print(f"\toutputting coordinates to {os.path.splitext(out_path)+'.star'}")
+            print(f"\toutputting coordinates to {os.path.splitext(out_path)[0]+'.star'}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
                 x = int(coordinates[i][0])

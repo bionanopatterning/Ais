@@ -1291,7 +1291,7 @@ class SegmentationEditor:
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.text("Models to include")
                 n_available_models = sum([m.compiled for m in cfg.se_models])
-                c_height = (1 if n_available_models == 0 else 9) + n_available_models * 21
+                c_height = (1 if n_available_models == 0 else 12) + n_available_models * 17
                 imgui.begin_child("models_included", 0.0, c_height, True)
                 for m in cfg.se_models:
                     if not m.compiled:
@@ -1309,7 +1309,7 @@ class SegmentationEditor:
 
                 imgui.text("Datasets to process")
 
-                imgui.same_line(spacing=80)
+                imgui.same_line(position = imgui.get_content_region_available_width() - 97)
                 _, SegmentationEditor.DATASETS_EXPORT_PANEL_EXPANDED = imgui.checkbox("expand",
                                                                                       SegmentationEditor.DATASETS_EXPORT_PANEL_EXPANDED)
                 imgui.same_line(spacing=5)
@@ -1569,10 +1569,6 @@ class SegmentationEditor:
                     _, SegmentationEditor.RENDER_SILHOUETTES_ALPHA = imgui.slider_float("##edge alpha", SegmentationEditor.RENDER_SILHOUETTES_ALPHA, 0.0, 1.0, f"contrast = %.2f")
                 imgui.pop_style_var(4)
                 imgui.pop_style_color(1)
-
-                if widgets.centred_button('Recompile Shaders', 150, 20):
-                    self.renderer.recompile_shaders()
-
                 imgui.pop_style_var(1)
 
             if imgui.collapsing_header("Export 3D scene", None)[0]:
@@ -1694,23 +1690,23 @@ class SegmentationEditor:
                     if imgui.begin_menu("Model settings"):
                         if imgui.begin_menu("Validation splits"):
                             split_setting = cfg.settings["VALIDATION_SPLIT"]
-                            split_options = {'no split': "0", 'split 10%': "10", 'split 20%': "20", 'split 50%': "50"}
+                            split_options = {'no split': 0, 'split 10%': 10, 'split 20%': 20, 'split 50%': 50}
                             for k in split_options:
                                 if imgui.menu_item(k, None, split_setting == split_options[k])[0]:
                                     cfg.edit_setting("VALIDATION_SPLIT", split_options[k])
                             imgui.end_menu()
 
                         if imgui.begin_menu("Overlap mode"):
-                            if imgui.menu_item("best", None, cfg.settings["OVERLAP_MODE"] == "1")[0]:
-                                cfg.edit_setting("OVERLAP_MODE", "1")
+                            if imgui.menu_item("best", None, cfg.settings["OVERLAP_MODE"] == 1)[0]:
+                                cfg.edit_setting("OVERLAP_MODE", 1)
                             self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
                                          "the tiles processed by the neural network, and the data then detiled back\n"
                                          "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
                                          "del parameters) is handled either by averaging the overlapping regions of\n"
                                          "and image, or by retaining predictions closest to the center of a box,\n"
                                          "where model predictions are typically the best quality.")
-                            if imgui.menu_item("average", None, cfg.settings["OVERLAP_MODE"] == "0")[0]:
-                                cfg.edit_setting("OVERLAP_MODE", "0")
+                            if imgui.menu_item("average", None, cfg.settings["OVERLAP_MODE"] == 0)[0]:
+                                cfg.edit_setting("OVERLAP_MODE", 0)
                             self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
                                          "the tiles processed by the neural network, and the data then detiled back\n"
                                          "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
@@ -1718,8 +1714,8 @@ class SegmentationEditor:
                                          "and image, or by retaining predictions closest to the center of a box,\n"
                                          "where model predictions are typically the best quality.")
                             imgui.end_menu()
-                        if imgui.menu_item("Trim edges", None, cfg.settings["TRIM_EDGES"] == "1")[0]:
-                            cfg.edit_setting("TRIM_EDGES", "0" if cfg.settings["TRIM_EDGES"] == "1" else "1")
+                        if imgui.menu_item("Trim edges", None, cfg.settings["TRIM_EDGES"] == 1)[0]:
+                            cfg.edit_setting("TRIM_EDGES", 0 if cfg.settings["TRIM_EDGES"] == 1 else 1)
                         self.tooltip("When active, the margins of output segmentations are forced to zero.\n"
                                      "The size of the margin equals half the model's box size.")
 
@@ -1794,6 +1790,11 @@ class SegmentationEditor:
                     if imgui.begin_menu("File manager"):
                         if imgui.menu_item("Open file manager")[0]:
                             SegmentationEditor.PATH_VIEWER_OPEN = True
+                        imgui.end_menu()
+
+                    if imgui.begin_menu("Graphics"):
+                        if imgui.menu_item("Recompile shaders")[0]:
+                            self.renderer.recompile_shaders()
                         imgui.end_menu()
 
                     if imgui.begin_menu("Developer"):
@@ -3665,6 +3666,7 @@ class QueuedMeshExtract:
             surface_model.dust = self.min_size
             surface_model.bin = self.binning
             surface_model._generate_model(process)
+            surface_model.initialized = True
             self.check_stop_request()
             path = os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0])+".obj"
             surface_model.save_as_obj(path=path)

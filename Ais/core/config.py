@@ -5,13 +5,13 @@ from datetime import datetime
 import sys
 import platform
 import shutil
-
+import json
 # TODO: .tif files as input
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.33"
+version = "1.0.34"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -99,27 +99,24 @@ def parse_settings():
     if not os.path.exists(os.path.join(os.path.dirname(settings_path), "models")):
         os.mkdir(os.path.join(os.path.dirname(settings_path), "models"))
 
-    sdict = dict()
-    with open(settings_path, 'r') as f:
-        for line in f:
-            key, value = line.strip().split('=')
-            sdict[key] = value
+    try:
+        with open(settings_path, 'r') as f:
+            sdict = json.load(f)
+    except Exception as e:
+        shutil.copy(os.path.join(root, "core", "settings.txt"), settings_path)
+        parse_settings()
+        return
 
     # Read settings - if any parameters are missing, insert them.
-    default_settings = dict()
     with open(os.path.join(root, "core", "settings.txt"), 'r') as f:
-        for line in f:
-            key, value = line.strip().split('=')
-            default_settings[key] = value
+        default_settings = json.load(f)
 
     for key in default_settings:
         if key not in sdict:
             sdict[key] = default_settings[key]
-    lines = list()
-    for key in sdict:
-        lines.append(f"{key}={sdict[key]}\n")
+
     with open(settings_path, 'w') as f:
-        f.writelines(lines)
+        json.dump(sdict, f, indent=2)
 
     return sdict
 
@@ -129,15 +126,9 @@ settings = parse_settings()
 
 def edit_setting(key, value):
     global settings
-    settings[key] = f"{value}"
-    with open(settings_path, 'r') as f:
-        lines = f.readlines()
-    for i, line in enumerate(lines):
-        if line.startswith(key+"="):
-            lines[i] = f"{key}={value}\n"
-
+    settings[key] = value
     with open(settings_path, 'w') as f:
-        f.writelines(lines)
+        json.dump(settings, f, indent=2)
 
 COLOUR_TEST_A = (1.0, 0.0, 1.0, 1.0)
 COLOUR_TEST_B = (0.0, 1.0, 1.0, 1.0)

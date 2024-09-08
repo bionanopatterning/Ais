@@ -1,5 +1,8 @@
-BLENDER_EXE=C:/Program Files/Blender Foundation/Blender 3.6/blender.exe
-CHIMERAX_EXE=C:/Program Files/ChimeraX/bin/ChimeraX.exe
-VALIDATION_SPLIT=0
-TRIM_EDGES=0
-OVERLAP_MODE=0
+{
+  "BLENDER_EXE": "C:/Program Files/Blender Foundation/Blender3.6/blender.exe",
+  "CHIMERAX_EXE": "C:/Program Files/ChimeraX/bin/ChimeraX.exe",
+  "VALIDATION_SPLIT": 0,
+  "TRIM_EDGES": 0,
+  "OVERLAP_MODE": 0,
+  "DEFAULT_COLOURS": {}
+}

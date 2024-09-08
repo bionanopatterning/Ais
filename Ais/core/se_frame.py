@@ -754,7 +754,7 @@ class SurfaceModel:
         for i in self.blobs:
             self.blobs[i].update_if_necessary()
 
-    def save_as_obj(self, path):
+    def save_as_obj(self, path, force_save=False):
         if self.hide or not self.initialized:
             return
         with open(path, 'w') as f:
