@@ -56,8 +56,8 @@ controls_info_text = \
     "    + ctrl:     change brush size\n" \
     "spacebar:       reset view\n" \
     "key A:          toggle autocontrast\n" \
-    "key I:          toggle interpolation\n" \
-    "    +shift:     toggle inversion\n" \
+    "key I:          toggle inversion\n" \
+    "    +shift:     toggle interpolation\n" \
     "key C:          toggle cropping\n" \
     "key F:          toggle flood drawing mode\n" \
     "key Q:          hide 3d models\n" \
@@ -132,28 +132,101 @@ def edit_setting(key, value):
         json.dump(settings, f, indent=2)
 
 
+class FeatureLibraryFeature:
+    DEFAULT_COLOURS = [(66 / 255, 214 / 255, 164 / 255),
+                       (255 / 255, 243 / 255, 0 / 255),
+                       (255 / 255, 104 / 255, 0 / 255),
+                       (255 / 255, 13 / 255, 0 / 255),
+                       (174 / 255, 0 / 255, 255 / 255),
+                       (21 / 255, 0 / 255, 255 / 255),
+                       (0 / 255, 136 / 255, 266 / 255),
+                       (0 / 255, 247 / 255, 255 / 255),
+                       (0 / 255, 255 / 255, 0 / 255)]
+    CLR_COUNTER = 0
+    SORT_TITLE = ""
+
+    def __init__(self):
+        self.title = "New feature"
+        self.colour = FeatureLibraryFeature.DEFAULT_COLOURS[FeatureLibraryFeature.CLR_COUNTER % len(FeatureLibraryFeature.DEFAULT_COLOURS)]
+        self.box_size = 64
+        self.brush_size = 10.0 # nm
+        self.alpha = 1.0
+        self.use = True
+        self.dust = 1.0
+        self.level = 128
+        self.render_alpha = 1.0
+        self.hide = False
+        FeatureLibraryFeature.CLR_COUNTER += 1
+
+    def to_dict(self):
+        return vars(self)
+
+    @staticmethod
+    def from_dict(data):
+        ret = FeatureLibraryFeature()
+        ret.title = data['title']
+        ret.colour = data['colour']
+        ret.box_size = data['box_size']
+        ret.brush_size = data['brush_size']
+        ret.alpha = data['alpha']
+        ret.use = data['use']
+        ret.dust = data['dust']
+        ret.level = data['level']
+        ret.render_alpha = data['render_alpha']
+        ret.hide = data['hide']
+        return ret
+
+
 def parse_feature_library():
     if not os.path.exists(feature_lib_path):
         shutil.copy(os.path.join(root, "core", "feature_library.txt"), feature_lib_path)
 
     with open(feature_lib_path, 'r') as f:
-        fdict = json.load(f)
-
-    return fdict
+        flist = json.load(f)
+    feature_library = list()
+    for f in flist:
+        feature_library.append(FeatureLibraryFeature.from_dict(f))
+    return feature_library
 
 
 feature_library = parse_feature_library()
-feature_library["a"] = 0.0
-feature_library["b"] = 0.0
-feature_library["c"] = 0.0
-feature_library["d"] = 0.0
-feature_library["e"] = 0.0
-feature_library["f"] = 0.0
+feature_library_session = dict()
 
 
 def save_feature_library():
-    with open(feature_lib_path, 'r') as f:
-        json.dump(feature_library, f, indent=2)
+    with open(feature_lib_path, 'w') as f:
+        f.write(json.dumps(feature_library, default=FeatureLibraryFeature.to_dict, indent=2))
+
+
+def apply_feature_library():
+    flib_dict = dict()
+    for f in feature_library_session:
+        flib_dict[f.title ] = f
+    for f in feature_library:  # preference given to the static feature library
+        flib_dict[f.title] = f
+
+    for s in se_frames:
+        for f in s.features:
+            if f.title in flib_dict:
+                library_feature = flib_dict[f.title]
+                f.box_size = library_feature.box_size
+                f.brush_size = library_feature.brush_size
+                f.alpha = library_feature.alpha
+                f.colour = library_feature.colour
+
+
+def sort_frames_by_feature(title):
+    global se_frames
+    frame_has_feature = list()
+    for frame in se_frames:
+        has_feature = False
+        for feature in frame.features:
+            if feature.title == title:
+                has_feature = True
+        frame_has_feature.append(has_feature)
+
+    sorted_se_frames = sorted(zip(se_frames, frame_has_feature), key=lambda x: x[1], reverse=True)
+    se_frames = [frame for frame, _ in sorted_se_frames]
 
 
 COLOUR_TEST_A = (1.0, 0.0, 1.0, 1.0)
@@ -166,6 +239,7 @@ COLOUR_PANEL_BACKGROUND = (0.94, 0.94, 0.94, 0.94)
 COLOUR_TITLE_BACKGROUND = (0.87, 0.87, 0.83, 0.96)
 COLOUR_TITLE_BACKGROUND_LIGHT = (0.96, 0.96, 0.93, 0.93)
 COLOUR_FRAME_BACKGROUND = (0.87, 0.87, 0.83, 0.96)
+COLOUR_FRAME_BACKGROUND_LIGHT = (0.92, 0.92, 0.90, 0.96)
 COLOUR_FRAME_ACTIVE = (0.91, 0.91, 0.86, 0.94)
 COLOUR_FRAME_DARK = (0.83, 0.83, 0.76, 0.94)
 COLOUR_FRAME_EXTRA_DARK = (0.76, 0.76, 0.71, 0.94)
@@ -197,6 +271,8 @@ COLOUR_NEGATIVE = (0.8, 0.1, 0.1, 1.0)
 COLOUR_NEUTRAL = (0.6, 0.6, 0.6, 1.0)
 COLOUR_NEUTRAL_LIGHT = (0.8, 0.8, 0.8, 1.0)
 COLOUR_HIGHLIGHT = (1.0, 1.0, 0.1, 1.0)
+COLOUR_SESSION_FEATURE = (0.94, 0.94, 0.94, 0.94)
+COLOUR_SESSION_FEATURE_BORDER = (0.0, 0.0, 0.0, 0.3)
 
 TOOLTIP_APPEAR_DELAY = 1.0
 TOOLTIP_HOVERED_TIMER = 0.0

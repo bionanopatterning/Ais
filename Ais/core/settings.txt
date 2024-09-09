@@ -4,5 +4,6 @@
   "VALIDATION_SPLIT": 0,
   "TRIM_EDGES": 0,
   "OVERLAP_MODE": 0,
-  "DEFAULT_COLOURS": {}
+  "DEFAULT_COLOURS": {},
+  "WAIT_TO_RENDER": true
 }

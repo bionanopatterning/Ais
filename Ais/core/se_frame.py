@@ -389,7 +389,7 @@ class Segmentation:
         self.brush_size = 10.0
         self.show_boxes = True
         self.magic = False
-        self.magic_strength = 80.0
+        self.magic_strength = 95.0
         self.box_size = 64
         self.box_size_nm = self.box_size * self.parent.pixel_size
         self.slices = dict()
@@ -641,6 +641,14 @@ class SurfaceModel:
         self.particle_colour = self.colour
         self.find_coordinates()
 
+        # if a feature that corresponds to this SurfaceModel exists in the feature library, edit settings accordingly.
+        for feature in cfg.feature_library + list(cfg.feature_library_session.values()):
+            if self.title == feature.title and feature.use:
+                self.level = feature.level
+                self.dust = feature.dust
+                self.alpha = feature.render_alpha
+                self.hide = feature.hide
+
     def find_coordinates(self):
         # is there a coordinate file?
         self.particles = list()
@@ -660,6 +668,8 @@ class SurfaceModel:
                     self.particles = coordinates
 
     def set_colour(self):
+        for feature in cfg.feature_library:
+            SurfaceModel.COLOURS[feature.title] = feature.colour
         if self.title in SurfaceModel.COLOURS:
             self.colour = SurfaceModel.COLOURS[self.title]
             return
@@ -692,6 +702,12 @@ class SurfaceModel:
     def _generate_model(self, process):
         if self.data is None:
             self.data = mrcfile.read(self.path)
+            self.data[0, :, :] = 0
+            self.data[-1, :, :] = 0
+            self.data[:, 0, :] = 0
+            self.data[:, -1, :] = 0
+            self.data[:, :, 0] = 0
+            self.data[:, :, -1] = 0
         if self.latest_bin != self.bin and self.bin != 1:
             self.latest_bin = self.bin
             self.binned_data = SurfaceModel.bin_data(self.data, self.bin)

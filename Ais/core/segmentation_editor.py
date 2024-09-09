@@ -117,6 +117,8 @@ class SegmentationEditor:
         SHOW_IMGUI_DEBUG = False
 
         FEATURE_LIB_OPEN = False
+        FEATURE_LIB_OPEN_INCLUDE_SESSION = False
+        FEATURE_LIB_ANNOTATION = True
 
     def __init__(self, window, imgui_context, imgui_impl):
         cfg.start_log()
@@ -1421,7 +1423,6 @@ class SegmentationEditor:
                     for f in sorted(files):
                         print(f)
                         cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
-
                     # set the size of the volume spanning box
                     w, h, d = se_frame.width / 2, se_frame.height / 2, se_frame.n_slices / 2
                     w *= se_frame.pixel_size
@@ -1445,6 +1446,12 @@ class SegmentationEditor:
                     update_picking_tab_for_new_active_frame()
 
                 for s in cfg.se_surface_models:
+                    # automatically gnerate the model if WAIT_TO_RENDER is False and no other surface model is currently being generated
+                    if not s.hide and not s.initialized and cfg.settings["WAIT_TO_RENDER"] is False:
+                        any_model_being_generated = any([el.process is not None for el in cfg.se_surface_models])
+                        if not any_model_being_generated:
+                            s.generate_model()
+
                     req_gen_models = False
                     s.on_update()
                     if s.process is not None:
@@ -1797,11 +1804,16 @@ class SegmentationEditor:
                     if imgui.begin_menu("Graphics"):
                         if imgui.menu_item("Recompile shaders")[0]:
                             self.renderer.recompile_shaders()
+                        if imgui.menu_item("Wait to render", selected=cfg.settings["WAIT_TO_RENDER"])[0]:
+                            cfg.edit_setting("WAIT_TO_RENDER", not cfg.settings["WAIT_TO_RENDER"])
+                        self.tooltip("In the Rendering tab, segmentations are rendered immediately  if 'wait to render' is not set.\n"
+                                     "Else, rendering is triggered only when any settings (threshold, dust size, etc.) are edited.")
                         imgui.end_menu()
 
                     if imgui.begin_menu("Feature library"):
                         if imgui.menu_item("Open library")[0]:
                             SegmentationEditor.FEATURE_LIB_OPEN = True
+                            self.parse_available_features()
                         imgui.end_menu()
 
                     if imgui.begin_menu("Developer"):
@@ -1967,25 +1979,202 @@ class SegmentationEditor:
                 SegmentationEditor.SHOW_IMGUI_DEBUG = imgui.show_demo_window(closable=True)
 
             if SegmentationEditor.FEATURE_LIB_OPEN:
-                window_width = 700
-                window_max_height = 550
+                window_width = 800
+                window_max_height = 940
+                panel_height = 104
                 imgui.set_next_window_position(cfg.window_width - window_width, 17, imgui.APPEARING)
                 imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
+                imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
+                imgui.push_style_color(imgui.COLOR_RESIZE_GRIP, *cfg.COLOUR_WINDOW_BACKGROUND)
+                _, SegmentationEditor.FEATURE_LIB_OPEN = imgui.begin("Predefined features library", True, imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_COLLAPSE)
+                imgui.set_cursor_pos_x(12)
+                imgui.text(f"Features from library at {cfg.feature_lib_path}")
+                imgui.same_line(position=imgui.get_content_region_available_width() - 181)
+                imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
+                _, SegmentationEditor.FEATURE_LIB_OPEN_INCLUDE_SESSION = imgui.checkbox("include session features", SegmentationEditor.FEATURE_LIB_OPEN_INCLUDE_SESSION)
+                imgui.pop_style_var(2)
+                if len(cfg.feature_library) == 0:
+                    imgui.push_style_color(imgui.COLOR_TABLE_BORDER_STRONG, cfg.COLOUR_WINDOW_BACKGROUND[0] * 0.8, cfg.COLOUR_WINDOW_BACKGROUND[1]* 0.8, cfg.COLOUR_WINDOW_BACKGROUND[2]* 0.8, 1.0)
+                    imgui.push_style_color(imgui.COLOR_TABLE_BORDER_LIGHT, cfg.COLOUR_WINDOW_BACKGROUND[0] * 0.8, cfg.COLOUR_WINDOW_BACKGROUND[1]* 0.8, cfg.COLOUR_WINDOW_BACKGROUND[2]* 0.8, 1.0)
+                else:
+                    imgui.push_style_color(imgui.COLOR_TABLE_BORDER_STRONG, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
+                    imgui.push_style_color(imgui.COLOR_TABLE_BORDER_LIGHT, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
 
-                _, SegmentationEditor.FEATURE_LIB_OPEN = imgui.begin("Feature library", True, imgui.WINDOW_NO_SCROLLBAR)
+                j = 0
+                with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = 460):
 
-                imgui.text(f"Names, colours, and settings found in {'PATH_TO_FEATURE_LIBRARY'}")
-                with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y):
-
-                    for j, key in enumerate(cfg.feature_library):
+                    for j, feature in enumerate(cfg.feature_library):
                         if j % 3 == 0:
                             imgui.table_next_row()
                         imgui.table_next_column()
+                        if feature.use:
+                            imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *feature.colour, 0.057)
+                            imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
+                        else:
+                            imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, 0.0, 0.0, 0.0, 0.037)
+                            imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT_DISABLED)
+                        with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), panel_height, border=True):
 
-                        with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), 80, border=True):
-                            imgui.text("test")
+                            imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
+
+                            _, feature.colour = imgui.color_edit3("##clr", feature.colour[0], feature.colour[1],feature.colour[2],imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                            imgui.same_line()
+                            imgui.set_next_item_width(imgui.get_content_region_available_width())
+                            _, feature.title = imgui.input_text("##title", feature.title, 128)
+
+
+
+                            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                            imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
+                            imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
+                            imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
+
+                            imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+
+                            if SegmentationEditor.FEATURE_LIB_ANNOTATION:
+                                imgui.push_item_width(imgui.get_content_region_available_width() - 38)
+                                _, feature.brush_size = imgui.slider_float("brush", feature.brush_size, 1.0, 25.0, format=f"{feature.brush_size:.1f} nm")
+                                _, feature.box_size = imgui.slider_int("boxes", feature.box_size, 8, 128, format=f"{feature.box_size} pixel")
+                                _, feature.alpha = imgui.slider_float("alpha", feature.alpha, 0.0, 1.0, format="%.2f")
+                                imgui.pop_item_width()
+                                sort_requested, sort_by = imgui.checkbox("sort", cfg.FeatureLibraryFeature.SORT_TITLE == feature.title)
+                                if sort_requested:
+                                    if cfg.FeatureLibraryFeature.SORT_TITLE == feature.title:
+                                        cfg.FeatureLibraryFeature.SORT_TITLE = ""
+                                    else:
+                                        cfg.FeatureLibraryFeature.SORT_TITLE = feature.title
+                                        cfg.sort_frames_by_feature(feature.title)
+                            else:
+                                imgui.push_item_width(imgui.get_content_region_available_width())
+                                _, feature.level = imgui.slider_int("##level", feature.level, 0, 256, f"level = {feature.level:.1f} ")
+                                _, feature.dust = imgui.slider_float("##dust ", feature.dust, 1.0, 1000000.0, f"dust < {feature.dust:.1f} nm³", imgui.SLIDER_FLAGS_LOGARITHMIC)
+                                _, feature.render_alpha = imgui.slider_float("##alpha", feature.render_alpha, 0.0, 1.0, f"alpha = {feature.render_alpha:.1f}")
+                                imgui.pop_item_width()
+                                _, feature.hide = imgui.checkbox("hide", feature.hide)
+
+
+                            imgui.same_line()
+                            _, feature.use = imgui.checkbox("use", feature.use)
+                            imgui.same_line(position = imgui.get_content_region_available_width() - 5)
+                            if imgui.image_button(self.icon_close.renderer_id, 13, 13):
+                                cfg.feature_library.remove(feature)
+                            imgui.pop_style_var(5)
+                            imgui.pop_style_color(1)
+                        imgui.pop_style_color(2)
+                        imgui.spacing()
+
+                    j+=1
+
+                    if j % 3 == 0:
+                        imgui.table_next_row()
+                    imgui.table_next_column()
+                    imgui.push_style_color(imgui.COLOR_BORDER, 0.0, 0.0, 0.0, 0.1)
+                    with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), panel_height, border=True):
+
+                        imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
+                        imgui.push_style_color(imgui.COLOR_BORDER, 0.43, 0.43, 0.5, 0.5)
+                        imgui.set_cursor_pos_y(panel_height // 2 - 20)
+                        if widgets.centred_button("+", 40, 40, rounding=20):
+                            cfg.feature_library.append(cfg.FeatureLibraryFeature())
+                        imgui.pop_style_var(1)
+                        imgui.pop_style_color(1)
+                    imgui.pop_style_color(1)
+
+                    if SegmentationEditor.FEATURE_LIB_OPEN_INCLUDE_SESSION:
+                        for j, feature in enumerate(cfg.feature_library_session.values(), start=j+1):
+                            if j % 3 == 0:
+                                imgui.table_next_row()
+                            imgui.table_next_column()
+
+                            imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *cfg.COLOUR_SESSION_FEATURE)
+                            imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
+
+                            imgui.push_style_color(imgui.COLOR_BORDER, *cfg.COLOUR_SESSION_FEATURE_BORDER)
+                            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, *cfg.COLOUR_FRAME_BACKGROUND_LIGHT)
+                            with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), panel_height, border=True):
+
+                                imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
+
+                                _, feature.colour = imgui.color_edit3("##clr", feature.colour[0], feature.colour[1],feature.colour[2],imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                                imgui.same_line()
+                                imgui.set_next_item_width(imgui.get_content_region_available_width())
+                                _, feature.title = imgui.input_text("##title", feature.title, 128, imgui.INPUT_TEXT_READ_ONLY)
+
+                                imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                                imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
+                                imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
+                                imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
+
+                                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+
+                                if SegmentationEditor.FEATURE_LIB_ANNOTATION:
+                                    imgui.push_item_width(imgui.get_content_region_available_width() - 38)
+                                    _, feature.brush_size = imgui.slider_float("brush", feature.brush_size, 1.0, 25.0, format=f"{feature.brush_size:.1f} nm")
+                                    _, feature.box_size = imgui.slider_int("boxes", feature.box_size, 8, 128, format=f"{feature.box_size} pixel")
+                                    _, feature.alpha = imgui.slider_float("alpha", feature.alpha, 0.0, 1.0, format="%.2f")
+                                    imgui.pop_item_width()
+                                    sort_requested, sort_by = imgui.checkbox("sort", cfg.FeatureLibraryFeature.SORT_TITLE == feature.title)
+                                    if sort_requested:
+                                        if cfg.FeatureLibraryFeature.SORT_TITLE == feature.title:
+                                            cfg.FeatureLibraryFeature.SORT_TITLE = ""
+                                        else:
+                                            cfg.FeatureLibraryFeature.SORT_TITLE = feature.title
+                                            cfg.sort_frames_by_feature(feature.title)
+                                else:
+                                    imgui.push_item_width(imgui.get_content_region_available_width())
+                                    _, feature.level = imgui.slider_int("##level", feature.level, 0, 256, f"level = {feature.level:.1f} nm")
+                                    _, feature.dust = imgui.slider_float("##dust ", feature.dust, 1.0, 1000000.0, f"dust < {feature.dust:.1f} nm³", imgui.SLIDER_FLAGS_LOGARITHMIC)
+                                    _, feature.render_alpha = imgui.slider_float("##alpha", feature.render_alpha, 0.0, 1.0, f"alpha = {feature.render_alpha:.1f}")
+                                    imgui.pop_item_width()
+                                    _, feature.hide = imgui.checkbox("hide", feature.hide)
+
+                                imgui.same_line()
+                                if imgui.button("save", 36, 14):
+                                    cfg.feature_library.append(feature)
+                                    self.parse_available_features()
+                                imgui.pop_style_var(5)
+                                imgui.pop_style_color(1)
+                            imgui.pop_style_color(4)
+                            imgui.spacing()
+
+                imgui.pop_style_color(2)
+
+                imgui.new_line()
+                imgui.same_line(position=imgui.get_content_region_available_width() - 270)
+                imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
+                imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
+
+                imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+
+                imgui.align_text_to_frame_padding()
+                imgui.text("settings for:")
+                imgui.same_line()
+                _, SegmentationEditor.FEATURE_LIB_ANNOTATION = imgui.checkbox("annotation",SegmentationEditor.FEATURE_LIB_ANNOTATION)
+                imgui.same_line()
+                toggled, _ = imgui.checkbox("rendering", not SegmentationEditor.FEATURE_LIB_ANNOTATION)
+                if toggled:
+                    SegmentationEditor.FEATURE_LIB_ANNOTATION = not SegmentationEditor.FEATURE_LIB_ANNOTATION
+                imgui.pop_style_var(1)
+
+                imgui.new_line()
+                imgui.same_line(position=imgui.get_content_region_available_width() - 175)
+
+
+
+                if imgui.button("reset", 55, 25):
+                    cfg.feature_library = cfg.parse_feature_library()
+                imgui.same_line()
+                if imgui.button("apply", 55, 25):
+                    cfg.apply_feature_library()
+                imgui.same_line()
+                if imgui.button("save", 55, 25):
+                    cfg.save_feature_library()
+                imgui.pop_style_var(2)
 
                 imgui.end()
+                imgui.pop_style_color(2)
+
         # START GUI:
         # Menu bar
         menu_bar()
@@ -2163,9 +2352,19 @@ class SegmentationEditor:
             imgui.pop_style_var(1)
 
     def parse_available_features(self):
-        # upon opening Models tab.
+        # parse_available_features is called whenever a list of all session features is required.
+        # one example: in Feature box, right-click the title to get a list of all present features, to copy their settings
+        # another: in generating trainign datasets, to present the list of available features to sample boxes from.
+        # 240909: adding feature library functionality.
+
         self.all_feature_names = list()
         self.feature_colour_dict = dict()
+        cfg.feature_library_session = dict()
+
+        feature_lib_titles = [f.title for f in cfg.feature_library]
+        for feature in cfg.feature_library:
+            if feature.use:
+                self.feature_colour_dict[feature.title] = feature.colour
         for sef in cfg.se_frames:
             for ftr in sef.features:
                 if sef.sample:
@@ -2173,9 +2372,19 @@ class SegmentationEditor:
                         self.all_feature_names.append(ftr.title)
                     if ftr.title not in self.trainset_feature_selection:
                         self.trainset_feature_selection[ftr.title] = 0.0
-                if ftr.title not in self.feature_colour_dict:
+                if ftr.title not in self.feature_colour_dict and not "Unnamed feature" in ftr.title:
                     self.feature_colour_dict[ftr.title] = ftr.colour
+                if ftr.title not in feature_lib_titles:
+                    session_feature = cfg.FeatureLibraryFeature()
+                    cfg.feature_library_session[ftr.title] = session_feature
+                    session_feature.colour = ftr.colour
+                    session_feature.box_size = ftr.box_size
+                    session_feature.alpha = ftr.alpha
+                    session_feature.title = ftr.title
+
         to_pop = list()
+
+        # Sanitize the selection of features to sample from. If a selected key is no longer available, remove it.
         for key in self.trainset_feature_selection.keys():
             if key not in self.all_feature_names:
                 to_pop.append(key)
@@ -2206,13 +2415,35 @@ class SegmentationEditor:
 
     def _gui_feature_title_context_menu(self, feature_or_model):
         if imgui.begin_popup_context_item():
+            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
             for t in self.feature_colour_dict:
+                rgb = self.feature_colour_dict[t]
+                imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 7)
+                imgui.color_button(f"##clrbutton{t}", rgb[0], rgb[1], rgb[2], 1.0, 0, 14, 14)
+                imgui.pop_style_var(1)
+                imgui.same_line(spacing=5)
                 imgui.selectable(t)
                 if imgui.is_item_hovered():
                     feature_or_model.title = t
                     feature_or_model.colour = self.feature_colour_dict[t]
+                    # check if a feature with this title is in feature library
+                    if isinstance(feature_or_model, Segmentation):
+                        flib_titles = [f.title for f in cfg.feature_library]
+                        if t in flib_titles:
+                            library_feature = cfg.feature_library[flib_titles.index(t)]
+                            feature_or_model.brush_size = library_feature.brush_size
+                            feature_or_model.box_size = library_feature.box_size
+                            feature_or_model.alpha = library_feature.alpha
                 imgui.spacing()
-
+            if imgui.begin_menu("Feature library"):
+                if imgui.menu_item("disable saved features")[0]:
+                    for feature in cfg.feature_library:
+                        feature.use = False
+                    self.parse_available_features()
+                if imgui.menu_item("open feature library")[0]:
+                    SegmentationEditor.FEATURE_LIB_OPEN = True
+                imgui.end_menu()
+            imgui.pop_style_var(1)
             imgui.end_popup()
 
     @staticmethod
