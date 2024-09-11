@@ -337,7 +337,7 @@ class SEModel:
         # tile
         stride = int(self.box_size * (1.0 - self.overlap))
         boxes = list()
-        image = np.pad(image, ((0, pad_w), (0, pad_h)), model='reflect')
+        image = np.pad(image, ((0, pad_w), (0, pad_h)), mode='reflect')
         for x in range(0, w + pad_w - self.box_size + 1, stride):
             for y in range(0, h + pad_h - self.box_size + 1, stride):
                 box = image[x:x + self.box_size, y:y + self.box_size]

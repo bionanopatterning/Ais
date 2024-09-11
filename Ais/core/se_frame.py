@@ -702,6 +702,8 @@ class SurfaceModel:
     def _generate_model(self, process):
         if self.data is None:
             self.data = mrcfile.read(self.path)
+            # if np.amax(self.data) <= 1.0:
+            #     self.data *= 255
             self.data[0, :, :] = 0
             self.data[-1, :, :] = 0
             self.data[:, 0, :] = 0

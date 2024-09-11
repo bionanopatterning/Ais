@@ -11,7 +11,7 @@ import json
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.34"
+version = "1.0.35"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -200,8 +200,8 @@ def save_feature_library():
 
 def apply_feature_library():
     flib_dict = dict()
-    for f in feature_library_session:
-        flib_dict[f.title ] = f
+    for f in feature_library_session.values():
+        flib_dict[f.title] = f
     for f in feature_library:  # preference given to the static feature library
         flib_dict[f.title] = f
 
