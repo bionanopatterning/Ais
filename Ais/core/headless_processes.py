@@ -1,7 +1,6 @@
 from Ais.core.se_frame import SEFrame
 from Ais.core.se_model import SEModel
 from Ais.core.segmentation_editor import QueuedExport
-from Ais.main import windowless
 import os
 import time
 import multiprocessing
@@ -14,8 +13,6 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
-
-    windowless()
 
     model = SEModel()
     model.load(model_path)
