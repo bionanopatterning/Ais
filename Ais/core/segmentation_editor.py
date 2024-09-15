@@ -1388,6 +1388,7 @@ class SegmentationEditor:
 
         def picking_tab():
             if imgui.collapsing_header("Volumes", None, imgui.TREE_NODE_DEFAULT_OPEN)[0]:
+                imgui.text("Segmentation (.mrc) directory:")
                 src_folder_changed, SegmentationEditor.seg_folder = widgets.select_directory("...", SegmentationEditor.seg_folder)
                 self.tooltip("Select the location in which to look for segmentations that belong to the\n"
                              "imported datasets. Right-click to set the path to the location of the ac-\n"
@@ -1523,6 +1524,15 @@ class SegmentationEditor:
                 imgui.pop_style_var(3)
                 imgui.pop_style_color(1)
 
+                # if cfg.se_active_frame is not None and widgets.centred_button("Manual import", 115, 24):
+                #     filepaths = filedialog.askopenfilenames(filetypes=[("EM volume", ".mrc")])
+                #     print(filepaths)
+                #     if filepaths != ():
+                #         for f in filepaths:
+                #             try:
+                #                 cfg.se_surface_models.append(SurfaceModel(f, cfg.se_active_frame.pixel_size))
+                #             except Exception as e:
+                #                 cfg.set_error(e, f"Could not import {f} as SurfaceModel - see details below")
             SegmentationEditor.LIGHT_SPOT.compute_vec(dyaw=-self.camera3d.yaw)
             if imgui.collapsing_header("Graphics settings", None)[0]:
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
