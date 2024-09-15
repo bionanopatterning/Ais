@@ -11,7 +11,7 @@ import json
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.35"
+version = "1.0.36"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -223,6 +223,8 @@ def sort_frames_by_feature(title):
         for feature in frame.features:
             if feature.title == title:
                 has_feature = True
+                frame.features.remove(feature)
+                frame.features.insert(0, feature)
         frame_has_feature.append(has_feature)
 
     sorted_se_frames = sorted(zip(se_frames, frame_has_feature), key=lambda x: x[1], reverse=True)

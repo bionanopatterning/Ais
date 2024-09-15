@@ -46,7 +46,7 @@ def select_directory(label, path):
         changed = True
         try:
             selected_dir = filedialog.askdirectory()
-            if selected_dir is not None and selected_dir != "":
+            if selected_dir != "" and type(selected_dir) == str:
                 new_path = selected_dir
         except Exception as e:
             changed = False

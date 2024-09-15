@@ -334,7 +334,10 @@ class SegmentationEditor:
                 SegmentationEditor.VIEW_REQUIRES_UPDATE = True
             if self.active_tab == "Segmentation" and cfg.se_active_frame.active_feature is not None:
                 if imgui.is_key_pressed(glfw.KEY_F):
-                    cfg.se_active_frame.active_feature.magic = not cfg.se_active_frame.active_feature.magic
+                    if not SegmentationEditor.is_shift_down():
+                        cfg.se_active_frame.active_feature.magic = not cfg.se_active_frame.active_feature.magic
+                    else:
+                        cfg.se_active_frame.active_feature.contour = not cfg.se_active_frame.active_feature.contour
                 if cfg.se_active_frame.active_feature.magic:
                     if imgui.is_key_pressed(glfw.KEY_MINUS):
                         cfg.se_active_frame.active_feature.magic_strength -= 5.0
@@ -346,22 +349,21 @@ class SegmentationEditor:
 
         # key input
         active_frame = cfg.se_active_frame
-        if not self.active_tab == "Render":
-            if active_frame in cfg.se_frames:
-                if imgui.is_key_pressed(glfw.KEY_UP):
-                    idx = cfg.se_frames.index(active_frame) - 1
-                    idx = max(0, idx)
-                    SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
-                elif imgui.is_key_pressed(glfw.KEY_DOWN):
-                    idx = cfg.se_frames.index(active_frame) + 1
-                    idx = min(idx, len(cfg.se_frames) - 1)
-                    SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
-                elif imgui.is_key_pressed(glfw.KEY_LEFT, True):
-                    active_frame.set_slice(active_frame.current_slice - 1)
-                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
-                elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
-                    active_frame.set_slice(active_frame.current_slice + 1)
-                    SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
+        if active_frame in cfg.se_frames:
+            if imgui.is_key_pressed(glfw.KEY_UP):
+                idx = cfg.se_frames.index(active_frame) - 1
+                idx = max(0, idx)
+                SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
+            elif imgui.is_key_pressed(glfw.KEY_DOWN):
+                idx = cfg.se_frames.index(active_frame) + 1
+                idx = min(idx, len(cfg.se_frames) - 1)
+                SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
+            elif imgui.is_key_pressed(glfw.KEY_LEFT, True):
+                active_frame.set_slice(active_frame.current_slice - 1)
+                SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
+            elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
+                active_frame.set_slice(active_frame.current_slice + 1)
+                SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
         active_feature = None
         if active_frame is not None:
             active_feature = cfg.se_active_frame.active_feature
@@ -468,7 +470,7 @@ class SegmentationEditor:
                         seframe.scns_path = f
                     self.parse_available_features()
             except Exception as e:
-                cfg.set_error(e, "Error importing dataset, see details below:")
+                cfg.set_error(e, f"Error importing dataset {f}, see details below:")
 
     @staticmethod
     def save_dataset(dialog=False):
@@ -483,7 +485,6 @@ class SegmentationEditor:
                 if hasattr(cfg.se_active_frame, "scns_path"):
                     if cfg.se_active_frame.scns_path != "n/a":
                         filename = cfg.se_active_frame.scns_path
-                        print(f"Quick-saved file as {filename}")
             if filename != '':
                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                     filename += cfg.filetype_segmentation
@@ -491,6 +492,7 @@ class SegmentationEditor:
                     cfg.se_active_frame.scns_path = filename
                 with open(filename, 'wb') as pickle_file:
                     pickle.dump(cfg.se_active_frame, pickle_file)
+                    print(f"Saved {filename}")
 
 
         except Exception as e:
@@ -1086,11 +1088,14 @@ class SegmentationEditor:
                             if imgui.button("save", (cw - 16) / 3, 20):
                                 if not block_buttons and not block_save_button:
                                     proposed_filename = f"{m.apix:.2f}_{m.box_size}_{m.loss:.4f}_{m.title}"
-                                    model_path = filedialog.asksaveasfilename(filetypes=[("scNodes model", f"{cfg.filetype_semodel}")], initialfile=proposed_filename)
-                                    if model_path != "":
-                                        if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
-                                            model_path += cfg.filetype_semodel
-                                        m.save(model_path, cfg.se_active_frame.data)
+                                    try:
+                                        model_path = filedialog.asksaveasfilename(filetypes=[("scNodes model", f"{cfg.filetype_semodel}")], initialfile=proposed_filename)
+                                        if model_path != "" and type(model_path) == str:
+                                            if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
+                                                model_path += cfg.filetype_semodel
+                                            m.save(model_path, cfg.se_active_frame.data)
+                                    except Exception as e:
+                                        cfg.set_error(e, "Could not save model. See details below.")
                             if block_save_button:
                                 imgui.pop_style_color(4)
                             imgui.same_line(spacing=8)
@@ -1641,7 +1646,7 @@ class SegmentationEditor:
                 if imgui.begin_menu("File"):
                     if imgui.menu_item("Import datasets")[0]:
                         try:
-                            filename = filedialog.askopenfilenames(filetypes=[("scNodes segmentable", f".mrc {cfg.filetype_segmentation}")])
+                            filename = filedialog.askopenfilenames(filetypes=[("scNodes segmentable", f".mrc {cfg.filetype_segmentation}"), (".scns", f"{cfg.filetype_segmentation}"), (".mrc", ".mrc")])
                             if filename != '':
                                 self.import_dataset(filename)
                         except Exception as e:
@@ -1686,6 +1691,10 @@ class SegmentationEditor:
                         except Exception as e:
                             cfg.set_error(e, "Could not save model group, see details below.")
                     imgui.separator()
+                    if imgui.menu_item("Unlink all datasets")[0]:
+                        cfg.se_frames = list()
+                        cfg.se_active_frame = None
+                        self.parse_available_features()
                     # if imgui.menu_item("Export validation slice")[0]:
                     #     try:
                     #         filename = filedialog.asksaveasfilename(filetypes=[("tifffile", ".tiff")])
@@ -1912,7 +1921,7 @@ class SegmentationEditor:
             if SegmentationEditor.PATH_VIEWER_OPEN:
                 window_width = 900
                 window_max_height = 450
-                imgui.set_next_window_position(cfg.window_width - window_width, 17, imgui.APPEARING)
+                imgui.set_next_window_position(cfg.window_width // 2 - window_width, 17, imgui.APPEARING)
                 imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
                 _, SegmentationEditor.PATH_VIEWER_OPEN = imgui.begin("Path viewer", True, imgui.WINDOW_NO_SCROLLBAR)
                 w_col1 = 93
@@ -1941,6 +1950,7 @@ class SegmentationEditor:
 
                         imgui.table_next_column()
                         mrc_found = False
+                        # TODO: the highlight and if os.path.exists thing: don't do it every frame, only when changes might have occurred.
                         highlight = SegmentationEditor.PATH_VIEWER_OPEN_FIND in s.path if SegmentationEditor.PATH_VIEWER_OPEN_FIND != "" else False
                         if os.path.exists(s.path):
                             mrc_found = True
@@ -1992,7 +2002,7 @@ class SegmentationEditor:
                 window_width = 800
                 window_max_height = 940
                 panel_height = 104
-                imgui.set_next_window_position(cfg.window_width - window_width, 17, imgui.APPEARING)
+                imgui.set_next_window_position(cfg.window_width //2 - window_width // 2, 60, imgui.APPEARING)
                 imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
                 imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
                 imgui.push_style_color(imgui.COLOR_RESIZE_GRIP, *cfg.COLOUR_WINDOW_BACKGROUND)
@@ -2441,8 +2451,8 @@ class SegmentationEditor:
                         flib_titles = [f.title for f in cfg.feature_library]
                         if t in flib_titles:
                             library_feature = cfg.feature_library[flib_titles.index(t)]
-                            feature_or_model.brush_size = library_feature.brush_size
-                            feature_or_model.box_size = library_feature.box_size
+                            feature_or_model.brush_size = library_feature.brush_size / feature_or_model.parent.pixel_size / 2
+                            feature_or_model.set_box_size(library_feature.box_size)
                             feature_or_model.alpha = library_feature.alpha
                 imgui.spacing()
             if imgui.begin_menu("Feature library"):
@@ -2612,6 +2622,8 @@ class SegmentationEditor:
         n_done = 0
         target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
         for d in datasets:
+            if not os.path.exists(d.path):
+                continue
             mrcf = mrcfile.mmap(d.path, mode="r", permissive=True)
             raw_type = mrcf.data.dtype
             out_type = float
