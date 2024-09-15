@@ -66,6 +66,7 @@ def main():
     segment_parser.add_argument('-ou', '--output_directory', required=True, type=str, help="Directory to save the output")
     segment_parser.add_argument('-gpu', '--gpus', required=True, type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
     segment_parser.add_argument('-s', '--skip', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to skip (yes if 1, no if 0) tomograms for which a corresponding segmentation is already found.")
+    segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
 
     args = parser.parse_args()
     if args.command is None:
@@ -73,7 +74,8 @@ def main():
         run_ais()
     elif args.command is 'segment':
         windowless()
-        aiscli.dispatch_parallel_segment(args.model_path, args.data_directory, args.output_directory, args.gpus, args.skip)
+        gpus = [int(g) for g in args.gpus.split(',')]
+        aiscli.dispatch_parallel_segment(args.model_path, args.data_directory, args.output_directory, gpus, args.skip)
 
 
 if __name__ == "__main__":

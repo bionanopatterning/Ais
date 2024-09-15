@@ -34,6 +34,7 @@ __________
    rendering
    extracting_particles_and_meshes
    python_module
+   command_line_interface
 
 Help
 ----------------

@@ -1,6 +1,5 @@
 from Ais.core.se_frame import SEFrame
 from Ais.core.se_model import SEModel
-import tensorflow as tf
 from Ais.core.segmentation_editor import QueuedExport
 from Ais.main import windowless
 import os
@@ -8,11 +7,13 @@ import time
 import multiprocessing
 import glob
 import itertools
-import argparse
 
 
 def _segmentation_thread(model_path, data_paths, output_dir, gpu_id):
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    if isinstance(gpu_id, int):
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
     windowless()
 
@@ -29,7 +30,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id):
             time.sleep(0.5)
 
 
-def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1):
+def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1, parallel=1):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -40,11 +41,11 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         output_directory = os.path.join(os.getcwd(), output_directory)
     os.makedirs(output_directory, exist_ok=True)
 
+
     # distribute data:
     all_data_paths = glob.glob(os.path.join(data_directory, "*.mrc"))
 
-    if skip==1:
-        # read model title
+    if skip == 1:
         model_metadata = SEModel.load_metadata(model_path)
         model_title = model_metadata.title
         all_data_paths = [p for p in all_data_paths if not os.path.exists(os.path.join(data_directory, os.path.splitext(os.path.basename(p))[0]+f"__{model_title}.mrc"))]
@@ -54,13 +55,16 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         data_div[gpu].append(data_path)
 
     # launch the _segmentation_threads (on different CPUs?) using different GPUs
-    processes = []
 
-    for gpu_id in data_div:
-        p = multiprocessing.Process(target=_segmentation_thread,
-                                    args=(model_path, data_div[gpu_id], output_directory, gpu_id))
-        processes.append(p)
-        p.start()
+    if parallel:
+        processes = []
+        for gpu_id in data_div:
+            p = multiprocessing.Process(target=_segmentation_thread,
+                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id))
+            processes.append(p)
+            p.start()
 
-    for p in processes:
-        p.join()
+        for p in processes:
+            p.join()
+    else:
+        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus))
