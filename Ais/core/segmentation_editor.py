@@ -2041,7 +2041,7 @@ class SegmentationEditor:
                                 sort_requested, sort_by = imgui.checkbox("sort", cfg.FeatureLibraryFeature.SORT_TITLE == feature.title)
                                 if sort_requested:
                                     if cfg.FeatureLibraryFeature.SORT_TITLE == feature.title:
-                                        cfg.FeatureLibraryFeature.SORT_TITLE = ""
+                                        cfg.FeatureLibraryFeature.SORT_TITLE = "\n"
                                     else:
                                         cfg.FeatureLibraryFeature.SORT_TITLE = feature.title
                                         cfg.sort_frames_by_feature(feature.title)

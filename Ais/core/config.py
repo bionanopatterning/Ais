@@ -143,7 +143,7 @@ class FeatureLibraryFeature:
                        (0 / 255, 247 / 255, 255 / 255),
                        (0 / 255, 255 / 255, 0 / 255)]
     CLR_COUNTER = 0
-    SORT_TITLE = ""
+    SORT_TITLE = "\n"
 
     def __init__(self):
         self.title = "New feature"

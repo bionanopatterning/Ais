@@ -140,6 +140,24 @@ class SEModel:
                     archive.add(slice_path, arcname=os.path.basename(slice_path))
                     archive.add(thumbnail_path, arcname=os.path.basename(thumbnail_path))
 
+    @staticmethod
+    def load_metadata(file_path):
+        try:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with tarfile.open(file_path, 'r') as archive:
+                    archive.extractall(path=temp_dir)
+
+                metadata_file = glob.glob(os.path.join(temp_dir, "*_metadata.json"))[0]
+
+                # Load metadata
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+
+                return metadata
+
+        except Exception as e:
+            print("Error loading model - see details below", e)
+
     def load(self, file_path):
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -337,7 +355,7 @@ class SEModel:
         # tile
         stride = int(self.box_size * (1.0 - self.overlap))
         boxes = list()
-        image = np.pad(image, ((0, pad_w), (0, pad_h)), model='reflect')
+        image = np.pad(image, ((0, pad_w), (0, pad_h)), mode='reflect')
         for x in range(0, w + pad_w - self.box_size + 1, stride):
             for y in range(0, h + pad_h - self.box_size + 1, stride):
                 box = image[x:x + self.box_size, y:y + self.box_size]
