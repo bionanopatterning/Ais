@@ -1716,6 +1716,44 @@ class SegmentationEditor:
                     imgui.end_menu()
                 if imgui.begin_menu("Settings"):
                     if imgui.begin_menu("Model settings"):
+                        if imgui.begin_menu("Model library"):
+                            imgui.text(os.path.join(os.path.dirname(cfg.settings_path), "models"))
+                            imgui.separator()
+                            custom_models = glob.glob(os.path.join(os.path.dirname(cfg.settings_path), "models", "*.py"))
+                            for m in custom_models:
+                                if imgui.begin_menu(os.path.splitext(os.path.basename(m))[0]):
+                                    if imgui.menu_item("Reload")[0]:
+                                        SEModel.load_models()
+                                    if imgui.menu_item("Delete")[0]:
+                                        os.remove(m)
+                                    imgui.end_menu()
+                            if imgui.menu_item("Install a model")[0]:
+                                try:
+                                    path = filedialog.askopenfilename(filetypes=[("Ais model (.py)", ".py")])
+                                    if path != "":
+                                        user_library = os.path.join(os.path.dirname(cfg.settings_path), "models")
+                                        shutil.copy(path, os.path.join(user_library, os.path.basename(path)))
+                                        SEModel.load_models()
+                                except Exception as e:
+                                    cfg.set_error(e, "Something went wrong adding a model to the library - see below.")
+                            imgui.end_menu()
+
+                        if imgui.begin_menu("Available GPUs"):
+                            imgui.text("Set device usage")
+                            imgui.separator()
+                            used_devices = list()
+                            changed = False
+                            for j in AVAILABLE_DEVICES:
+                                device_used = str(j) in cfg.settings["GPUS"]
+                                _, device_used = imgui.checkbox(f"GPU {j}", device_used)
+                                changed = _ or changed
+                                if device_used:
+                                    used_devices.append(j)
+                            if changed:
+                                cfg.edit_setting("GPUS", ",".join([str(j) for j in used_devices]))
+                                set_visible_devices(cfg.settings["GPUS"])
+                            imgui.end_menu()
+
                         if imgui.begin_menu("Validation splits"):
                             split_setting = cfg.settings["VALIDATION_SPLIT"]
                             split_options = {'no split': 0, 'split 10%': 10, 'split 20%': 20, 'split 50%': 50}
@@ -1747,29 +1785,6 @@ class SegmentationEditor:
                         self.tooltip("When active, the margins of output segmentations are forced to zero.\n"
                                      "The size of the margin equals half the model's box size.")
 
-
-
-                        if imgui.begin_menu("Model library"):
-                            imgui.text(os.path.join(os.path.dirname(cfg.settings_path), "models"))
-                            imgui.separator()
-                            custom_models = glob.glob(os.path.join(os.path.dirname(cfg.settings_path), "models", "*.py"))
-                            for m in custom_models:
-                                if imgui.begin_menu(os.path.splitext(os.path.basename(m))[0]):
-                                    if imgui.menu_item("Reload")[0]:
-                                        SEModel.load_models()
-                                    if imgui.menu_item("Delete")[0]:
-                                        os.remove(m)
-                                    imgui.end_menu()
-                            if imgui.menu_item("Install a model")[0]:
-                                try:
-                                    path = filedialog.askopenfilename(filetypes=[("Ais model (.py)", ".py")])
-                                    if path != "":
-                                        user_library = os.path.join(os.path.dirname(cfg.settings_path), "models")
-                                        shutil.copy(path, os.path.join(user_library, os.path.basename(path)))
-                                        SEModel.load_models()
-                                except Exception as e:
-                                    cfg.set_error(e, "Something went wrong adding a model to the library - see below.")
-                            imgui.end_menu()
                         imgui.end_menu()
 
                     if imgui.begin_menu("3rd party applications"):

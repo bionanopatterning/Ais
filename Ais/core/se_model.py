@@ -22,8 +22,12 @@ import tempfile
 # Python 3.9, CUDA D11.8, cuDNN 8.6, tensorflow 2.8.0, protobuf 3.20.0, and adding
 # LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
 
+AVAILABLE_DEVICES = [j for j in range(len(tf.config.list_physical_devices('GPU')))]
+os.environ["CUDA_VISIBLE_DEVICES"] = cfg.settings["GPUS"]
 
-#TODO: in process_slice, check the volume of data that is processed by any model at one time. It should fit in the GPU, or tf throws an error that causes a QueuedExport to stop. Ensure that batch size is smaller than available memory.
+def set_visible_devices(device_list):
+    devices_str = ",".join([str(j) for j in device_list])
+    os.environ["CUDA_VISIBLE_DEVICES"] = devices_str
 
 
 class SEModel:
@@ -297,9 +301,11 @@ class SEModel:
 
             # train
             validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
-            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split,
-                           callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self),
-                                      StopTrainingCallback(process.stop_request)])
+            strategy = tf.distribute.MirroredStrategy()
+            with strategy.scope():
+                self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split,
+                               callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self),
+                                          StopTrainingCallback(process.stop_request)])
             process.set_progress(1.0)
             print(self.info + f" {time.time() - start_time:.1f} seconds of training.")
         except Exception as e:
