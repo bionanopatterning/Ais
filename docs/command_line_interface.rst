@@ -5,7 +5,6 @@ Since version 1.0.35, Ais offers expanded functionality via the command line int
 
 **Batch Segmentation (`ais segment`)**
 
-Usage:
 ::
 
    ais segment -m <model_path> -d <data_directory> -ou <output_directory> -gpu <gpu_ids> [-s <skip>] [-p <parallel>]
@@ -36,3 +35,4 @@ Examples:
    ais segment -m models/15.68_64_0.0261_Membrane.scnm -d volumes -ou segmentations -gpu 0 -s 0,1 -p 0
 
 Use ais segment to segment all tomograms in a directory. On systems with multipe GPUs, segmenting multiple volumes simultaneously using parallel processes that eacch use only 1 GPU is often considerably faster than running a single process that uses all GPUs at once. Unless tomograms or te used model architectures are very large (i.e. unbinned), a single GPU per volume is usually sufficient: when tested on a system with 8 NVIDIA GeForce RTX 3080's and a 96-core CPU, parallel processing reduced the average computation time per tomogram 8-fold.
+

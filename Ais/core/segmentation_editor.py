@@ -1093,7 +1093,7 @@ class SegmentationEditor:
                                         if model_path != "" and type(model_path) == str:
                                             if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
                                                 model_path += cfg.filetype_semodel
-                                            m.save(model_path, cfg.se_active_frame.data)
+                                            m.save(model_path, None if cfg.se_active_frame is None else cfg.se_active_frame.data)
                                     except Exception as e:
                                         cfg.set_error(e, "Could not save model. See details below.")
                             if block_save_button:
@@ -1736,22 +1736,6 @@ class SegmentationEditor:
                                         SEModel.load_models()
                                 except Exception as e:
                                     cfg.set_error(e, "Something went wrong adding a model to the library - see below.")
-                            imgui.end_menu()
-
-                        if imgui.begin_menu("Available GPUs"):
-                            imgui.text("Set device usage")
-                            imgui.separator()
-                            used_devices = list()
-                            changed = False
-                            for j in AVAILABLE_DEVICES:
-                                device_used = str(j) in cfg.settings["GPUS"]
-                                _, device_used = imgui.checkbox(f"GPU {j}", device_used)
-                                changed = _ or changed
-                                if device_used:
-                                    used_devices.append(j)
-                            if changed:
-                                cfg.edit_setting("GPUS", ",".join([str(j) for j in used_devices]))
-                                set_visible_devices(cfg.settings["GPUS"])
                             imgui.end_menu()
 
                         if imgui.begin_menu("Validation splits"):

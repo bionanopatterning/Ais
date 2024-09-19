@@ -22,13 +22,6 @@ import tempfile
 # Python 3.9, CUDA D11.8, cuDNN 8.6, tensorflow 2.8.0, protobuf 3.20.0, and adding
 # LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
 
-AVAILABLE_DEVICES = [j for j in range(len(tf.config.list_physical_devices('GPU')))]
-os.environ["CUDA_VISIBLE_DEVICES"] = cfg.settings["GPUS"]
-
-def set_visible_devices(device_list):
-    devices_str = ",".join([str(j) for j in device_list])
-    os.environ["CUDA_VISIBLE_DEVICES"] = devices_str
-
 
 class SEModel:
     idgen = count(0)
@@ -162,7 +155,7 @@ class SEModel:
         except Exception as e:
             print("Error loading model - see details below", e)
 
-    def load(self, file_path):
+    def load(self, file_path, compile=True):
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 with tarfile.open(file_path, 'r') as archive:
@@ -172,7 +165,7 @@ class SEModel:
                 metadata_file = glob.glob(os.path.join(temp_dir, "*_metadata.json"))[0]
 
                 # Load the Keras model
-                self.model = tf.keras.models.load_model(model_file)
+                self.model = tf.keras.models.load_model(model_file, compile=compile)
 
                 # Load metadata
                 with open(metadata_file, 'r') as f:
@@ -301,11 +294,7 @@ class SEModel:
 
             # train
             validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
-            strategy = tf.distribute.MirroredStrategy()
-            with strategy.scope():
-                self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split,
-                               callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self),
-                                          StopTrainingCallback(process.stop_request)])
+            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split, callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self), StopTrainingCallback(process.stop_request)])
             process.set_progress(1.0)
             print(self.info + f" {time.time() - start_time:.1f} seconds of training.")
         except Exception as e:

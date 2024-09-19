@@ -244,7 +244,8 @@ class SEFrame:
         state = self.__dict__.copy()
         to_remove = ['rendered_data', 'clem_frame']
         for key in to_remove:
-            del state[key]
+            if key in state:
+                del state[key]
         return self.__class__, (self.path,), state
 
     def __eq__(self, other):
@@ -356,7 +357,8 @@ class Overlay:
         state = self.__dict__.copy()
         to_remove = ['clem_frame', 'update_function']
         for key in to_remove:
-            del state[key]
+            if key in state:
+                del state[key]
         return self.__class__, (self.pxd, self.se_frame, ), state
 
 class Segmentation:

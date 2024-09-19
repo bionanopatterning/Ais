@@ -10,7 +10,6 @@ import glob
 import itertools
 import glfw
 
-
 def glfw_init():
     if not glfw.init():
         raise Exception("Could not initialize GLFW library for headless start!")
@@ -32,7 +31,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap):
     glfw_init()
 
     model = SEModel()
-    model.load(model_path)
+    model.load(model_path, compile=False)
     if overlap is not None:
         model.overlap = min([0.9, max(overlap, 0.0)])
 

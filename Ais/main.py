@@ -83,7 +83,7 @@ def main():
     train_parser.add_argument('-c', '--copies', required=False, type=int, default=10, help="Number of copies of the input images to include in the training data (all samples in different orientations).")
     train_parser.add_argument('-models', '--model_architectures', required=False, action='store_true', help='List available model architectures.')
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
     if args.command is None:
         run_ais()
     else:
