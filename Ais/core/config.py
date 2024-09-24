@@ -6,12 +6,11 @@ import sys
 import platform
 import shutil
 import json
-# TODO: .tif files as input
 
 frozen = False
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.37"
+version = "1.0.38"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")

@@ -91,7 +91,13 @@ def main():
 
         if args.command == 'segment':
             gpus = [int(g) for g in args.gpus.split(',')]
-            aiscli.dispatch_parallel_segment(args.model_path, args.data_directory, args.output_directory, gpus, args.skip, args.overlap)
+            aiscli.dispatch_parallel_segment(model_path=args.model_path,
+                                             data_directory=args.data_directory,
+                                             output_directory=args.output_directory,
+                                             gpus=gpus,
+                                             skip=args.skip,
+                                             parallel=args.parallel,
+                                             overlap=args.overlap)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()
