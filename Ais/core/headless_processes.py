@@ -49,7 +49,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap):
             time.sleep(0.5)
 
 
-def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1, parallel=1, overlap=None):
+def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1, parallel=1, overlap=0.0):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -85,7 +85,7 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         for p in processes:
             p.join()
     else:
-        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overlap)
+        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overlap=overlap)
 
 
 def print_available_model_architectures():
