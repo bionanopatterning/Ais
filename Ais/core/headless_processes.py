@@ -9,6 +9,8 @@ import multiprocessing
 import glob
 import itertools
 import glfw
+from tensorflow.keras.models import MOdel
+
 
 def glfw_init():
     if not glfw.init():
@@ -32,6 +34,8 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap):
 
     model = SEModel()
     model.load(model_path, compile=False)
+
+    inference_model =
     if overlap is not None:
         model.overlap = min([0.9, max(overlap, 0.0)])
 
@@ -81,7 +85,7 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         for p in processes:
             p.join()
     else:
-        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus))
+        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overlap)
 
 
 def print_available_model_architectures():
