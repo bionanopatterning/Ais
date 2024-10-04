@@ -69,13 +69,14 @@ def main():
     segment_parser.add_argument('-s', '--skip', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to skip (yes if 1, no if 0) tomograms for which a corresponding segmentation is already found.")
     segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
     segment_parser.add_argument('-o', '--overlap', required=False, type=float, help="Overlap to use between adjacent boxes, when cropping the input image into the shape required for the model. Default is whichever value is saved in the .scnm file.")
+    segment_parser.add_argument('-overwrite', '--overwrite', required=False, type=int, default=0, help="If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).")
 
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
     train_parser.add_argument('-m', '--model_path', required=False, type=str, help="(Optional) path to a previously saved model to continue training. Overrides -a argument.")
-    train_parser.add_argument('-t', '--training_data', required=True, type=str, help="Path to the training data (.scnt) file")
-    train_parser.add_argument('-ou', '--output_directory', required=True, type=str, help="Directory to save the output")
-    train_parser.add_argument('-gpu', '--gpus', required=True, type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
+    train_parser.add_argument('-t', '--training_data', required=False, type=str, help="Path to the training data (.scnt) file")
+    train_parser.add_argument('-ou', '--output_directory', required=False, type=str, help="Directory to save the output")
+    train_parser.add_argument('-gpu', '--gpus', required=False, default="0", type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
     train_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to use TensorFlow's distribute.MirroredStrategy() for training in parallel on multiple GPUs, or a single process using all GPUs.")
     train_parser.add_argument('-e', '--epochs', required=False, type=int, default=50, help="Number of epochs to train the model for (default: 50).")
     train_parser.add_argument('-b', '--batch_size', required=False, type=int, default=32, help="Batch size to use during training (default: 32).")
@@ -97,7 +98,8 @@ def main():
                                              gpus=gpus,
                                              skip=args.skip,
                                              parallel=args.parallel,
-                                             overlap=args.overlap)
+                                             overlap=args.overlap,
+                                             overwrite=args.overwrite)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()

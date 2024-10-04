@@ -9,7 +9,6 @@ import multiprocessing
 import glob
 import itertools
 import glfw
-from tensorflow.keras.models import MOdel
 
 
 def glfw_init():
@@ -24,7 +23,7 @@ def glfw_init():
     return window
 
 
-def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap):
+def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap=None, overwrite=False):
     if isinstance(gpu_id, int):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
@@ -35,12 +34,14 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap):
     model = SEModel()
     model.load(model_path, compile=False)
 
-    inference_model =
     if overlap is not None:
         model.overlap = min([0.9, max(overlap, 0.0)])
 
     queued_exports = list()
     for p in data_paths:
+        out_path = os.path.join(output_dir, os.path.splitext(p)[0]+"__"+model.title+".mrc")
+        if os.path.exists(out_path) and not overwrite:
+            continue
         queued_exports.append(QueuedExport(output_dir, SEFrame(p), [model], 1, False))
 
     for qe in queued_exports:
@@ -49,7 +50,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap):
             time.sleep(0.5)
 
 
-def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1, parallel=1, overlap=0.0):
+def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1, parallel=1, overlap=0.0, overwrite=0):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -78,21 +79,21 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         processes = []
         for gpu_id in data_div:
             p = multiprocessing.Process(target=_segmentation_thread,
-                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id, overlap))
+                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id, overlap, overwrite))
             processes.append(p)
             p.start()
 
         for p in processes:
             p.join()
     else:
-        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overlap=overlap)
+        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overlap=overlap, overwrite=overwrite)
 
 
 def print_available_model_architectures():
     model = SEModel()
     model.load_models()
     for j, key in enumerate(SEModel.AVAILABLE_MODELS):
-        print(f"index: {j}\tarchitecture name: {key}\t|\t <-a {j}>")
+        print(f"index: {j} (-a {j})\tarchitecture name: {key}")
 
 
 def train_model(training_data, output_directory, epochs, batch_size, negatives, copies, architecture=None, model_path=None, gpus="0", parallel=1):

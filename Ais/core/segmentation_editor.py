@@ -2037,10 +2037,10 @@ class SegmentationEditor:
 
                             imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
 
-                            _, feature.colour = imgui.color_edit3("##clr", feature.colour[0], feature.colour[1],feature.colour[2],imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                            _, feature.colour = imgui.color_edit3("##clrftrlib", feature.colour[0], feature.colour[1],feature.colour[2],imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                             imgui.same_line()
                             imgui.set_next_item_width(imgui.get_content_region_available_width())
-                            _, feature.title = imgui.input_text("##title", feature.title, 128)
+                            _, feature.title = imgui.input_text("##titleftrlib", feature.title, 128)
 
 
 
