@@ -80,8 +80,10 @@ Options:
 Examples:
 ::
 
-   ais
-   ais segment -m models/15.68_64_0.0261_Membrane.scnm -d volumes -ou segmentations -gpu 0 -s 0,1 -p 0
+   ais train -models
+   ais train -t 64_15.680_Ribosome.scnt -ou training_output -gpu 0,1,2,3 -a 5 -p 1 -n 1.5 -c 10
+
+
 
 
 

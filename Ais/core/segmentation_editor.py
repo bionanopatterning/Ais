@@ -111,6 +111,7 @@ class SegmentationEditor:
         ICON = Image.open(os.path.join(cfg.root, "icons", "LOGO_Pom_128.png"))
 
         FEATURE_IMPORT_MRC_THRESHOLD = 128
+        PATH_VIEWER_MISSING_DICT = dict()
         PATH_VIEWER_OPEN = False
         PATH_VIEWER_OPEN_FIND = ""
         PATH_VIEWER_OPEN_REPLACE = ""
@@ -211,9 +212,9 @@ class SegmentationEditor:
         if len(cfg.se_frames) == 1:
             SegmentationEditor.trainset_apix = cfg.se_active_frame.pixel_size * 10.0
             SegmentationEditor.seg_folder = os.path.dirname(cfg.se_active_frame.path)
-        SegmentationEditor.renderer.fbo1 = FrameBuffer(dataset.width, dataset.height, "rgba32f")
-        SegmentationEditor.renderer.fbo2 = FrameBuffer(dataset.width, dataset.height, "rgba32f")
-        SegmentationEditor.renderer.fbo3 = FrameBuffer(dataset.width, dataset.height, "rgba32f")
+        SegmentationEditor.renderer.fbo1.set_size(dataset.width, dataset.height)
+        SegmentationEditor.renderer.fbo2.set_size(dataset.width, dataset.height)
+        SegmentationEditor.renderer.fbo3.set_size(dataset.width, dataset.height)
         if dataset.interpolate:
             SegmentationEditor.renderer.fbo1.texture.set_linear_interpolation()
             SegmentationEditor.renderer.fbo2.texture.set_linear_interpolation()
@@ -1866,7 +1867,7 @@ class SegmentationEditor:
             window_x_pos = SegmentationEditor.MAIN_WINDOW_WIDTH + (self.window.width - SegmentationEditor.MAIN_WINDOW_WIDTH - SegmentationEditor.SLICER_WINDOW_WIDTH) / 2
 
             export_mode = self.export_limit_range and self.active_tab == "Export"
-            vertical_offset = self.window.height - SegmentationEditor.SLICER_WINDOW_VERTICAL_OFFSET - (40 if export_mode else 23)
+            vertical_offset = self.window.height - SegmentationEditor.SLICER_WINDOW_VERTICAL_OFFSET - (50 if export_mode else 23)
             imgui.set_next_window_position(window_x_pos, vertical_offset)
             imgui.begin("##slicer", False, imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_BACKGROUND)
 
@@ -1909,6 +1910,25 @@ class SegmentationEditor:
                     SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                     frame.export_top = max([frame.export_top, frame.export_bottom + 1])
                     frame.export_top = min([frame.export_top, frame.n_slices])
+
+            # zoom button
+            cw = imgui.get_content_region_available_width()
+            imgui.set_cursor_pos_x(cw - 22)
+            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (-2, -2))
+
+            if imgui.button("-", 11, 11):
+                if self.active_tab != "Render":
+                    self.camera.zoom *= (1.0 - SegmentationEditor.CAMERA_ZOOM_STEP)
+                else:
+                    self.camera3d.distance += SegmentationEditor.VIEW_3D_MOVE_SPEED
+            imgui.same_line()
+            if imgui.button("+", 11, 11):
+                if self.active_tab != "Render":
+                    self.camera.zoom *= (1.0 + SegmentationEditor.CAMERA_ZOOM_STEP)
+                else:
+                    self.camera3d.distance -= SegmentationEditor.VIEW_3D_MOVE_SPEED
+
+            imgui.pop_style_var(1)
             imgui.pop_style_color(4)
             imgui.pop_item_width()
             imgui.end()
@@ -1924,7 +1944,6 @@ class SegmentationEditor:
                 imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
                 _, SegmentationEditor.PATH_VIEWER_OPEN = imgui.begin("Path viewer", True, imgui.WINDOW_NO_SCROLLBAR)
                 w_col1 = 93
-                w_col2 = 380
                 w_col3 = 380
 
                 imgui.push_style_color(imgui.COLOR_TABLE_HEADER_BACKGROUND, *cfg.COLOUR_HEADER)
@@ -1951,8 +1970,9 @@ class SegmentationEditor:
                         mrc_found = False
                         # TODO: the highlight and if os.path.exists thing: don't do it every frame, only when changes might have occurred.
                         highlight = SegmentationEditor.PATH_VIEWER_OPEN_FIND in s.path if SegmentationEditor.PATH_VIEWER_OPEN_FIND != "" else False
-                        if os.path.exists(s.path):
-                            mrc_found = True
+                        if s.path not in SegmentationEditor.PATH_VIEWER_MISSING_DICT:
+                            SegmentationEditor.PATH_VIEWER_MISSING_DICT[s.path] = os.path.exists(s.path)
+                        mrc_found = SegmentationEditor.PATH_VIEWER_MISSING_DICT[s.path]
                         if not mrc_found:
                             imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_NEGATIVE)
                         if highlight:
@@ -3031,11 +3051,11 @@ class Renderer:
         self.line_list = list()
         self.line_list_s = list()
         self.line_va = VertexArray(None, None, attribute_format="xyrgb")
-        self.fbo1 = FrameBuffer()
-        self.fbo2 = FrameBuffer()
+        self.fbo1 = FrameBuffer(100, 100)
+        self.fbo2 = FrameBuffer(100, 100)
         self.fbo3 = FrameBuffer(100, 100)
-        self.ray_trace_fbo_a = FrameBuffer()
-        self.ray_trace_fbo_b = FrameBuffer()
+        self.ray_trace_fbo_a = FrameBuffer(100, 100)
+        self.ray_trace_fbo_b = FrameBuffer(100, 100)
         self.img_fbo = FrameBuffer()
         self.img_fbo_size = [0.0, 0.0]
         self.ndc_screen_va = VertexArray(attribute_format="xy")
@@ -3393,8 +3413,8 @@ class Renderer:
         # 1 - Rendering a depth mask to find where to START sampling rays.
         if self.ray_trace_fbo_size != window_size:
             self.ray_trace_fbo_size = window_size
-            self.ray_trace_fbo_a = FrameBuffer(window_size[0], window_size[1], "rgba32f")
-            self.ray_trace_fbo_b = FrameBuffer(window_size[0], window_size[1], "rgba32f")
+            self.ray_trace_fbo_a.set_size(window_size[0], window_size[1])
+            self.ray_trace_fbo_b.set_size(window_size[0], window_size[1])
 
         self.ray_trace_fbo_a.bind()
         glClearDepth(1.0)

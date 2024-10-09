@@ -361,6 +361,7 @@ class Overlay:
                 del state[key]
         return self.__class__, (self.pxd, self.se_frame, ), state
 
+
 class Segmentation:
     idgen = count(0)
 
@@ -544,7 +545,6 @@ class Segmentation:
         self.texture.update(self.data, self.width, self.height)
 
 
-
 class Transform:
     def __init__(self):
         self.translation = np.array([0.0, 0.0])
@@ -712,6 +712,10 @@ class SurfaceModel:
             self.data[:, -1, :] = 0
             self.data[:, :, 0] = 0
             self.data[:, :, -1] = 0
+            if self.data.dtype == np.float32:
+                self.data *= 255
+                self.pixel_size = self.pixel_size * cfg.se_active_frame.height / self.data.shape[1]
+
         if self.latest_bin != self.bin and self.bin != 1:
             self.latest_bin = self.bin
             self.binned_data = SurfaceModel.bin_data(self.data, self.bin)

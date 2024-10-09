@@ -347,6 +347,14 @@ class FrameBuffer:
                 raise RuntimeError("Framebuffer binding failed, GPU might not support this configuration.")
             glBindFramebuffer(GL_FRAMEBUFFER, 0)
 
+    def set_size(self, width, height):
+        self.width = width
+        self.height = height
+        self.texture.update(None, width, height)
+        glBindTexture(GL_TEXTURE_2D, self.depth_texture_renderer_id)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, self.width, self.height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, None)
+
+
     def clear(self, color):
         glBindFramebuffer(GL_FRAMEBUFFER, self.framebufferObject)
         glClearColor(color[0], color[1], color[2], 1.0 if len(color) == 3 else color[3])

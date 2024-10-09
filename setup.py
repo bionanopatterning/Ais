@@ -30,7 +30,7 @@ setup(
         "protobuf==3.20.0",
         "glfw>=2.5.5",
         "PyOpenGL>=3.1.6",
-        "numpy>=1.23.2",
+        "numpy>=1.23.2,<2.0",
         "mrcfile>=1.4.3",
         "Pillow>=9.2.0",
         "scipy>=1.9.1",
