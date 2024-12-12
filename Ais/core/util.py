@@ -118,6 +118,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
     else:
         data = array
         pixel_size = array_pixel_size
+    if data.dtype == np.float32:
+        threshold /= 255
     if binning > 1:
         z, y, x = data.shape
         b = int(binning)
@@ -126,6 +128,9 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5, dtype=_type).mean(3, dtype=_type).mean(1, dtype=_type)
         pixel_size *= b
     binary_vol = data > threshold
+
+
+
     print(f"\tcomputing distance transform")
     distance = distance_transform_edt(binary_vol)
     min_distance = max(3, int(min_spacing / pixel_size))

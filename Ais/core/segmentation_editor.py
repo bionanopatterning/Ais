@@ -21,8 +21,8 @@ try:
 except ImportError:
     pass
 
-# TODO: render surface models in Render tab _only_ when an update is required.
-# TODO: black edges in Render mode
+
+
 
 class SegmentationEditor:
     if True:
@@ -71,7 +71,7 @@ class SegmentationEditor:
         RENDER_PARTICLES_XRAY = False
         RENDER_SILHOUETTES = True
         RENDER_SILHOUETTES_THRESHOLD = 0.1
-        RENDER_SILHOUETTES_ALPHA = 1.0
+        RENDER_SILHOUETTES_ALPHA = 0.15
         RENDER_CLEAR_COLOUR = cfg.COLOUR_WINDOW_BACKGROUND[:3]
         RENDER_LIGHT_COLOUR = (1.0, 1.0, 1.0)
         VIEW_REQUIRES_UPDATE = True
@@ -600,7 +600,7 @@ class SegmentationEditor:
                         if imgui.begin_menu("Overrule pixel size"):
                             imgui.set_next_item_width(100)
                             pxs_ang = s.pixel_size * 10.0
-                            _, pxs_ang = imgui.input_float("##Appix", s.pixel_size, 0.0, 00.0, format = f"{pxs_ang:.2f} A/pixel")
+                            _, pxs_ang = imgui.input_float("##Appix", s.pixel_size, 0.0, 0.0, format = f"{pxs_ang:.2f} A/pixel")
                             if _:
                                 s.pixel_size = pxs_ang / 10.0
                             imgui.end_menu()
@@ -825,8 +825,8 @@ class SegmentationEditor:
                             for i in f.edited_slices:
                                 imgui.push_id(f"{f.uid}{i}")
 
-                                _, jumpto = imgui.selectable(f"Slice {i} ({len(f.boxes[i])} boxes)", f.current_slice == i, width=cw - 23)
-                                if jumpto:
+                                _, _ = imgui.selectable(f"Slice {i} ({len(f.boxes[i])} boxes)", f.current_slice == i, width=cw - 23)
+                                if imgui.is_item_hovered():
                                     f.parent.set_slice(i)
                                     SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                                 imgui.same_line(position=cw - 5)
@@ -1452,6 +1452,7 @@ class SegmentationEditor:
                 if SegmentationEditor.pick_tab_index_datasets_segs or src_folder_changed:
                     update_picking_tab_for_new_active_frame()
 
+                s_to_remove = list()
                 for s in cfg.se_surface_models:
                     # automatically gnerate the model if WAIT_TO_RENDER is False and no other surface model is currently being generated
                     if not s.hide and not s.initialized and cfg.settings["WAIT_TO_RENDER"] is False:
@@ -1467,7 +1468,7 @@ class SegmentationEditor:
                     else:
                         imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *s.colour, 0.0)
                         imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
-                    imgui.begin_child(f"{s.title}_surfm", 0.0, 82 + (15 if s.particles else 0), True)
+                    imgui.begin_child(f"{s.title}_surfm{s.uid}", 0.0, 82 + (15 if s.particles else 0), True)
                     cw = imgui.get_content_region_available_width()
                     _, s.colour = imgui.color_edit3(s.title, *s.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
 
@@ -1494,7 +1495,8 @@ class SegmentationEditor:
                         req_gen_models = True
 
                     _, s.dust = imgui.slider_float("##dust", s.dust, 1.0, 1000000.0, f"dust < {s.dust:.1f} nm³", imgui.SLIDER_FLAGS_LOGARITHMIC)
-                    s.hide_dust()
+                    if _:
+                        s.hide_dust()
                     imgui.pop_item_width()
                     if s.particles:
                         imgui.push_item_width(cw - 22)
@@ -1524,21 +1526,57 @@ class SegmentationEditor:
                         if imgui.begin_menu("Extract mesh"):
                             self.extract_meshes_menu(s)
                             imgui.end_menu()
+                        imgui.spacing()
+                        imgui.separator()
+                        imgui.spacing()
+                        if imgui.menu_item("Paint particles")[0]:
+                            filepath = filedialog.askopenfilename(filetypes=[("Ais paint info", ".tsv")])
+                            if os.path.exists(filepath):
+                                try:
+                                    s.paint_particles(filepath)
+                                except Exception as e:
+                                    cfg.set_error(e, "Could not paint particles - see error:\n")
+                        if imgui.begin_menu("Override voxel size"):
+                            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (2, 0))
+                            imgui.set_next_item_width(100)
+                            _, s.pixel_size = imgui.input_float("##pxs", s.pixel_size, 0.0, 0.0, '%.2f nm/px')
+                            imgui.same_line()
+                            if imgui.button("x2", 20, 16):
+                                s.pixel_size *= 2
+                                s.generate_model()
+                            imgui.same_line()
+                            if imgui.button("apply", 50, 16):
+                                s.generate_model()
+
+
+                            imgui.pop_style_var(1)
+                            imgui.end_menu()
+                        # if imgui.menu_item("Invert")[0]:
+                        #     s.data = 255 - s.data
+                        #     s.latest_bin = -1
+                        #     s.generate_model()
+                        if imgui.menu_item("Remove volume")[0]:
+                            s_to_remove.append(s)
                         imgui.end_popup()
                     imgui.end_child()
 
                 imgui.pop_style_var(3)
                 imgui.pop_style_color(1)
 
-                # if cfg.se_active_frame is not None and widgets.centred_button("Manual import", 115, 24):
-                #     filepaths = filedialog.askopenfilenames(filetypes=[("EM volume", ".mrc")])
-                #     print(filepaths)
-                #     if filepaths != ():
-                #         for f in filepaths:
-                #             try:
-                #                 cfg.se_surface_models.append(SurfaceModel(f, cfg.se_active_frame.pixel_size))
-                #             except Exception as e:
-                #                 cfg.set_error(e, f"Could not import {f} as SurfaceModel - see details below")
+                for s in s_to_remove:
+                    s.delete()
+                    cfg.se_surface_models.remove(s)
+
+                if widgets.centred_button("Manual import", 115, 24):
+                    filepaths = filedialog.askopenfilenames(filetypes=[("Segmented volume", ".mrc")])
+                    print(filepaths)
+                    if filepaths != ():
+                        for f in filepaths:
+                            try:
+                                cfg.se_surface_models.append(SurfaceModel(f, 3.0 if cfg.se_active_frame is None else cfg.se_active_frame.pixel_size))
+                            except Exception as e:
+                                cfg.set_error(e, f"Could not import {f} as SurfaceModel - see details below")
+
             SegmentationEditor.LIGHT_SPOT.compute_vec(dyaw=-self.camera3d.yaw)
             if imgui.collapsing_header("Graphics settings", None)[0]:
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
@@ -1827,6 +1865,14 @@ class SegmentationEditor:
                             cfg.edit_setting("WAIT_TO_RENDER", not cfg.settings["WAIT_TO_RENDER"])
                         self.tooltip("In the Rendering tab, segmentations are rendered immediately  if 'wait to render' is not set.\n"
                                      "Else, rendering is triggered only when any settings (threshold, dust size, etc.) are edited.")
+                        if imgui.begin_menu("Camera3D"):
+                            _, self.camera3d.yaw = imgui.input_float("Yaw", self.camera3d.yaw, 5.0, 20.0)
+                            if _:
+                                self.camera3d.on_update()
+                            _, self.camera3d.pitch = imgui.input_float("Pitch", self.camera3d.pitch, 5.0, 20.0)
+                            if _:
+                                self.camera3d.on_update()
+                            imgui.end_menu()
                         imgui.end_menu()
 
                     if imgui.begin_menu("Feature library"):
@@ -2041,7 +2087,7 @@ class SegmentationEditor:
                     imgui.push_style_color(imgui.COLOR_TABLE_BORDER_LIGHT, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
 
                 j = 0
-                with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = 460):
+                with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = 580):
 
                     for j, feature in enumerate(cfg.feature_library):
                         if j % 3 == 0:
@@ -2301,6 +2347,12 @@ class SegmentationEditor:
                     else:
                         overlay_blend_mode = SegmentationEditor.BLEND_MODES[SegmentationEditor.BLEND_MODES_LIST[SegmentationEditor.OVERLAY_BLEND_MODE]]
                         self.renderer.render_overlay(cfg.se_active_frame, self.camera3d, overlay_blend_mode, SegmentationEditor.OVERLAY_ALPHA)
+        else:
+            if self.active_tab == "Render":
+                # Render surface models in 3D
+                if not imgui.is_key_down(glfw.KEY_Q):
+                    self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT, window_size=(self.window.width, self.window.height))
+
         # MAIN WINDOW
         imgui.set_next_window_position(0, 17, imgui.ONCE)
         imgui.set_next_window_size(SegmentationEditor.MAIN_WINDOW_WIDTH, self.window.height - 17)
@@ -3348,6 +3400,10 @@ class Renderer:
             self.surface_model_shader.uniform4f("color", [*s.colour, s.alpha])
             for blob in s.blobs.values():
                 if blob.complete and not blob.hide:
+                    if blob.painted:
+                        self.surface_model_shader.uniform4f("color", [*blob.colour, s.alpha])
+                    else:
+                        self.surface_model_shader.uniform4f("color", [*s.colour, s.alpha])
                     blob.va.bind()
                     glDrawElements(GL_TRIANGLES, blob.va.indexBuffer.getCount(), GL_UNSIGNED_INT, None)
                     blob.va.unbind()

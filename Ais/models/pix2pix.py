@@ -8,6 +8,7 @@ import numpy as np
 title = "Pix2pix"
 include = True
 
+
 def create(input_shape):
     return Pix2Pix(input_shape)
 
@@ -125,7 +126,9 @@ class Pix2Pix():
         model = Model(inputs=[img_A, img_B], outputs=validity)
         return model
 
-    def fit(self, train_x, train_y, epochs, batch_size=1, shuffle=True, callbacks=[]):
+    def fit(self, train_x, train_y, epochs, batch_size=1, shuffle=True, callbacks=[], validation_split=None):
+        if validation_split:
+            print(f"Validation splits currently not implemented in Pix2pix!")
         for c in callbacks:
             c.params['epochs'] = epochs
         n_samples = train_x.shape[0]
@@ -145,25 +148,17 @@ class Pix2Pix():
                 valid = np.ones((len(batch_indices), ) + self.disc_patch)
                 fake = np.zeros((len(batch_indices), ) + self.disc_patch)
 
-                # ---------------------
-                #  Train Discriminator
-                # ---------------------
-
                 # Condition on B and generate a translated version
                 imgs_A = train_y[batch_indices, :, :, :]
                 imgs_B = train_x[batch_indices, :, :, :]
                 fake_A = self.generator.predict(imgs_B)
 
-                # Train the discriminators (original images = real / generated = Fake)
+                # Train the discriminator (original images = real / generated = Fake)
                 d_loss_real = self.discriminator.train_on_batch([imgs_A, imgs_B], valid)
                 d_loss_fake = self.discriminator.train_on_batch([fake_A, imgs_B], fake)
                 d_loss = 0.5 * np.add(d_loss_real, d_loss_fake)
 
-                # -----------------
-                #  Train Generator
-                # -----------------
-
-                # Train the generators
+                # Train the generator
                 g_loss = self.combined.train_on_batch([imgs_A, imgs_B], [valid, imgs_A])
 
                 logs = dict()

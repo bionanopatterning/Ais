@@ -66,22 +66,22 @@ def main():
     segment_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Directory containing the data")
     segment_parser.add_argument('-ou', '--output_directory', required=True, type=str, help="Directory to save the output")
     segment_parser.add_argument('-gpu', '--gpus', required=True, type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
-    segment_parser.add_argument('-s', '--skip', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to skip (yes if 1, no if 0) tomograms for which a corresponding segmentation is already found.")
+    #segment_parser.add_argument('-s', '--skip', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to skip (yes if 1, no if 0) tomograms for which a corresponding segmentation is already found.")
     segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
-    segment_parser.add_argument('-o', '--overlap', required=False, type=float, help="Overlap to use between adjacent boxes, when cropping the input image into the shape required for the model. Default is whichever value is saved in the .scnm file.")
     segment_parser.add_argument('-overwrite', '--overwrite', required=False, type=int, default=0, help="If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).")
 
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
-    train_parser.add_argument('-m', '--model_path', required=False, type=str, help="(Optional) path to a previously saved model to continue training. Overrides -a argument.")
+    train_parser.add_argument('-m', '--model_path', required=False, type=str, default='', help="(Optional) path to a previously saved model to continue training. Overrides -a argument.")
     train_parser.add_argument('-t', '--training_data', required=False, type=str, help="Path to the training data (.scnt) file")
     train_parser.add_argument('-ou', '--output_directory', required=False, type=str, help="Directory to save the output")
-    train_parser.add_argument('-gpu', '--gpus', required=False, default="0", type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
+    train_parser.add_argument('-gpu', '--gpus', required=False, default="0", type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,4,5)")
     train_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to use TensorFlow's distribute.MirroredStrategy() for training in parallel on multiple GPUs, or a single process using all GPUs.")
     train_parser.add_argument('-e', '--epochs', required=False, type=int, default=50, help="Number of epochs to train the model for (default: 50).")
     train_parser.add_argument('-b', '--batch_size', required=False, type=int, default=32, help="Batch size to use during training (default: 32).")
     train_parser.add_argument('-n', '--negatives', required=False, type=float, default=1.3, help="Ratio of negative to positive samples to use. If the training data contains 50 positive samples and 50 negatives, a number of negatives will be sampled than once to reach this ratio.")
     train_parser.add_argument('-c', '--copies', required=False, type=int, default=10, help="Number of copies of the input images to include in the training data (all samples in different orientations).")
+    train_parser.add_argument('-name', '--model_name', required=False, type=str, default="Unnamed model", help="Model name. File will be saved as output_directory/<boxsize>_<apix>_<name>.scnm")
     train_parser.add_argument('-models', '--model_architectures', required=False, action='store_true', help='List available model architectures.')
 
     args, unknown = parser.parse_known_args()
@@ -96,15 +96,23 @@ def main():
                                              data_directory=args.data_directory,
                                              output_directory=args.output_directory,
                                              gpus=gpus,
-                                             skip=args.skip,
                                              parallel=args.parallel,
-                                             overlap=args.overlap,
                                              overwrite=args.overwrite)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()
             else:
-                aiscli.train_model(args.training_data, args.output_directory, args.model_architecture, args.model_path, args.gpus, args.parallel)
+                aiscli.train_model(training_data=args.training_data,
+                                   output_directory=args.output_directory,
+                                   architecture=args.model_architecture,
+                                   epochs=args.epochs,
+                                   batch_size=args.batch_size,
+                                   negatives=args.negatives,
+                                   copies=args.copies,
+                                   model_path=args.model_path,
+                                   gpus=args.gpus,
+                                   parallel=args.parallel,
+                                   name=args.model_name)
 
 
 if __name__ == "__main__":

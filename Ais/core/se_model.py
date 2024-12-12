@@ -150,12 +150,13 @@ class SEModel:
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
 
+
                 return metadata
 
         except Exception as e:
             print("Error loading model - see details below", e)
 
-    def load(self, file_path, compile=True):
+    def load(self, file_path, compile=False):
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 with tarfile.open(file_path, 'r') as archive:
@@ -229,6 +230,7 @@ class SEModel:
         n_neg = len(negative_indices)
         positive_x = list()
         positive_y = list()
+
         for i in positive_indices:
             for _ in range(self.n_copies):
                 if self.n_copies == 1:
@@ -239,10 +241,10 @@ class SEModel:
                     positive_x.append(norm_train_x)
                     positive_y.append(train_y[i])
                 else:
-                    angle = np.random.uniform(0, 360)
+                    angle = [0, 90, 180, 270][_] if _ < 4 else np.random.uniform(0, 360)
                     x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
                     y_rotated = rotate(train_y[i], angle, reshape=False, cval=0.0)
-
+                    y_rotated = np.clip(y_rotated, 0, 1)
                     x_rotated = (x_rotated - np.mean(x_rotated))
                     denom = np.std(x_rotated)
                     if denom != 0.0:
@@ -296,7 +298,7 @@ class SEModel:
             validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
             self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split, callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self), StopTrainingCallback(process.stop_request)])
             process.set_progress(1.0)
-            print(self.info + f" {time.time() - start_time:.1f} seconds of training.")
+            print(f"{self.title} " + self.info + f" {time.time() - start_time:.1f} seconds of training.")
         except Exception as e:
             cfg.set_error(e, "Could not train model - see details below.")
             process.stop()
@@ -393,7 +395,7 @@ class SEModel:
         out_image = out_image / count
         out_image = out_image[:w, :h]
         out_image = out_image[:w, :h]
-        if cfg.settings["TRIM_EDGES"] == "1":
+        if cfg.settings["TRIM_EDGES"] == 1:
             margin = box_size // 2
             out_image[:margin, :] = 0
             out_image[-margin:, :] = 0

@@ -135,13 +135,10 @@ class SEFrame:
             if self.export_top is None:
                 self.export_top = self.n_slices
             requested_slice = min([max([requested_slice, 0]), self.n_slices - 1])
-            self.data = mrc.data[requested_slice, :, :]
-            target_type_dict = {np.float32: np.float32, float: np.float32, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
-            if self.data.dtype not in target_type_dict:
-                target_type = float
+            if mrc.data.dtype == np.dtype('int8'):
+                self.data = mrc.data[requested_slice, :, :].astype(np.uint8).astype(np.float32)
             else:
-                target_type = target_type_dict[self.data.dtype]
-            self.data = np.array(self.data.astype(target_type, copy=False), dtype=np.float32)
+                self.data = mrc.data[requested_slice, :, :].astype(np.float32)
             self.rendered_data = self.data
         self.current_slice = requested_slice
         for s in self.features:
@@ -201,7 +198,10 @@ class SEFrame:
         saturation_pct = settings.autocontrast_saturation
         if saturation:
             saturation_pct = saturation
-        subsample = data[Filter.M:-Filter.M:settings.autocontrast_subsample, Filter.M:-Filter.M:settings.autocontrast_subsample]
+        if min(data.shape) > Filter.M * 4:
+            subsample = data[Filter.M:-Filter.M:settings.autocontrast_subsample, Filter.M:-Filter.M:settings.autocontrast_subsample]
+        else:
+            subsample = data[::settings.autocontrast_subsample, ::settings.autocontrast_subsample]
         n = subsample.shape[0] * subsample.shape[1]
         sorted_pixelvals = np.sort(subsample.flatten())
 
@@ -261,7 +261,7 @@ class Filter:
 
     def __init__(self, filter_type):
         self.type = filter_type  # integer, corresponding to an index in the Filter.TYPES list
-        self.k1 = np.zeros((Filter.M*2+1, 1), dtype=np.float32)
+        self.k1 = np.zeros((Filter.M * 2 + 1, 1), dtype=np.float32)
         self.k2 = np.zeros((Filter.M * 2 + 1, 1), dtype=np.float32)
         self.enabled = True
         self.ssbo1 = -1
@@ -704,17 +704,15 @@ class SurfaceModel:
     def _generate_model(self, process):
         if self.data is None:
             self.data = mrcfile.read(self.path)
-            # if np.amax(self.data) <= 1.0:
-            #     self.data *= 255
-            self.data[0, :, :] = 0
-            self.data[-1, :, :] = 0
-            self.data[:, 0, :] = 0
-            self.data[:, -1, :] = 0
-            self.data[:, :, 0] = 0
-            self.data[:, :, -1] = 0
+            MARGIN = 1
+            self.data[:MARGIN, :, :] = 0
+            self.data[-MARGIN:, :, :] = 0
+            self.data[:, :MARGIN, :] = 0
+            self.data[:, -MARGIN:, :] = 0
+            self.data[:, :, :MARGIN] = 0
+            self.data[:, :, -MARGIN:] = 0
             if self.data.dtype == np.float32:
                 self.data *= 255
-                self.pixel_size = self.pixel_size * cfg.se_active_frame.height / self.data.shape[1]
 
         if self.latest_bin != self.bin and self.bin != 1:
             self.latest_bin = self.bin
@@ -755,7 +753,28 @@ class SurfaceModel:
             self.blobs[i].delete()
         self.blobs = new_blobs
         self.hide_dust()
+
         process.set_progress(1.0)
+
+    def paint_particles(self, path_to_tsv):
+        data = list()
+        with open(path_to_tsv, 'r') as f:
+            for line in f.readlines():
+                values = line.split("\t")
+                data.append([int(values[0]), int(values[1]), int(values[2]), float(values[3]), float(values[4]), float(values[5])])
+        data = np.array(data)
+        for blob in self.blobs.values():
+            x_range = (np.amin(blob.x), np.amax(blob.x))
+            y_range = (np.amin(blob.y), np.amax(blob.y))
+            z_range = (np.amin(blob.z), np.amax(blob.z))
+            for j in range(data.shape[0]):
+                x = data[j, 0] / self.bin
+                y = data[j, 1] / self.bin
+                z = data[j, 2] / self.bin
+                if x_range[0] < x < x_range[1] and y_range[0] < y < y_range[1] and z_range[0] < z < z_range[1]:
+                    blob.colour = (data[j, 3], data[j, 4], data[j, 5])
+                    blob.painted = True
+                    break
 
     @staticmethod
     def bin_data(data, b):
@@ -827,6 +846,8 @@ class SurfaceModelBlob:
         self.vertices = list()
         self.normals = list()
         self.vao_data = list()
+        self.painted = False
+        self.colour = (1.0, 0.0, 1.0)
         if not no_gpu:
             self.va = VertexArray(attribute_format="xyznxnynz")
         self.va_requires_update = False

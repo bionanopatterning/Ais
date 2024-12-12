@@ -9,6 +9,8 @@ import multiprocessing
 import glob
 import itertools
 import glfw
+import mrcfile
+import numpy as np
 
 
 def glfw_init():
@@ -23,7 +25,22 @@ def glfw_init():
     return window
 
 
-def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap=None, overwrite=False):
+def _segment_tomo(tomo_path, model):
+    volume = np.array(mrcfile.read(tomo_path).data)
+    volume -= np.mean(volume)
+    volume /= np.std(volume)
+    segmented_volume = np.zeros_like(volume)
+
+    for j in range(volume.shape[0]):
+        segmented_volume[j, :, :] = np.squeeze(model.predict(volume[j, :, :][np.newaxis, :, :]))
+
+    return segmented_volume
+
+
+def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overwrite=False):
+    from keras.models import clone_model
+    from keras.layers import Input
+
     if isinstance(gpu_id, int):
         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     else:
@@ -31,26 +48,31 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overlap=Non
 
     glfw_init()
 
-    model = SEModel()
-    model.load(model_path, compile=False)
+    se_model = SEModel()
+    se_model.load(model_path, compile=False)
+    model = se_model.model
+    new_input = Input(shape=(None, None, 1))
+    new_model = clone_model(model, input_tensors=new_input)
+    new_model.set_weights(model.get_weights())
 
-    if overlap is not None:
-        model.overlap = min([0.9, max(overlap, 0.0)])
 
-    queued_exports = list()
-    for p in data_paths:
-        out_path = os.path.join(output_dir, os.path.splitext(p)[0]+"__"+model.title+".mrc")
+    for j, p in enumerate(data_paths):
+        tomo_name = os.path.basename(os.path.splitext(p)[0])
+        out_path = os.path.join(output_dir, tomo_name+"__"+se_model.title+".mrc")
+        print(f"{j+1}/{len(data_paths)}({gpu_id}) - {p}")
         if os.path.exists(out_path) and not overwrite:
             continue
-        queued_exports.append(QueuedExport(output_dir, SEFrame(p), [model], 1, False))
 
-    for qe in queued_exports:
-        qe.start()
-        while qe.process.progress < 1.0:
-            time.sleep(0.5)
+        in_voxel_size = mrcfile.open(p, header_only=True).voxel_size
+        segmented_volume = _segment_tomo(p, new_model)
+        segmented_volume = (segmented_volume * 255).astype(np.uint8)
+        with mrcfile.new(out_path, overwrite=True) as mrc:
+            mrc.set_data(segmented_volume)
+            mrc.voxel_size = in_voxel_size
 
 
-def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, skip=1, parallel=1, overlap=0.0, overwrite=0):
+
+def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, parallel=1, overwrite=0):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -64,11 +86,6 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
     # distribute data:
     all_data_paths = glob.glob(os.path.join(data_directory, "*.mrc"))
 
-    if skip == 1:
-        model_metadata = SEModel.load_metadata(model_path)
-        model_title = model_metadata["title"]
-        all_data_paths = [p for p in all_data_paths if not os.path.exists(os.path.join(data_directory, os.path.splitext(os.path.basename(p))[0]+f"__{model_title}.mrc"))]
-
     data_div = {gpu: list() for gpu in gpus}
     for gpu, data_path in zip(itertools.cycle(gpus), all_data_paths):
         data_div[gpu].append(data_path)
@@ -79,14 +96,14 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         processes = []
         for gpu_id in data_div:
             p = multiprocessing.Process(target=_segmentation_thread,
-                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id, overlap, overwrite))
+                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id, overwrite))
             processes.append(p)
             p.start()
 
         for p in processes:
             p.join()
     else:
-        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overlap=overlap, overwrite=overwrite)
+        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), overwrite=bool(overwrite))
 
 
 def print_available_model_architectures():
@@ -96,22 +113,24 @@ def print_available_model_architectures():
         print(f"index: {j} (-a {j})\tarchitecture name: {key}")
 
 
-def train_model(training_data, output_directory, epochs, batch_size, negatives, copies, architecture=None, model_path=None, gpus="0", parallel=1):
+def train_model(training_data, output_directory, architecture=None, epochs=50, batch_size=32, negatives=1.0, copies=4, model_path='', gpus="0", parallel=1, name="Unnamed model"):
     if not os.path.isabs(training_data):
-        model_path = os.path.join(os.getcwd(), training_data)
+        training_data = os.path.join(os.getcwd(), training_data)
     if not os.path.isabs(output_directory):
-        model_path = os.path.join(os.getcwd(), output_directory)
-    if model_path is not None and not os.path.isabs(model_path):
+        output_directory = os.path.join(os.getcwd(), output_directory)
+    if model_path and not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
-
+    print(f"training data: {training_data}")
+    print(f"output directory: {output_directory}")
     model = SEModel()
     model.load_models()
-    if architecture is None and model_path is None:
+    model.title = name
+    if architecture is None and model_path is '':
         print(f"using default model architecture: {SEModel.AVAILABLE_MODELS[SEModel.DEFAULT_MODEL_ENUM]}")
     elif architecture is None:
         print(f"loading model {model_path}")
         model.load(model_path)
-    elif model_path is None:
+    elif model_path is '':
         model.model_enum = architecture
         print(f"using model architecture {architecture}: {SEModel.AVAILABLE_MODELS[architecture]}")
 
@@ -132,4 +151,4 @@ def train_model(training_data, output_directory, epochs, batch_size, negatives, 
     while model.background_process_train.progress < 1.0:
         time.sleep(0.2)
 
-    model.save(os.path.join(output_directory, f"{model.apix:.2f}_{model.box_size}_{model.loss:.4f}_{model.title}.{cfg.filetype_semodel}"))
+    model.save(os.path.join(output_directory, f"{model.apix:.2f}_{model.box_size}_{model.loss:.4f}_{model.title}{cfg.filetype_semodel}"))

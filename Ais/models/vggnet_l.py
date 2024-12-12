@@ -5,6 +5,7 @@ from tensorflow.keras.optimizers import Adam
 title = "VGGNet L"
 include = True
 
+
 def create(input_shape):
     inputs = Input(input_shape)
 
