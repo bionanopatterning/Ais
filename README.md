@@ -1,11 +1,11 @@
 # Segmentation with Ais #
 ## Fast and user-friendly annotation and segmentation of cryo-electron tomography data using convolutional neural networks ##
 
-This repository comprises a standalone pre-release of the scNodes _Segmentation Editor_. For the joint project, see the [superclem repository](https://www.github.com/bionanopatterning/scNodes)
+This repository comprises a standalone version of Ais, the segmentation editor for cryoET. For the version integrated into the correlative microscopy data processing suite _scNodes_, see the [scNodes](https://www.github.com/bionanopatterning/scNodes) repository.
 
 A timelapse video of the full workflow, from reconstructed tomograms to segmented volumes showing membranes, ribosomes, mitochondrial granules, and microtubuli, is available on our [YouTube channel](https://www.youtube.com/watch?v=2JIBVJf3kYQ&ab_channel=scNodes).
 
-Contact: m.g.f.last@lumc.nl
+Contact: mlast@mrc-lmb.cam.ac.uk
 
 ### Installation ###
 Ais works on Windows and Linux machines but not on MacOS. Install as follows: 
