@@ -66,9 +66,19 @@ def main():
     segment_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Directory containing the data")
     segment_parser.add_argument('-ou', '--output_directory', required=True, type=str, help="Directory to save the output")
     segment_parser.add_argument('-gpu', '--gpus', required=True, type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
-    #segment_parser.add_argument('-s', '--skip', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to skip (yes if 1, no if 0) tomograms for which a corresponding segmentation is already found.")
     segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
     segment_parser.add_argument('-overwrite', '--overwrite', required=False, type=int, default=0, help="If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).")
+
+    pick_parser = subparsers.add_parser('pick', help='Pick particles using segmented volumes.')
+    pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input .mrc's.")
+    pick_parser.add_argument('-t', '--target', required=True, type=str, help="Feature to pick. For example, if segmented volumes are named '<tomogram_name>__Ribosome.mrc', '-t Ribosome' will select these.")
+    pick_parser.add_argument('-ou', '--output_directory', required=False, type=str, default=None, help="Directory to save output coordinate files to. If left empty, will save to the input data directory.")
+    pick_parser.add_argument('-threshold', required=False, type=float, default=128, help="Threshold to apply to volumes prior to finding local maxima (default 128).")
+    pick_parser.add_argument('-spacing', required=False, type=float, default=None, help="Minimum distance between particles in Angstrom. Use ``-spacing-px`` to specify the minimum distance in voxel units instead.")
+    pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
+    pick_parser.add_argument('-size', required=False, type=float, default=None, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in voxel units instead.")
+    pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
+    pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
 
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
@@ -98,6 +108,24 @@ def main():
                                              gpus=gpus,
                                              parallel=args.parallel,
                                              overwrite=args.overwrite)
+        elif args.command == 'pick':
+            # check A/px inputs
+            if args.size is None and args.size_px is None:
+                print(f"Please specify a value for arg '-size' or '-size-px'")
+                return
+            if args.spacing is None and args.spacing_px is None:
+                print(f"Please specify a value for arg '-spacing' or '-spacing-px'.")
+                return
+            output_directory = args.output_directory if args.output_directory else args.data_directory
+            aiscli.dispatch_parallel_pick(target=args.target,
+                                          data_directory=args.data_directory,
+                                          output_directory=output_directory,
+                                          threshold=args.threshold,
+                                          spacing=args.spacing,
+                                          size=args.size,
+                                          parallel=args.parallel,
+                                          spacing_px=args.spacing_px,
+                                          size_px=args.size_px)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()

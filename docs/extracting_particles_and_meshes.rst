@@ -22,6 +22,7 @@ Behind the scenes, the procedure to convert the 3D grayscale data of a segmentat
 
    Figure 14 - Picking non-globular particles requires tweaking the 'minimum separation' parameter to avoid picking multiple coordinates for one particle.
 
+
 Extracting meshes
 ^^^^^^^^^^^^
 

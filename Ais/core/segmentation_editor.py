@@ -1858,7 +1858,7 @@ class SegmentationEditor:
                             SegmentationEditor.PATH_VIEWER_OPEN = True
                         imgui.end_menu()
 
-                    if imgui.begin_menu("Graphics"):
+                    if imgui.begin_menu("Rendering"):
                         if imgui.menu_item("Recompile shaders")[0]:
                             self.renderer.recompile_shaders()
                         if imgui.menu_item("Wait to render", selected=cfg.settings["WAIT_TO_RENDER"])[0]:
@@ -4065,7 +4065,7 @@ class QueuedExtract:
                 if s.path == self.path:
                     s.find_coordinates()
         except Exception as e:
-            cfg.set_error(e, "Error in QueuedExtract (finding coordinates in a .mrc) - see details below.")
+            cfg.set_error(e, "Error in QueuedExtract - see details below.")
         process.set_progress(1.0)
 
     def check_stop_request(self):

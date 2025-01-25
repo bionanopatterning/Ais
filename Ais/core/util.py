@@ -103,12 +103,15 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, save_dir=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False):
+def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
+    ## TODO: clean up, and min_size doesn't correspond to as seen in Ais render - fix that.
     """
     min_spacing: in nanometer
     min_size: in cubic nanometer
+    pixel_size: in nanometer
     """
-    print(f"{mrcpath}\n\tget_maxima_3d_watershed")
+    if verbose:
+        print(f"{mrcpath}\n\tget_maxima_3d_watershed")
     if array is None:
         data = mrcfile.read(mrcpath)
         if process:
@@ -131,28 +134,34 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
 
 
 
-    print(f"\tcomputing distance transform")
+    if verbose:
+        print(f"\tcomputing distance transform")
     distance = distance_transform_edt(binary_vol)
     min_distance = max(3, int(min_spacing / pixel_size))
+    min_size = min_size / pixel_size**3
     if process:
         process.set_progress(0.3)
 
-    print(f"\tfinding local maxima")
+    if verbose:
+        print(f"\tfinding local maxima")
     coords = peak_local_max(distance, min_distance=min_distance)
     mask = np.zeros(distance.shape, dtype=bool)
     mask[tuple(coords.T)] = True
-    print(f"\tenumerating local maxima")
+    if verbose:
+        print(f"\tenumerating local maxima")
     markers, _ = label(mask)
     if process:
         process.set_progress(0.4)
-    print(f"\twatershedding")
+    if verbose:
+        print(f"\twatershedding")
     labels = watershed(-distance, markers, mask=binary_vol)
     Z, Y, X = np.nonzero(labels)
     if process:
         process.set_progress(0.5)
     # parse blobs
     blobs = dict()
-    print(f"\tparsing instance labelled volume")
+    if verbose:
+        print(f"\tparsing instance labelled volume")
     for i in range(len(X)):  # todo - this is super inefficient; maybe improve it.
         z = Z[i]
         y = Y[i]
@@ -167,19 +176,22 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         blobs[l].z.append(z)
         blobs[l].v.append(data[z, y, x])
 
-    print(f"\t{len(blobs)} unique volumes found")
+    if verbose:
+        print(f"\t{len(blobs)} unique volumes found")
     if process:
         process.set_progress(0.6)
     if min_size:
-        print(f"\tremoving blobs smaller than {min_size} cubic nanometer")
+        if verbose:
+            print(f"\tremoving blobs smaller than {min_size} cubic px")
         to_pop = list()
         for key in blobs:
-            size = blobs[key].get_volume() * (pixel_size**3)
+            size = blobs[key].get_volume()
             if size < min_size:
                 to_pop.append(key)
         for key in to_pop:
             blobs.pop(key)
-        print(f"\t{len(blobs)} volumes remaining")
+        if verbose:
+            print(f"\t{len(blobs)} volumes remaining")
     if process:
         process.set_progress(0.7)
     blobs = list(blobs.values())
@@ -198,7 +210,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
         process.set_progress(0.8)
 
     # remove points that are too close to others.
-    print(f"\tremoving particles that are too close to a better particle")
+    if verbose:
+        print(f"\tremoving particles that are too close to a better particle")
     remove = list()
     i = 0
     while i < len(coordinates):
@@ -217,20 +230,21 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
     remove.sort()
     for i in reversed(remove):
         coordinates.pop(i)
-    print(f"\t{len(coordinates)} particles remaining")
+    if verbose:
+        print(f"\t{len(coordinates)} particles remaining")
     if not return_coords:
         if not save_txt:
             return len(coordinates)
 
-        out_path = mrcpath[:-4] + "_coords.txt"
-        if save_dir is not None:
-            if not os.path.exists(save_dir):
-                os.mkdir(save_dir)
-            out_path = os.path.join(save_dir, os.path.basename(mrcpath)[:-4] + "_coords.txt")
+        if out_path is None:
+            out_path = os.path.splitext(mrcpath)[0] + "_coords.tsv"
+
         if not output_star:
-            print(f"\toutputting coordinates to {out_path}")
+            if verbose:
+                print(f"\toutputting coordinates to {out_path}")
         else:
-            print(f"\toutputting coordinates to {os.path.splitext(out_path)[0]+'.star'}")
+            if verbose:
+                print(f"\toutputting coordinates to {os.path.splitext(out_path)[0]+'.star'}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
                 x = int(coordinates[i][0])
@@ -238,16 +252,15 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, min_spacing=10.0, min_siz
                 z = int(coordinates[i][2])
                 out_file.write(f"{x}\t{y}\t{z}\n")
         if output_star:
-            print("CHANGING TO STAR")
+            if verbose:
+                print("CHANGING TO STAR")
             coords_from_tsv_to_star(out_path, delete_tsv=True)
         if process:
             process.set_progress(0.99)
-        print(f"\tdone\n")
         return len(coordinates)
     else:
         if process:
             process.set_progress(0.99)
-        print(f"\tdone\n")
         return coordinates
 
 

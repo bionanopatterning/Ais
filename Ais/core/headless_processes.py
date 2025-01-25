@@ -71,7 +71,6 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overwrite=F
             mrc.voxel_size = in_voxel_size
 
 
-
 def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, parallel=1, overwrite=0):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
@@ -152,3 +151,55 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
         time.sleep(0.2)
 
     model.save(os.path.join(output_directory, f"{model.apix:.2f}_{model.box_size}_{model.loss:.4f}_{model.title}{cfg.filetype_semodel}"))
+
+
+def _pick_tomo(tomo_path, output_path, threshold, spacing, size, spacing_px, size_px):
+    from Ais.core.util import get_maxima_3d_watershed
+
+    # find right values for spacing and size.
+    voxel_size = mrcfile.open(tomo_path, header_only=True).voxel_size.x
+
+    if spacing_px is None:
+        min_spacing = spacing / 10.0
+    else:
+        min_spacing = spacing_px * voxel_size / 10.0
+
+    if size_px is None:
+        min_size = size / 1000.0
+    else:
+        min_size = size_px * (voxel_size / 10.0)**3
+
+    print(f"min_spacing, min_size {min_spacing}, {min_size}")
+    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, threshold=threshold, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, sort_by_weight=True)
+    return n_particles
+
+
+def _picking_thread(data_paths, output_directory, threshold, spacing, size, spacing_px, size_px, process_id):
+    from Ais.core.util import get_maxima_3d_watershed
+
+    for j, p in enumerate(data_paths):
+        out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.tsv")
+        n_particles = _pick_tomo(p, out_path, threshold, spacing, size, spacing_px, size_px)
+        print(f"{j+1}/{len(data_paths)} (process {process_id}) - {n_particles} particles in {p}")
+
+
+def dispatch_parallel_pick(target, data_directory, output_directory, threshold, spacing, size, parallel=1, spacing_px=None, size_px=None):
+    data_directory = os.path.abspath(data_directory)
+    output_directory = os.path.abspath(output_directory)
+
+    os.makedirs(output_directory, exist_ok=True)
+    all_data_paths = glob.glob(os.path.join(data_directory, f"*__{target}.mrc"))
+
+    data_div = {p_id: list() for p_id in range(parallel)}
+    for p_id, data_path in zip(itertools.cycle(range(parallel)), all_data_paths):
+        data_div[p_id].append(data_path)
+
+    processes = []
+    for p_id in data_div:
+        p = multiprocessing.Process(target=_picking_thread,
+                                    args=(data_div[p_id], output_directory, threshold, spacing, size, spacing_px, size_px, p_id))
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join()

@@ -10,6 +10,7 @@ from skimage import measure
 from scipy.ndimage import label, binary_dilation
 from Ais.core.util import coords_from_star
 
+
 class SEFrame:
     idgen = count(0)
 
@@ -654,7 +655,7 @@ class SurfaceModel:
     def find_coordinates(self):
         # is there a coordinate file?
         self.particles = list()
-        txt_file = os.path.splitext(self.path)[0]+"_coords.txt"
+        txt_file = os.path.splitext(self.path)[0]+"_coords.tsv"
         star_file = os.path.splitext(self.path)[0] + "_coords.star"
         if os.path.exists(txt_file):
             print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
