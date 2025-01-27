@@ -1,3 +1,8 @@
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/bionanopatterning/Ais/blob/master/Ais/LICENSE.txt)
+[![Downloads](https://img.shields.io/pypi/dm/Ais-cryoET)](https://pypi.org/project/Ais-cryoET/)
+[![Documentation Status](https://readthedocs.org/projects/ais-cryoet/badge/?version=latest)](https://ais-cryoet.readthedocs.io/en/latest/?badge=latest)
+![Last Commit](https://img.shields.io/github/last-commit/bionanopatterning/Ais)
+
 # Segmentation with Ais #
 ## Fast and user-friendly annotation and segmentation of cryo-electron tomography data using convolutional neural networks ##
 
