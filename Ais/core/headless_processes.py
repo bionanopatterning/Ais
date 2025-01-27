@@ -153,7 +153,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     model.save(os.path.join(output_directory, f"{model.apix:.2f}_{model.box_size}_{model.loss:.4f}_{model.title}{cfg.filetype_semodel}"))
 
 
-def _pick_tomo(tomo_path, output_path, threshold, spacing, size, spacing_px, size_px):
+def _pick_tomo(tomo_path, output_path, margin, threshold, spacing, size, spacing_px, size_px):
     from Ais.core.util import get_maxima_3d_watershed
 
     # find right values for spacing and size.
@@ -170,18 +170,18 @@ def _pick_tomo(tomo_path, output_path, threshold, spacing, size, spacing_px, siz
         min_size = size_px * (voxel_size / 10.0)**3
 
     print(f"min_spacing, min_size {min_spacing}, {min_size}")
-    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, threshold=threshold, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, sort_by_weight=True, verbose=False)
+    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, sort_by_weight=True, verbose=False)
     return n_particles
 
 
-def _picking_thread(data_paths, output_directory, threshold, spacing, size, spacing_px, size_px, process_id):
+def _picking_thread(data_paths, output_directory, margin, threshold, spacing, size, spacing_px, size_px, process_id):
     for j, p in enumerate(data_paths):
         out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.tsv")
-        n_particles = _pick_tomo(p, out_path, threshold, spacing, size, spacing_px, size_px)
+        n_particles = _pick_tomo(p, out_path, margin, threshold, spacing, size, spacing_px, size_px)
         print(f"{j+1}/{len(data_paths)} (process {process_id}) - {n_particles} particles in {p}")
 
 
-def dispatch_parallel_pick(target, data_directory, output_directory, threshold, spacing, size, parallel=1, spacing_px=None, size_px=None):
+def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, spacing, size, parallel=1, spacing_px=None, size_px=None):
     data_directory = os.path.abspath(data_directory)
     output_directory = os.path.abspath(output_directory)
 
@@ -195,7 +195,7 @@ def dispatch_parallel_pick(target, data_directory, output_directory, threshold, 
     processes = []
     for p_id in data_div:
         p = multiprocessing.Process(target=_picking_thread,
-                                    args=(data_div[p_id], output_directory, threshold, spacing, size, spacing_px, size_px, p_id))
+                                    args=(data_div[p_id], output_directory, margin, threshold, spacing, size, spacing_px, size_px, p_id))
         processes.append(p)
         p.start()
 

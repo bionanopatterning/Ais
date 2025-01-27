@@ -73,6 +73,7 @@ def main():
     pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input .mrc's.")
     pick_parser.add_argument('-t', '--target', required=True, type=str, help="Feature to pick. For example, if segmented volumes are named '<tomogram_name>__Ribosome.mrc', '-t Ribosome' will select these.")
     pick_parser.add_argument('-ou', '--output_directory', required=False, type=str, default=None, help="Directory to save output coordinate files to. If left empty, will save to the input data directory.")
+    pick_parser.add_argument('-m', '--margin', required=False, type=int, default=16, help="Margin (in pixels) to avoid picking particles close to tomogram edges.")
     pick_parser.add_argument('-threshold', required=False, type=float, default=128, help="Threshold to apply to volumes prior to finding local maxima (default 128).")
     pick_parser.add_argument('-spacing', required=False, type=float, default=None, help="Minimum distance between particles in Angstrom. Use ``-spacing-px`` to specify the minimum distance in voxel units instead.")
     pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
@@ -120,6 +121,7 @@ def main():
             aiscli.dispatch_parallel_pick(target=args.target,
                                           data_directory=args.data_directory,
                                           output_directory=output_directory,
+                                          margin=args.margin,
                                           threshold=args.threshold,
                                           spacing=args.spacing,
                                           size=args.size,

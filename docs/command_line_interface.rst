@@ -88,7 +88,7 @@ Use ais segment to segment all tomograms in a directory. On systems with multipe
 
 ::
 
-   ais train -d <data_directory> -t <target> -ou <output_directory> -threshold <threshold_value> -spacing <minimum_particle_spacing> -size <minimum_particle_size> -p <parallel_jobs>
+   ais pick -d <input_directory> -t <target_particle> -ou <output_directory> -m <margin> -threshold <> -spacing <> -size <> -p <>
 
 Options:
   ``-d``:
@@ -99,6 +99,9 @@ Options:
 
   ``-ou``:
     Output directory. If left empty, data will be saved to the input directory.
+
+  ``-m``:
+    Margin (in pixels) to avoid picking close to tomogram edges. Default 16.
 
   ``-threshold``:
     Threshold to apply to volumes during picking (default 128).
