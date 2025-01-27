@@ -170,13 +170,11 @@ def _pick_tomo(tomo_path, output_path, threshold, spacing, size, spacing_px, siz
         min_size = size_px * (voxel_size / 10.0)**3
 
     print(f"min_spacing, min_size {min_spacing}, {min_size}")
-    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, threshold=threshold, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, sort_by_weight=True)
+    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, threshold=threshold, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, sort_by_weight=True, verbose=False)
     return n_particles
 
 
 def _picking_thread(data_paths, output_directory, threshold, spacing, size, spacing_px, size_px, process_id):
-    from Ais.core.util import get_maxima_3d_watershed
-
     for j, p in enumerate(data_paths):
         out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.tsv")
         n_particles = _pick_tomo(p, out_path, threshold, spacing, size, spacing_px, size_px)
