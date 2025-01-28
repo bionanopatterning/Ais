@@ -22,104 +22,104 @@ except ImportError:
     pass
 
 
-
-
 class SegmentationEditor:
-    if True:
-        CAMERA_ZOOM_STEP = 0.1
-        CAMERA_MAX_ZOOM = 100.0
-        DEFAULT_HORIZONTAL_FOV_WIDTH = 1000
-        DEFAULT_ZOOM = 1.0  # adjusted in init
-        DEFAULT_WORLD_PIXEL_SIZE = 1.0  # adjusted on init
+    CAMERA_ZOOM_STEP = 0.1
+    CAMERA_MAX_ZOOM = 100.0
+    DEFAULT_HORIZONTAL_FOV_WIDTH = 1000
+    DEFAULT_ZOOM = 1.0  # adjusted in init
+    DEFAULT_WORLD_PIXEL_SIZE = 1.0  # adjusted on init
 
-        # GUI params
-        MAIN_WINDOW_WIDTH = 330
-        FEATURE_PANEL_HEIGHT = 104
-        INFO_HISTOGRAM_HEIGHT = 70
-        SLICER_WINDOW_VERTICAL_OFFSET = 30
-        SLICER_WINDOW_WIDTH = 700
-        ACTIVE_SLICES_CHILD_HEIGHT = 140
-        PROGRESS_BAR_HEIGHT = 8
-        MODEL_PANEL_HEIGHT_TRAINING = 158
-        MODEL_PANEL_HEIGHT_PREDICTION = 145
-        MODEL_PANEL_HEIGHT_LOGIC = 115
+    # GUI params
+    MAIN_WINDOW_WIDTH = 330
+    FEATURE_PANEL_HEIGHT = 104
+    INFO_HISTOGRAM_HEIGHT = 70
+    SLICER_WINDOW_VERTICAL_OFFSET = 30
+    SLICER_WINDOW_WIDTH = 700
+    ACTIVE_SLICES_CHILD_HEIGHT = 140
+    PROGRESS_BAR_HEIGHT = 8
+    MODEL_PANEL_HEIGHT_TRAINING = 158
+    MODEL_PANEL_HEIGHT_PREDICTION = 145
+    MODEL_PANEL_HEIGHT_LOGIC = 115
 
-        TOOLTIP_APPEAR_DELAY = 1.0
-        TOOLTIP_HOVERED_TIMER = 0.0
-        TOOLTIP_HOVERED_START_TIME = 0.0
+    TOOLTIP_APPEAR_DELAY = 1.0
+    TOOLTIP_HOVERED_TIMER = 0.0
+    TOOLTIP_HOVERED_START_TIME = 0.0
 
-        renderer = None
+    renderer = None
 
-        BLEND_MODES = dict()  # blend mode template: (glBlendFunc ARG1, ... ARG2, glBlendEquation ARG1, glsl_side_blend_mode_code)
-        BLEND_MODES["Sum"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 0)
-        BLEND_MODES["Colourize"] = (GL_DST_COLOR, GL_DST_ALPHA, GL_FUNC_ADD, 1)
-        BLEND_MODES["Mask"] = (GL_ZERO, GL_SRC_ALPHA, GL_FUNC_ADD, 2)
-        BLEND_MODES["Overlay"] = (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_FUNC_ADD, 3)
-        BLEND_MODES_3D = dict()  # blend mode template: (glBlendFunc ARG1, ... ARG2, glBlendEquation ARG1, glsl_side_blend_mode_code)
-        BLEND_MODES_3D["Halo"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 0)
-        BLEND_MODES_3D["Threshold"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 1)
-        BLEND_MODES_LIST = list(BLEND_MODES.keys())
-        BLEND_MODES_LIST_3D = list(BLEND_MODES_3D.keys())
+    BLEND_MODES = dict()  # blend mode template: (glBlendFunc ARG1, ... ARG2, glBlendEquation ARG1, glsl_side_blend_mode_code)
+    BLEND_MODES["Sum"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 0)
+    BLEND_MODES["Colourize"] = (GL_DST_COLOR, GL_DST_ALPHA, GL_FUNC_ADD, 1)
+    BLEND_MODES["Mask"] = (GL_ZERO, GL_SRC_ALPHA, GL_FUNC_ADD, 2)
+    BLEND_MODES["Overlay"] = (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_FUNC_ADD, 3)
+    BLEND_MODES_3D = dict()  # blend mode template: (glBlendFunc ARG1, ... ARG2, glBlendEquation ARG1, glsl_side_blend_mode_code)
+    BLEND_MODES_3D["Halo"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 0)
+    BLEND_MODES_3D["Threshold"] = (GL_SRC_ALPHA, GL_DST_ALPHA, GL_FUNC_ADD, 1)
+    BLEND_MODES_LIST = list(BLEND_MODES.keys())
+    BLEND_MODES_LIST_3D = list(BLEND_MODES_3D.keys())
 
-        pick_tab_index_datasets_segs = False
-        VIEW_3D_PIVOT_SPEED = 0.3
-        VIEW_3D_MOVE_SPEED = 100.0
-        PICKING_FRAME_ALPHA = 1.0
-        SELECTED_RENDER_STYLE = 1
-        RENDER_STYLES = ["Cartoon", "Phong", "Flat", "Misc."]
-        RENDER_BOX = False
-        RENDER_PARTICLES_XRAY = False
-        RENDER_SILHOUETTES = True
-        RENDER_SILHOUETTES_THRESHOLD = 0.1
-        RENDER_SILHOUETTES_ALPHA = 0.15
-        RENDER_CLEAR_COLOUR = cfg.COLOUR_WINDOW_BACKGROUND[:3]
-        RENDER_LIGHT_COLOUR = (1.0, 1.0, 1.0)
-        VIEW_REQUIRES_UPDATE = True
+    pick_tab_index_datasets_segs = False
+    VIEW_3D_PIVOT_SPEED = 0.3
+    VIEW_3D_MOVE_SPEED = 100.0
+    PICKING_FRAME_ALPHA = 1.0
+    SELECTED_RENDER_STYLE = 1
+    RENDER_STYLES = ["Cartoon", "Phong", "Flat", "Misc."]
+    RENDER_BOX = False
+    RENDER_PARTICLES_XRAY = False
+    RENDER_SILHOUETTES = True
+    RENDER_SILHOUETTES_THRESHOLD = 0.1
+    RENDER_SILHOUETTES_ALPHA = 0.15
+    RENDER_CLEAR_COLOUR = cfg.COLOUR_WINDOW_BACKGROUND[:3]
+    RENDER_LIGHT_COLOUR = (1.0, 1.0, 1.0)
+    VIEW_REQUIRES_UPDATE = True
 
-        FRAME_TEXTURE_REQUIRES_UPDATE = False
-        OVERLAY_ALPHA = 1.0
-        OVERLAY_INTENSITY = 1.0
-        OVERLAY_BLEND_MODE = 0
-        OVERLAY_BLEND_MODE_3D = 0
+    FRAME_TEXTURE_REQUIRES_UPDATE = False
+    OVERLAY_ALPHA = 1.0
+    OVERLAY_INTENSITY = 1.0
+    OVERLAY_BLEND_MODE = 0
+    OVERLAY_BLEND_MODE_3D = 0
 
-        LIGHT_SPOT = None
-        LIGHT_AMBIENT_STRENGTH = 0.5
+    LIGHT_SPOT = None
+    LIGHT_AMBIENT_STRENGTH = 0.5
 
-        DATASETS_WINDOW_EXPANDED = False
-        DATASETS_WINDOW_EXPANDED_HEIGHT = 500
-        DATASETS_EXPORT_PANEL_EXPANDED = False
-        DATASETS_EXPORT_PANEL_EXPANDED_HEIGHT = 300
-        DATASETS_EXPORT_SELECT_ALL = False
+    DATASETS_WINDOW_EXPANDED = False
+    DATASETS_WINDOW_EXPANDED_HEIGHT = 500
+    DATASETS_EXPORT_PANEL_EXPANDED = False
+    DATASETS_EXPORT_PANEL_EXPANDED_HEIGHT = 300
+    DATASETS_EXPORT_SELECT_ALL = False
 
-        DATASETS_PICK_PANEL_EXPANDED = False
-        DATASETS_PICK_PANEL_EXPANDED_HEIGHT = 300
-        DATASETS_PICK_SELECT_ALL = False
+    DATASETS_PICK_PANEL_EXPANDED = False
+    DATASETS_PICK_PANEL_EXPANDED_HEIGHT = 300
+    DATASETS_PICK_SELECT_ALL = False
 
-        EXTRACT_THRESHOLD = 128
-        EXTRACT_MIN_WEIGHT = 1000
-        EXTRACT_MIN_SPACING = 10.0  # Angstrom
-        EXTRACT_STAR_FILE = True
-        EXTRACT_SELECTED_FEATURE_TITLE = ""
-        EXTRACT_ALL = True
-        queued_exports = list()
-        export_dir = ""
+    EXTRACT_THRESHOLD = 128
+    EXTRACT_MIN_WEIGHT = 1000
+    EXTRACT_MIN_SPACING = 10.0  # Angstrom
+    EXTRACT_STAR_FILE = True
+    EXTRACT_SELECTED_FEATURE_TITLE = ""
+    EXTRACT_ALL = True
+    queued_exports = list()
+    export_dir = ""
 
-        trainset_apix = 10.0
-        seg_folder = ""
+    trainset_apix = 10.0
+    seg_folder = ""
 
-        SHOW_BOOT_SPRITE = True
-        ICON = Image.open(os.path.join(cfg.root, "icons", "LOGO_Pom_128.png"))
+    SHOW_BOOT_SPRITE = True
+    ICON = Image.open(os.path.join(cfg.root, "icons", "LOGO_Pom_128.png"))
 
-        FEATURE_IMPORT_MRC_THRESHOLD = 128
-        PATH_VIEWER_MISSING_DICT = dict()
-        PATH_VIEWER_OPEN = False
-        PATH_VIEWER_OPEN_FIND = ""
-        PATH_VIEWER_OPEN_REPLACE = ""
-        SHOW_IMGUI_DEBUG = False
+    FEATURE_IMPORT_MRC_THRESHOLD = 128
+    PATH_VIEWER_MISSING_DICT = dict()
+    PATH_VIEWER_OPEN = False
+    PATH_VIEWER_OPEN_FIND = ""
+    PATH_VIEWER_OPEN_REPLACE = ""
+    SHOW_IMGUI_DEBUG = False
 
-        FEATURE_LIB_OPEN = False
-        FEATURE_LIB_OPEN_INCLUDE_SESSION = False
-        FEATURE_LIB_ANNOTATION = True
+    FEATURE_LIB_OPEN = False
+    FEATURE_LIB_OPEN_INCLUDE_SESSION = False
+    FEATURE_LIB_ANNOTATION = True
+
+    POM_SYNCHRONIZE_INTERVAL = 0.5  # seconds
+    POM_SYNCHRONIZE_TIMER = 0
 
     def __init__(self, window, imgui_context, imgui_impl):
         cfg.start_log()
@@ -161,7 +161,6 @@ class SegmentationEditor:
         self.crop_handles = list()
 
         # picking / 3d renders
-
         self.pick_box_va = VertexArray(attribute_format="xyz")  # render box lines
         self.pick_box_quad_va = VertexArray(attribute_format="xyz")  # render box faces
         self.pick_box_va.update(VertexBuffer([0.0, 0.0]), IndexBuffer([]))
@@ -224,7 +223,7 @@ class SegmentationEditor:
 
     def on_update(self):
         imgui.set_current_context(self.imgui_context)
-        imgui.CONFIG_DOCKING_ENABLE = True  ## maayyyybe not?
+        imgui.CONFIG_DOCKING_ENABLE = True  # maayyyybe not?
 
         self.window.make_current()
         self.window.set_full_viewport()
@@ -241,7 +240,20 @@ class SegmentationEditor:
         for filepath in self.window.dropped_files:
             self.import_dataset(filepath)
 
+        if cfg.settings["POM_SYNCHRONIZE"]:
+            SegmentationEditor.POM_SYNCHRONIZE_TIMER += self.window.delta_time
+            if SegmentationEditor.POM_SYNCHRONIZE_TIMER > SegmentationEditor.POM_SYNCHRONIZE_INTERVAL:
+                try:
+                    self.pom_synchronize()
+                except Exception as e:
+                    cfg.set_error(e, f"Error during a Pom synchronization call.")
+                SegmentationEditor.POM_SYNCHRONIZE_TIMER = 0
+
         self.window.on_update()
+
+        if cfg.se_active_frame and cfg.se_active_frame.title == "New template":
+            cfg.se_active_frame.transform.translation[0] *= 0.95
+            cfg.se_active_frame.transform.translation[1] *= 0.95
 
         if self.window.window_size_changed:
             cfg.window_width = self.window.width
@@ -411,10 +423,19 @@ class SegmentationEditor:
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
                 else:
-                    if imgui.is_mouse_clicked(0):
-                        active_feature.add_box(pixel_coordinate)
-                    elif imgui.is_mouse_clicked(1):
-                        active_feature.remove_box(pixel_coordinate)
+                    if not SegmentationEditor.is_ctrl_down():
+                        if imgui.is_mouse_clicked(0):
+                            active_feature.add_box(pixel_coordinate)
+                        elif imgui.is_mouse_clicked(1):
+                            active_feature.remove_box(pixel_coordinate)
+            if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
+                if imgui.is_mouse_clicked(0):
+                    cursor_world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
+                    pixel_coordinate = cfg.se_active_frame.world_to_pixel_coordinate(cursor_world_position)
+                    try:
+                        self.pom_pick_template(pixel_coordinate, cursor_world_position)
+                    except Exception as e:
+                        cfg.set_error(e, "Could not extract subtomogram at chosen position.")
         elif self.active_tab != "Render" and active_frame is not None and active_frame.crop and not imgui.get_io().want_capture_mouse:
             if not self.crop_handles[0].moving_entire_roi:
                 any_handle_active = False
@@ -472,6 +493,54 @@ class SegmentationEditor:
                     self.parse_available_features()
             except Exception as e:
                 cfg.set_error(e, f"Error importing dataset {f}, see details below:")
+
+    def pom_synchronize(self):
+        # check command dir, if file then read it and follow the command.
+        cmd_path = os.path.join(cfg.settings["POM_COMMAND_DIR"], "pom_to_ais.cmd")
+        if os.path.exists(cmd_path):
+            with open(cmd_path, 'r') as f:
+                lines = f.readlines()
+                print(lines)
+            os.remove(cmd_path)
+
+            for line in lines:
+                line = line.split("\n")[0]
+                bars = line.split("\t")
+                # only one command for now:
+                #   open <filepath> slice <n>
+                if bars[0] == "open":
+                    self.import_dataset(bars[1])
+                    if "slice" in bars:
+                        cfg.se_frames[-1].set_slice(int(bars[3]))
+
+            self.window.bring_to_front()
+
+    def pom_pick_template(self, coordinate, world_position=np.zeros(3)):
+        volume = mrcfile.mmap(cfg.se_active_frame.path).data
+        j = cfg.se_active_frame.current_slice
+        k = coordinate[1]
+        l = coordinate[0]
+        s = cfg.settings["POM_TEMPLATE_PX_SIZE"] // 2
+        template_volume = volume[j-s:j+s, k-s:k+s, l-s:l+s]
+        template_temp_path = os.path.join(os.path.expanduser("~"), ".Ais", "temp.mrc")
+        print(template_volume.shape)
+        if template_volume.shape != (s*2, s*2, s*2):
+            raise Exception(f"Not enough data for template of size {s*2}**3")
+        with mrcfile.new(template_temp_path, overwrite=True) as f:
+            f.set_data(template_volume)
+            f.voxel_size = cfg.se_active_frame.pixel_size * 10.0
+        parent_se_frame = cfg.se_active_frame
+        self.import_dataset(template_temp_path)
+        cfg.se_active_frame.title = "New template"
+        cfg.se_active_frame.invert = parent_se_frame.invert
+        cfg.se_active_frame.autocontrast = parent_se_frame.autocontrast
+        cfg.se_active_frame.contrast_lims = parent_se_frame.contrast_lims
+        cfg.se_active_frame.interpolate = parent_se_frame.interpolate
+        cfg.se_active_frame.include_map()
+        cfg.se_active_frame.features.append(Segmentation(cfg.se_active_frame, f"Template mask"))
+        cfg.se_active_frame.features[-1].contour = True
+        cfg.se_active_frame.features[-1].colour = (1.0, 1.0, 1.0)
+        cfg.se_active_frame.transform.translation = [world_position[0] + cfg.se_active_frame.transform.translation[0], world_position[1] + cfg.se_active_frame.transform.translation[1]]
 
     @staticmethod
     def save_dataset(dialog=False):
@@ -1881,6 +1950,59 @@ class SegmentationEditor:
                             self.parse_available_features()
                         imgui.end_menu()
 
+                    if imgui.begin_menu("Pom"):
+                        if imgui.menu_item("Synchronize Ais & Pom", None, cfg.settings["POM_SYNCHRONIZE"])[0]:
+                            cfg.edit_setting("POM_SYNCHRONIZE", not cfg.settings["POM_SYNCHRONIZE"])
+                        if imgui.begin_menu("Templates"):
+                            imgui.align_text_to_frame_padding()
+                            imgui.text("size (px):")
+                            imgui.same_line()
+                            imgui.set_next_item_width(24)
+                            _, pom_template_size = imgui.input_int("##size (px)", cfg.settings["POM_TEMPLATE_PX_SIZE"], 0, 0)
+                            if pom_template_size > 10:
+                                pom_template_size = pom_template_size // 2 * 2
+                            if _:
+                                cfg.edit_setting("POM_TEMPLATE_PX_SIZE", pom_template_size)
+                            if imgui.menu_item("Export masked template")[0]:
+                                filename = filedialog.asksaveasfilename(filetypes = [(".mrc", ".mrc")], initialfile=f"new_template.mrc")
+                                if filename:
+                                    # Save volume itself
+                                    f_path = os.path.splitext(filename)[0]
+                                    se_f = cfg.se_active_frame
+                                    if se_f.includes_map:
+                                        with mrcfile.new(f_path + ".mrc", overwrite=True) as f:
+                                            f.set_data(se_f.map.data)
+                                            f.voxel_size = se_f.pixel_size * 10.0
+                                    else:
+                                        shutil.copy(se_f.path, f_path+".mrc")
+
+                                    # If exists, save template mask
+                                    se_mask = None
+                                    for feature in se_f.features:
+                                        if feature.title == "Template mask":
+                                            se_mask = feature
+                                    if se_mask is not None:
+                                        se_mask.save_volume(f_path+"_mask.mrc")
+
+
+
+                            imgui.end_menu()
+                        if cfg.settings["POM_SYNCHRONIZE"]:
+                            imgui.separator()
+                            if cfg.settings["POM_COMMAND_DIR"] == "" or not os.path.exists(cfg.settings["POM_COMMAND_DIR"]):
+                                imgui.push_style_color(imgui.COLOR_TEXT, 0.5, 0.5, 0.5, 1.0)
+                                imgui.text("Command directory not set.")
+                                imgui.pop_style_color()
+                            else:
+                                imgui.push_style_color(imgui.COLOR_TEXT, 0.0, 0.0, 0.8, 1.0)
+                                imgui.text(cfg.settings["POM_COMMAND_DIR"])
+                                imgui.pop_style_color()
+                            if imgui.menu_item("Set command directory")[0]:
+                                command_directory = filedialog.askdirectory()
+                                if command_directory != "":
+                                    cfg.edit_setting("POM_COMMAND_DIR", command_directory)
+                        imgui.end_menu()
+
                     if imgui.begin_menu("Developer"):
                         if imgui.menu_item("Show ImGui debug window", None, SegmentationEditor.SHOW_IMGUI_DEBUG)[0]:
                             SegmentationEditor.SHOW_IMGUI_DEBUG = not SegmentationEditor.SHOW_IMGUI_DEBUG
@@ -2286,8 +2408,13 @@ class SegmentationEditor:
                     world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
                     if not SegmentationEditor.is_shift_down():
                         SegmentationEditor.renderer.add_circle(world_position, radius, active_feature.colour)
-                    else:
+                    elif not SegmentationEditor.is_ctrl_down():
                         SegmentationEditor.renderer.add_square(world_position, active_feature.box_size_nm, active_feature.colour)
+
+                # Pom template picking indicator
+                if cfg.se_active_frame is not None and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
+                    world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
+                    SegmentationEditor.renderer.add_square(world_position, cfg.se_active_frame.pixel_size * cfg.settings["POM_TEMPLATE_PX_SIZE"], (1.0, 1.0, 1.0), subtract=True)
                 for f in cfg.se_active_frame.features:
                     frame_xy = f.parent.transform.translation
                     if f.show_boxes and not f.hide and f.current_slice in f.boxes:

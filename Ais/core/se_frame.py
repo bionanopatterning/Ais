@@ -508,8 +508,8 @@ class Segmentation:
         except Exception as e:
             cfg.set_error(e, "Could not save current slice, see details below.")
 
-    def save_volume(self):
-        fpath = os.path.splitext(self.parent.path)[0] + "__" + self.title + f"_manual.mrc"
+    def save_volume(self, path=None):
+        fpath = os.path.splitext(self.parent.path)[0] + "__" + self.title + f"_manual.mrc" if path is None else path
         try:
             with mrcfile.new(fpath, overwrite=True) as outf:
                 vol = np.zeros((self.parent.n_slices, self.parent.height, self.parent.width), dtype=np.uint8)
