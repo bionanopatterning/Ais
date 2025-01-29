@@ -46,28 +46,28 @@ se_surface_models = list()
 se_model_handle_overlap_mode = 0
 
 controls_info_text = \
-    "left mouse:     draw\n" \
-    "    +shift:     place box\n" \
-    "    +ctrl+shift: extract template\n" \
-    "right mouse:    erase\n" \
-    "    +shift:     erase box\n" \
-    "scroll:         change slice\n" \
-    "    +shift:     zoom\n" \
-    "    + ctrl:     change brush size\n" \
-    "spacebar:       reset view\n" \
-    "key A:          toggle autocontrast\n" \
-    "key I:          toggle inversion\n" \
-    "    +shift:     toggle interpolation\n" \
-    "key C:          toggle cropping\n" \
-    "key F:          toggle flood drawing mode\n" \
-    "key Q:          hide 3d models\n" \
-    "key O:          toggle overlay visibility\n" \
-    "key W:          select previous feature\n" \
-    "key S:          select next feature\n" \
-    "key left:       previous slice\n" \
-    "key right:      next slice\n" \
-    "key up:         previous dataset\n" \
-    "key down:       next dataset\n" \
+    "left mouse:        draw\n" \
+    "    +shift:        place box\n" \
+    "    +ctrl+shift:   extract template\n" \
+    "right mouse:       erase\n" \
+    "    +shift:        erase box\n" \
+    "scroll:            change slice\n" \
+    "    +shift:        zoom\n" \
+    "    + ctrl:        change brush size\n" \
+    "spacebar:          reset view\n" \
+    "key A:             toggle autocontrast\n" \
+    "key I:             toggle inversion\n" \
+    "    +shift:        toggle interpolation\n" \
+    "key C:             toggle cropping\n" \
+    "key F:             toggle flood drawing mode\n" \
+    "key Q:             hide 3d models\n" \
+    "key O:             toggle overlay visibility\n" \
+    "key W:             select previous feature\n" \
+    "key S:             select next feature\n" \
+    "key left:          previous slice\n" \
+    "key right:         next slice\n" \
+    "key up:            previous dataset\n" \
+    "key down:          next dataset\n" \
 
 
 
