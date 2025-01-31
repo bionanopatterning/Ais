@@ -77,7 +77,7 @@ def main():
     pick_parser.add_argument('-threshold', required=False, type=float, default=128, help="Threshold to apply to volumes prior to finding local maxima (default 128).")
     pick_parser.add_argument('-spacing', required=False, type=float, default=None, help="Minimum distance between particles in Angstrom. Use ``-spacing-px`` to specify the minimum distance in voxel units instead.")
     pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
-    pick_parser.add_argument('-size', required=False, type=float, default=None, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in voxel units instead.")
+    pick_parser.add_argument('-size', required=False, type=float, default=1.0, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in cubic voxel units instead.")
     pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
 

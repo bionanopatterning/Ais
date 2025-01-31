@@ -169,7 +169,6 @@ def _pick_tomo(tomo_path, output_path, margin, threshold, spacing, size, spacing
     else:
         min_size = size_px * (voxel_size / 10.0)**3
 
-    print(f"min_spacing, min_size {min_spacing}, {min_size}")
     n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, sort_by_weight=True, verbose=False)
     return n_particles
 
@@ -187,7 +186,6 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
 
     os.makedirs(output_directory, exist_ok=True)
     all_data_paths = glob.glob(os.path.join(data_directory, f"*__{target}.mrc"))
-
     data_div = {p_id: list() for p_id in range(parallel)}
     for p_id, data_path in zip(itertools.cycle(range(parallel)), all_data_paths):
         data_div[p_id].append(data_path)

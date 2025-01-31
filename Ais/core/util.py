@@ -104,7 +104,7 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
 
 
 def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
-    ## TODO: clean up, and min_size doesn't correspond to as seen in Ais render - fix that.
+    ## TODO: clean up
     """
     min_spacing: in nanometer
     min_size: in cubic nanometer

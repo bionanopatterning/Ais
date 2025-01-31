@@ -251,10 +251,6 @@ class SegmentationEditor:
 
         self.window.on_update()
 
-        if cfg.se_active_frame and cfg.se_active_frame.title == "New template":
-            cfg.se_active_frame.transform.translation[0] *= 0.95
-            cfg.se_active_frame.transform.translation[1] *= 0.95
-
         if self.window.window_size_changed:
             cfg.window_width = self.window.width
             cfg.window_height = self.window.height
@@ -497,6 +493,7 @@ class SegmentationEditor:
     def pom_synchronize(self):
         # check command dir, if file then read it and follow the command.
         cmd_path = os.path.join(cfg.settings["POM_COMMAND_DIR"], "pom_to_ais.cmd")
+
         if os.path.exists(cmd_path):
             with open(cmd_path, 'r') as f:
                 lines = f.readlines()
@@ -509,9 +506,17 @@ class SegmentationEditor:
                 # only one command for now:
                 #   open <filepath> slice <n>
                 if bars[0] == "open":
-                    self.import_dataset(bars[1])
-                    if "slice" in bars:
-                        cfg.se_frames[-1].set_slice(int(bars[3]))
+                    dataset_already_imported = False
+                    for f in cfg.se_frames:
+                        if bars[1] == f.path:
+                            SegmentationEditor.set_active_dataset(f)
+                            if "slice" in bars:
+                                cfg.se_active_frame.set_slice(int(bars[3]))
+                            dataset_already_imported = True
+                    if not dataset_already_imported:
+                        self.import_dataset(bars[1])
+                        if "slice" in bars:
+                            cfg.se_frames[-1].set_slice(int(bars[3]))
 
             self.window.bring_to_front()
 
@@ -2414,7 +2419,7 @@ class SegmentationEditor:
                 # Pom template picking indicator
                 if cfg.se_active_frame is not None and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
                     world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
-                    SegmentationEditor.renderer.add_square(world_position, cfg.se_active_frame.pixel_size * cfg.settings["POM_TEMPLATE_PX_SIZE"], (1.0, 1.0, 1.0), subtract=True)
+                    SegmentationEditor.renderer.add_square(world_position, cfg.se_active_frame.pixel_size * cfg.settings["POM_TEMPLATE_PX_SIZE"], (1.0, 1.0, 1.0))
                 for f in cfg.se_active_frame.features:
                     frame_xy = f.parent.transform.translation
                     if f.show_boxes and not f.hide and f.current_slice in f.boxes:
