@@ -39,7 +39,7 @@ class SEModel:
                        (0 / 255, 255 / 255, 0 / 255)]
     DEFAULT_MODEL_ENUM = 1
 
-    def __init__(self):
+    def __init__(self, no_glfw=False):
         if not SEModel.MODELS_LOADED:
             SEModel.load_models()
 
@@ -72,8 +72,9 @@ class SEModel:
         self.info_short = ""
         self.loss = 0.0
         self.data = None
-        self.texture = Texture(format="r32f")
-        self.texture.set_linear_mipmap_interpolation()
+        if not no_glfw:
+            self.texture = Texture(format="r32f")
+            self.texture.set_linear_mipmap_interpolation()
         self.bcprms = dict()  # backward compatibility params dict.
         self.emit = False
         self.absorb = False

@@ -292,6 +292,10 @@ class SegmentationEditor:
                     SegmentationEditor.queued_exports[0].start()
 
         # GUI calls
+
+        if cfg.se_active_frame is not None and cfg.se_active_frame.title == "New template":
+            cfg.se_active_frame.transform.translation[0] *= 0.95
+            cfg.se_active_frame.transform.translation[1] *= 0.95
         if not self.window.is_minimized():
             self.camera_control()
             self.camera.on_update()
@@ -507,8 +511,9 @@ class SegmentationEditor:
                 #   open <filepath> slice <n>
                 if bars[0] == "open":
                     dataset_already_imported = False
+                    tomo_name = os.path.splitext(os.path.basename(bars[1]))[0]
                     for f in cfg.se_frames:
-                        if bars[1] == f.path:
+                        if tomo_name == os.path.splitext(os.path.basename(f.path))[0]:
                             SegmentationEditor.set_active_dataset(f)
                             if "slice" in bars:
                                 cfg.se_active_frame.set_slice(int(bars[3]))

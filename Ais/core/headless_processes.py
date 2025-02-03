@@ -106,7 +106,7 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
 
 
 def print_available_model_architectures():
-    model = SEModel()
+    model = SEModel(no_glfw=True)
     model.load_models()
     for j, key in enumerate(SEModel.AVAILABLE_MODELS):
         print(f"index: {j} (-a {j})\tarchitecture name: {key}")
@@ -121,7 +121,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
         model_path = os.path.join(os.getcwd(), model_path)
     print(f"training data: {training_data}")
     print(f"output directory: {output_directory}")
-    model = SEModel()
+    model = SEModel(no_glfw=True)
     model.load_models()
     model.title = name
     if architecture is None and model_path is '':
