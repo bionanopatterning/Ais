@@ -7,7 +7,7 @@
   "DEFAULT_COLOURS": {},
   "GPUS": "0,",
   "WAIT_TO_RENDER": true,
-  "POM_SYNCHRONIZE": false,
+  "POM_SYNCHRONIZE": true,
   "POM_COMMAND_DIR": "",
   "POM_TEMPLATE_PX_SIZE": 64
 }

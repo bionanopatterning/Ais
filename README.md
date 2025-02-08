@@ -28,7 +28,7 @@ ais
 ais-cryoet
 ```
 #### Tensorflow & CUDA compatibility ####
-Compatibility between Python, tensorflow, and CUDA versions can be an issue. The following combination was used during development and is know to work:
+Compatibility between Python, tensorflow, and CUDA versions can be an issue. The following combination was used during development and is known to work:
 
 Python 3.9<br/>
 Tensorflow 2.8.0<br/>

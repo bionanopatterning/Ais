@@ -558,7 +558,7 @@ class SegmentationEditor:
             default_name = cfg.se_active_frame.path[:-4]
             if dialog:
                 filename = filedialog.asksaveasfilename(
-                    filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")],
+                    filetypes=[("Ais segmentation", f"{cfg.filetype_segmentation}")],
                     initialfile=default_name)
             else:
                 filename = default_name
@@ -1122,7 +1122,7 @@ class SegmentationEditor:
                             imgui.pop_style_var()
                             imgui.same_line()
                             if imgui.button("browse", 56, 19):
-                                selected_file = filedialog.askopenfilename(filetypes=[("scNodes traindata", f"{cfg.filetype_traindata}")])
+                                selected_file = filedialog.askopenfilename(filetypes=[("Ais training data", f"{cfg.filetype_traindata}")])
                                 if selected_file is not None:
                                     m.train_data_path = selected_file
 
@@ -1154,7 +1154,7 @@ class SegmentationEditor:
                                 block_buttons = True
                             if imgui.button("load", (cw - 16) / 3, 20):
                                 if not block_buttons:
-                                    model_path = filedialog.askopenfilename(filetypes=[("scNodes CNN", f"{cfg.filetype_semodel}")])
+                                    model_path = filedialog.askopenfilename(filetypes=[("Ais model", f"{cfg.filetype_semodel}")])
                                     if model_path != "":
                                         m.load(model_path)
                             imgui.same_line(spacing=8)
@@ -1169,7 +1169,7 @@ class SegmentationEditor:
                                 if not block_buttons and not block_save_button:
                                     proposed_filename = f"{m.apix:.2f}_{m.box_size}_{m.loss:.4f}_{m.title}"
                                     try:
-                                        model_path = filedialog.asksaveasfilename(filetypes=[("scNodes model", f"{cfg.filetype_semodel}")], initialfile=proposed_filename)
+                                        model_path = filedialog.asksaveasfilename(filetypes=[("Ais model", f"{cfg.filetype_semodel}")], initialfile=proposed_filename)
                                         if model_path != "" and type(model_path) == str:
                                             if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
                                                 model_path += cfg.filetype_semodel
@@ -1764,21 +1764,21 @@ class SegmentationEditor:
                 if imgui.begin_menu("File"):
                     if imgui.menu_item("Import datasets")[0]:
                         try:
-                            filename = filedialog.askopenfilenames(filetypes=[("scNodes segmentable", f".mrc {cfg.filetype_segmentation}"), (".scns", f"{cfg.filetype_segmentation}"), (".mrc", ".mrc")])
+                            filename = filedialog.askopenfilenames(filetypes=[("Ais segmentable", f".mrc {cfg.filetype_segmentation}"), (".scns", f"{cfg.filetype_segmentation}"), (".mrc", ".mrc")])
                             if filename != '':
                                 self.import_dataset(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not import dataset, see details below.")
                     if imgui.menu_item("Import model")[0]:
                         try:
-                            filename = filedialog.askopenfilename(filetypes=[("scNodes model", f"{cfg.filetype_semodel}")])
+                            filename = filedialog.askopenfilename(filetypes=[("Ais model", f"{cfg.filetype_semodel}")])
                             if filename != '':
                                 self.load_model(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not import model, see details below.")
                     if imgui.menu_item("Import model group")[0]:
                         try:
-                            filename = filedialog.askopenfilename(filetypes=[("scNodes model group", cfg.filetype_semodel_group)])
+                            filename = filedialog.askopenfilename(filetypes=[("Ais model group", cfg.filetype_semodel_group)])
                             if filename != '':
                                 SegmentationEditor.load_model_group(filename)
                         except Exception as e:
@@ -1790,7 +1790,7 @@ class SegmentationEditor:
                         SegmentationEditor.save_dataset(dialog=True)
                     if imgui.menu_item("Save dataset w. map")[0]:
                         try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("scNodes segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
+                            filename = filedialog.asksaveasfilename(filetypes=[("Ais segmentation", f"{cfg.filetype_segmentation}")], initialfile = os.path.basename(cfg.se_active_frame.path)[:-4])
                             if filename != '':
                                 if filename[-len(cfg.filetype_segmentation):] != cfg.filetype_segmentation:
                                     filename += cfg.filetype_segmentation
@@ -1801,7 +1801,7 @@ class SegmentationEditor:
                             cfg.set_error(e, "Could not save dataset (including map), see details below.")
                     if imgui.menu_item("Save model group")[0]:
                         try:
-                            filename = filedialog.asksaveasfilename(filetypes=[("scNodes model group", f"{cfg.filetype_semodel_group}")])
+                            filename = filedialog.asksaveasfilename(filetypes=[("Ais model group", f"{cfg.filetype_semodel_group}")])
                             if filename != '':
                                 if filename[-len(cfg.filetype_semodel_group):] != cfg.filetype_semodel_group:
                                     filename += cfg.filetype_semodel_group
@@ -2801,7 +2801,7 @@ class SegmentationEditor:
                 negative_feature_names.append(f)
         if len(positive_feature_names) == 0:
             return
-        path = filedialog.asksaveasfilename(filetypes=[("scNodes traindata", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{SegmentationEditor.trainset_apix:.3f}_{positive_feature_names[0]}")
+        path = filedialog.asksaveasfilename(filetypes=[("Ais training data", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{SegmentationEditor.trainset_apix:.3f}_{positive_feature_names[0]}")
         if path == "":
             return
         if path[-len(cfg.filetype_traindata):] != cfg.filetype_traindata:

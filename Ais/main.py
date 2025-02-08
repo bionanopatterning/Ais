@@ -1,6 +1,3 @@
-import os
-import sys
-import Ais.core.config as cfg
 from Ais.core.window import *
 from Ais.core.segmentation_editor import *
 from imgui.integrations.glfw import GlfwRenderer
@@ -37,7 +34,6 @@ def run_ais():
     cfg.segmentation_editor = segmentation_editor
     main_window.set_icon(segmentation_editor.ICON)
 
-    from Ais.core import start
 
     while not glfw.window_should_close(main_window.glfw_window):
         if not main_window.focused:

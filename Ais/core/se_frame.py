@@ -5,7 +5,7 @@ from Ais.core.opengl_classes import *
 import datetime
 import Ais.core.config as cfg
 import Ais.core.settings as settings
-from Ais.core.se_model import BackgroundProcess
+from Ais.core.background_process import BackgroundProcess
 from skimage import measure
 from scipy.ndimage import label, binary_dilation
 from Ais.core.util import coords_from_star

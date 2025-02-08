@@ -2,7 +2,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Concatenate
 from tensorflow.keras.optimizers import Adam
 
-title = "UNet"
+title = "UNet S"
 include = True
 
 def create(input_shape):

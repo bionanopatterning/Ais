@@ -31,8 +31,14 @@ def _segment_tomo(tomo_path, model):
     volume /= np.std(volume)
     segmented_volume = np.zeros_like(volume)
 
+
+    w = 32 * (volume.shape[1] // 32)
+    w_pad = (volume.shape[1] % 32) // 2
+    h = 32 * (volume.shape[2] // 32)
+    h_pad = (volume.shape[2] % 32) // 2
+
     for j in range(volume.shape[0]):
-        segmented_volume[j, :, :] = np.squeeze(model.predict(volume[j, :, :][np.newaxis, :, :]))
+        segmented_volume[j, w_pad:w_pad+w, h_pad:h_pad+h] = np.squeeze(model.predict(volume[j, w_pad:w_pad+w, h_pad:h_pad+h][np.newaxis, :, :]))
 
     return segmented_volume
 
@@ -46,9 +52,9 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overwrite=F
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
-    glfw_init()
+    #glfw_init()
 
-    se_model = SEModel()
+    se_model = SEModel(no_glfw=True)
     se_model.load(model_path, compile=False)
     model = se_model.model
     new_input = Input(shape=(None, None, 1))
@@ -57,18 +63,23 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, overwrite=F
 
 
     for j, p in enumerate(data_paths):
-        tomo_name = os.path.basename(os.path.splitext(p)[0])
-        out_path = os.path.join(output_dir, tomo_name+"__"+se_model.title+".mrc")
-        print(f"{j+1}/{len(data_paths)}({gpu_id}) - {p}")
-        if os.path.exists(out_path) and not overwrite:
-            continue
+        try:
+            tomo_name = os.path.basename(os.path.splitext(p)[0])
+            out_path = os.path.join(output_dir, tomo_name+"__"+se_model.title+".mrc")
+            print(f"{j+1}/{len(data_paths)} (GPU {gpu_id}) - {p}")
+            if os.path.exists(out_path) and not overwrite:
+                continue
+            with mrcfile.new(out_path, overwrite=True) as mrc:
+                mrc.set_data(np.zeros((10, 10, 10), dtype=np.float32))
 
-        in_voxel_size = mrcfile.open(p, header_only=True).voxel_size
-        segmented_volume = _segment_tomo(p, new_model)
-        segmented_volume = (segmented_volume * 255).astype(np.uint8)
-        with mrcfile.new(out_path, overwrite=True) as mrc:
-            mrc.set_data(segmented_volume)
-            mrc.voxel_size = in_voxel_size
+            in_voxel_size = mrcfile.open(p, header_only=True).voxel_size
+            segmented_volume = _segment_tomo(p, new_model)
+            segmented_volume = (segmented_volume * 255).astype(np.uint8)
+            with mrcfile.new(out_path, overwrite=True) as mrc:
+                mrc.set_data(segmented_volume)
+                mrc.voxel_size = in_voxel_size
+        except Exception as e:
+            print(f"Error segmenting {p}:\n{e}")
 
 
 def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, parallel=1, overwrite=0):
@@ -117,6 +128,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
         training_data = os.path.join(os.getcwd(), training_data)
     if not os.path.isabs(output_directory):
         output_directory = os.path.join(os.getcwd(), output_directory)
+    os.makedirs(output_directory, exist_ok=True)
     if model_path and not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
     print(f"training data: {training_data}")

@@ -17,6 +17,7 @@ settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
 feature_lib_path = os.path.join(os.path.expanduser("~"), ".Ais", "feature_library.txt")
 os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
+
 filetype_segmentation = ".scns"
 filetype_traindata = ".scnt"
 filetype_semodel = ".scnm"
@@ -131,7 +132,11 @@ def edit_setting(key, value):
     settings[key] = value
     with open(settings_path, 'w') as f:
         json.dump(settings, f, indent=2)
+    print(key, value)
 
+
+if settings["POM_COMMAND_DIR"] == "":
+    edit_setting("POM_COMMAND_DIR", os.path.join(os.path.expanduser("~"), ".Ais"))
 
 class FeatureLibraryFeature:
     DEFAULT_COLOURS = [(66 / 255, 214 / 255, 164 / 255),
