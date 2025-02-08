@@ -5,9 +5,6 @@ import tkinter as tk
 import argparse
 import time
 
-tkroot = tk.Tk()
-tkroot.withdraw()
-
 # TODO: try using strategy = tf.distribute.MirroredStrategy() in SEModel train to make use of all GPUs.
 directory = os.path.join(os.path.dirname(__file__))
 directory = directory[:directory.rfind("\\")]
@@ -17,6 +14,9 @@ cfg.root = os.path.join(os.path.dirname(__file__))
 
 
 def run_ais():
+    tkroot = tk.Tk()
+    tkroot.withdraw()
+
     if not glfw.init():
         raise Exception("Could not initialize GLFW library!")
 
