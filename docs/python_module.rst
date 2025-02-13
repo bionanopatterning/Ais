@@ -32,8 +32,6 @@ Scripting with Ais
 
 Below is an example of a script to import a tomogram into Ais, load neural network on a previously generated training dataset, and then to segment a tomogram.
 
-Important note: the first function that must always be called to enable Ais functionality in a script is scNodes.main.windowless(). This will set up an invisible OpenGL context which you don't need to think about but that is required for some behind the scenes stuff.
-
 ::
 
    from Ais.main import windowless
@@ -41,8 +39,6 @@ Important note: the first function that must always be called to enable Ais func
    from Ais.core.se_model import SEModel
    import time
    import numpy as np
-
-   windowless()
 
    tomo = SEFrame("C:/Users/mgflast/Desktop/tomo.mrc")
 
