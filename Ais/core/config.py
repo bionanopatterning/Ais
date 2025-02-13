@@ -8,6 +8,8 @@ import shutil
 import json
 
 frozen = False
+glfw_initialized = False
+
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
 version = "1.0.41"
@@ -69,6 +71,10 @@ controls_info_text = \
     "key right:         next slice\n" \
     "key up:            previous dataset\n" \
     "key down:          next dataset\n" \
+    "key 1:             select 'Annotation' tab\n" \
+    "key 2:             select 'Models' tab\n" \
+    "key 3:             select 'Export' tab\n" \
+    "key 4:             select 'Render' tab\n" \
 
 
 

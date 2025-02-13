@@ -75,6 +75,8 @@ class SEFrame:
         self.__dict__.update(state)
 
     def setup_opengl_objects(self):
+        if not cfg.glfw_initialized:
+            return
         self.texture = Texture(format="r32f")
         self.texture.update(self.data.astype(np.float32))
         self.quad_va = VertexArray()
@@ -84,6 +86,8 @@ class SEFrame:
         self.toggle_interpolation()
 
     def toggle_interpolation(self):
+        if not cfg.glfw_initialized:
+            return
         self.interpolate = not self.interpolate
         if self.interpolate:
             self.texture.set_linear_mipmap_interpolation()
@@ -175,6 +179,8 @@ class SEFrame:
         return y_indices, x_indices
 
     def update_image_texture(self):
+        if not cfg.glfw_initialized:
+            return
         self.texture.update(self.rendered_data.astype(np.float32))
 
     def update_model_matrix(self):

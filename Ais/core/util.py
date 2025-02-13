@@ -146,6 +146,7 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
     if verbose:
         print(f"\tcomputing distance transform")
     distance = distance_transform_edt(binary_vol)
+
     min_distance = max(3, int(min_spacing / pixel_size))
     min_size = min_size / pixel_size**3
     if process:

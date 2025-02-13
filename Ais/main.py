@@ -5,7 +5,7 @@ import tkinter as tk
 import argparse
 import time
 
-# TODO: try using strategy = tf.distribute.MirroredStrategy() in SEModel train to make use of all GPUs.
+
 directory = os.path.join(os.path.dirname(__file__))
 directory = directory[:directory.rfind("\\")]
 sys.path.insert(0, os.path.abspath("../.."))
@@ -20,6 +20,7 @@ def run_ais():
     if not glfw.init():
         raise Exception("Could not initialize GLFW library!")
 
+    cfg.glfw_initialized = True
     # Init the main window, its imgui context, and a glfw rendering impl.
     main_window = Window(cfg.window_width, cfg.window_height, settings.ne_window_title)
     main_window.set_callbacks()
@@ -42,18 +43,6 @@ def run_ais():
         segmentation_editor.end_frame()
 
 
-def windowless():
-    if not glfw.init():
-        raise Exception("Could not initialize GLFW library for headless start!")
-    glfw.window_hint(glfw.VISIBLE, False)
-    window = glfw.create_window(1, 1, "invisible window", None, None)
-    if not window:
-        glfw.terminate()
-        raise Exception("Could not create invisible window!")
-    glfw.make_context_current(window)
-    return window
-
-
 def main():
     parser = argparse.ArgumentParser(description="Ais headless CLI parser")
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
@@ -71,11 +60,12 @@ def main():
     pick_parser.add_argument('-ou', '--output_directory', required=False, type=str, default=None, help="Directory to save output coordinate files to. If left empty, will save to the input data directory.")
     pick_parser.add_argument('-m', '--margin', required=False, type=int, default=16, help="Margin (in pixels) to avoid picking particles close to tomogram edges.")
     pick_parser.add_argument('-threshold', required=False, type=float, default=128, help="Threshold to apply to volumes prior to finding local maxima (default 128).")
-    pick_parser.add_argument('-spacing', required=False, type=float, default=None, help="Minimum distance between particles in Angstrom. Use ``-spacing-px`` to specify the minimum distance in voxel units instead.")
+    pick_parser.add_argument('-spacing', required=False, type=float, default=10.0, help="Minimum distance between particles in Angstrom. Use ``-spacing-px`` to specify the minimum distance in voxel units instead.")
     pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
-    pick_parser.add_argument('-size', required=False, type=float, default=1.0, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in cubic voxel units instead.")
+    pick_parser.add_argument('-size', required=False, type=float, default=10.0, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in cubic voxel units instead.")
     pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
+    pick_parser.add_argument('-v', '--verbose', required=False, type=int, default=0, help="Verbose (1 or 0)")
 
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
@@ -95,7 +85,7 @@ def main():
     if args.command is None:
         run_ais()
     else:
-        import Ais.core.headless_processes as aiscli
+        import Ais.core.cli_fn as aiscli
 
         if args.command == 'segment':
             gpus = [int(g) for g in args.gpus.split(',')]
@@ -106,13 +96,6 @@ def main():
                                              parallel=args.parallel,
                                              overwrite=args.overwrite)
         elif args.command == 'pick':
-            # check A/px inputs
-            if args.size is None and args.size_px is None:
-                print(f"Please specify a value for arg '-size' or '-size-px'")
-                return
-            if args.spacing is None and args.spacing_px is None:
-                print(f"Please specify a value for arg '-spacing' or '-spacing-px'.")
-                return
             output_directory = args.output_directory if args.output_directory else args.data_directory
             aiscli.dispatch_parallel_pick(target=args.target,
                                           data_directory=args.data_directory,
@@ -123,7 +106,8 @@ def main():
                                           size=args.size,
                                           parallel=args.parallel,
                                           spacing_px=args.spacing_px,
-                                          size_px=args.size_px)
+                                          size_px=args.size_px,
+                                          verbose=args.verbose==1)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()

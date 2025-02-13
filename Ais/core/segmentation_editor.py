@@ -121,6 +121,8 @@ class SegmentationEditor:
     POM_SYNCHRONIZE_INTERVAL = 0.5  # seconds
     POM_SYNCHRONIZE_TIMER = 0
 
+    FORCE_SELECT_TAB = None
+
     def __init__(self, window, imgui_context, imgui_impl):
         cfg.start_log()
         self.window = window
@@ -138,6 +140,7 @@ class SegmentationEditor:
         SegmentationEditor.renderer = Renderer()
         self.filters = list()
         self.active_tab = "Segmentation"
+
         # training dataset params
         self.all_feature_names = list()
         self.feature_colour_dict = dict()
@@ -2490,6 +2493,16 @@ class SegmentationEditor:
                 if not imgui.is_key_down(glfw.KEY_Q):
                     self.renderer.render_surface_models(cfg.se_surface_models, self.camera3d, SegmentationEditor.LIGHT_AMBIENT_STRENGTH, SegmentationEditor.LIGHT_SPOT, window_size=(self.window.width, self.window.height))
 
+        if not imgui.get_io().want_capture_keyboard:
+            if imgui.is_key_pressed(glfw.KEY_1):
+                SegmentationEditor.FORCE_SELECT_TAB = 0
+            if imgui.is_key_pressed(glfw.KEY_2):
+                SegmentationEditor.FORCE_SELECT_TAB = 1
+            if imgui.is_key_pressed(glfw.KEY_3):
+                SegmentationEditor.FORCE_SELECT_TAB = 2
+            if imgui.is_key_pressed(glfw.KEY_4):
+                SegmentationEditor.FORCE_SELECT_TAB = 3
+
         # MAIN WINDOW
         imgui.set_next_window_position(0, 17, imgui.ONCE)
         imgui.set_next_window_size(SegmentationEditor.MAIN_WINDOW_WIDTH, self.window.height - 17)
@@ -2501,27 +2514,28 @@ class SegmentationEditor:
 
         if imgui.begin_tab_bar("##tabs"):
             self.window.clear_color = cfg.COLOUR_WINDOW_BACKGROUND
-            if imgui.begin_tab_item("  Annotation ")[0]:
+            if imgui.begin_tab_item("  Annotation ", flags=imgui.TAB_ITEM_SET_SELECTED if SegmentationEditor.FORCE_SELECT_TAB == 0 else 0)[0]:
                 segmentation_tab()
                 self.active_tab = "Segmentation"   # used to be labelled Segmentation then changed to 'Annotation'. Did not change the active_tab enum value though.
                 imgui.end_tab_item()
-            if imgui.begin_tab_item(" Models ")[0]:
+            if imgui.begin_tab_item(" Models ", flags=imgui.TAB_ITEM_SET_SELECTED if SegmentationEditor.FORCE_SELECT_TAB == 1 else 0)[0]:
                 if self.active_tab != "Models":
                     self.parse_available_features()
                 self.active_tab = "Models"
                 models_tab()
                 imgui.end_tab_item()
-            if imgui.begin_tab_item(" Export ")[0]:
+            if imgui.begin_tab_item(" Export ", flags=imgui.TAB_ITEM_SET_SELECTED if SegmentationEditor.FORCE_SELECT_TAB == 2 else 0)[0]:
                 self.active_tab = "Export"
                 export_tab()
                 imgui.end_tab_item()
-            if imgui.begin_tab_item(" Render  ")[0]:
+            if imgui.begin_tab_item(" Render  ", flags=imgui.TAB_ITEM_SET_SELECTED if SegmentationEditor.FORCE_SELECT_TAB == 3 else 0)[0]:
                 self.window.clear_color = [*SegmentationEditor.RENDER_CLEAR_COLOUR, 1.0]
                 self.active_tab = "Render"
                 picking_tab()
                 imgui.end_tab_item()
             imgui.end_tab_bar()
 
+        SegmentationEditor.FORCE_SELECT_TAB = None
         imgui.end()
 
         slicer_window()

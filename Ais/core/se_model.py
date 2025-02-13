@@ -338,6 +338,8 @@ class SEModel:
             return False
 
     def update_texture(self):
+        if not cfg.glfw_initialized:
+            return
         if not self.compiled or not self.active:
             return
         self.texture.update(self.data)
