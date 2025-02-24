@@ -8,7 +8,6 @@ import time
 import mrcfile
 from scipy.ndimage import label, distance_transform_edt
 from skimage.feature import peak_local_max
-from skimage.segmentation import watershed
 timer = 0.0
 
 
@@ -103,15 +102,13 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, sort_by_weight=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
+def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
     ## TODO: clean up
     """
     min_spacing: in nanometer
     min_size: in cubic nanometer
     pixel_size: in nanometer
     """
-    if verbose:
-        print(f"{mrcpath}\n\tget_maxima_3d_watershed")
     if array is None:
         data = mrcfile.read(mrcpath)
         if process:
@@ -130,98 +127,39 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
         _type = data.dtype
         data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5, dtype=_type).mean(3, dtype=_type).mean(1, dtype=_type)
         pixel_size *= b
-
-    m = margin
-    data[:m, :, :] = 0
-    data[:, :m, :] = 0
-    data[:, :, :m] = 0
-    data[-m:, :, :] = 0
-    data[:, -m:, :] = 0
-    data[:, :, -m:] = 0
-
-    binary_vol = data > threshold
-
-
-
-    if verbose:
-        print(f"\tcomputing distance transform")
-    distance = distance_transform_edt(binary_vol)
+        margin = margin // b
 
     min_distance = max(3, int(min_spacing / pixel_size))
-    min_size = min_size / pixel_size**3
-    if process:
-        process.set_progress(0.3)
+    min_size = min_size / pixel_size ** 3
 
-    if verbose:
-        print(f"\tfinding local maxima")
-    coords = peak_local_max(distance, min_distance=min_distance)
-    mask = np.zeros(distance.shape, dtype=bool)
-    mask[tuple(coords.T)] = True
-    if verbose:
-        print(f"\tenumerating local maxima")
-    markers, _ = label(mask)
+    binary_vol = data > threshold
     if process:
         process.set_progress(0.4)
-    if verbose:
-        print(f"\twatershedding")
-    labels = watershed(-distance, markers, mask=binary_vol)
-    Z, Y, X = np.nonzero(labels)
+    # set regions with insufficient volume to 0
+    labeled, n = label(binary_vol)
+    voxels_per_group = np.bincount(labeled.ravel())
+    small_blobs = np.where(voxels_per_group < min_size)[0]
+    for sb in small_blobs:
+        binary_vol[labeled == sb] = 0
+
+    # find maxima in distance map
+    distance = distance_transform_edt(binary_vol, return_distances=True)
     if process:
-        process.set_progress(0.5)
-    # parse blobs
-    blobs = dict()
-    if verbose:
-        print(f"\tparsing instance labelled volume")
-    for i in range(len(X)):  # todo - this is super inefficient; maybe improve it.
-        z = Z[i]
-        y = Y[i]
-        x = X[i]
+        process.set_progress(0.9)
+    coordinates = peak_local_max(distance, min_distance=min_distance)
 
-        l = labels[z, y, x]
-        if l not in blobs:
-            blobs[l] = Blob()
+    class Particle:
+        def __init__(self, coordinate, score):
+            self.coordinate = coordinate
+            self.score = score
 
-        blobs[l].x.append(x)
-        blobs[l].y.append(y)
-        blobs[l].z.append(z)
-        blobs[l].v.append(data[z, y, x])
+    particles = list()
+    for c in coordinates:
+        particles.append(Particle(c, distance[c[0], c[1], c[2]]))
 
-    if verbose:
-        print(f"\t{len(blobs)} unique volumes found")
-    if process:
-        process.set_progress(0.6)
-    if min_size:
-        if verbose:
-            print(f"\tremoving blobs smaller than {min_size} cubic px")
-        to_pop = list()
-        for key in blobs:
-            size = blobs[key].get_volume()
-            if size < min_size:
-                to_pop.append(key)
-        for key in to_pop:
-            blobs.pop(key)
-        if verbose:
-            print(f"\t{len(blobs)} volumes remaining")
-    if process:
-        process.set_progress(0.7)
-    blobs = list(blobs.values())
-    metrics = list()
-    for blob in blobs:
-        if sort_by_weight:
-            metrics.append(blob.get_weight())
-        else:
-            metrics.append(blob.get_volume())
+    particles.sort(key=lambda x: x.score, reverse=True)
+    coordinates = [p.coordinate for p in particles]
 
-    indices = np.argsort(metrics)[::-1]
-    coordinates = list()
-    for i in indices:
-        coordinates.append(blobs[i].get_centroid(scale=binning))
-    if process:
-        process.set_progress(0.8)
-
-    # remove points that are too close to others.
-    if verbose:
-        print(f"\tremoving particles that are too close to a better particle")
     remove = list()
     i = 0
     while i < len(coordinates):
@@ -234,14 +172,15 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
             if d < min_spacing:
                 remove.append(j)
         i += 1
-    if process:
-        process.set_progress(0.9)
 
+    for j, c in enumerate(coordinates):
+        if np.any(c < margin) or np.any(c > (np.array(data.shape) - margin)):
+            remove.append(j)
     remove.sort()
+
     for i in reversed(remove):
         coordinates.pop(i)
-    if verbose:
-        print(f"\t{len(coordinates)} particles remaining")
+
     if not return_coords:
         if not save_txt:
             return len(coordinates)
@@ -257,9 +196,9 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
                 print(f"\toutputting coordinates to {os.path.splitext(out_path)[0]+'.star'}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
-                x = int(coordinates[i][0])
-                y = int(coordinates[i][1])
-                z = int(coordinates[i][2])
+                x = int(coordinates[i][2] * binning - 1)
+                y = int(coordinates[i][1] * binning - 1)
+                z = int(coordinates[i][0] * binning - 1)
                 out_file.write(f"{x}\t{y}\t{z}\n")
         if output_star:
             if verbose:
@@ -272,30 +211,6 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
         if process:
             process.set_progress(0.99)
         return coordinates
-
-
-class Blob:
-    def __init__(self):
-        self.x = list()
-        self.y = list()
-        self.z = list()
-        self.v = list()
-
-    def get_centroid(self, scale=1):
-        return np.mean(self.x) * scale, np.mean(self.y) * scale, np.mean(self.z) * scale
-
-    def get_center_of_mass(self):
-        mx = np.sum(np.array(self.x) * np.array(self.v))
-        my = np.sum(np.array(self.y) * np.array(self.v))
-        mz = np.sum(np.array(self.z) * np.array(self.v))
-        m = self.get_weight()
-        return mx / m, my / m, mz / m
-
-    def get_volume(self):
-        return len(self.x)
-
-    def get_weight(self):
-        return np.sum(self.v)
 
 
 def bin_2d_array(a, b):

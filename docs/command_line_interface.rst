@@ -35,10 +35,13 @@ Options:
     Batch size (default 32).
 
   ``-n``:
-    Ratio of negative to positive training images to use. E.g., if 1.3 and 100 annotated images are in the training data, 130 non-annotated images will be samples from the training data.
+    If 0.0 (default), all images in the input training data are weighted identically. If argument supplied, the value determines the ratio of negative to positive samples to use. For example: if the training data contains 50 positive samples and 50 negatives, and the negative to positive ratio is 1.5, a number of negatives will be sampled twice in order to reach this ratio
 
   ``-c``:
     Number of copies of the training data to use (default 10). Note that this copies the positive (i.e. with annotations that are not all zeroes) training images, and that the number of negative training images (where no annotations were drawn) is n_copies * (n_positive_images) * negative_ratio.
+
+  ``-r``:
+    Learning rate. Default is 1e-3. All default Ais networks use Adam as the optimizer.
 
   ``-models``:
     Override all other arguments; print a list of available model architectures and corresponding values for arg -a.
@@ -68,6 +71,9 @@ Options:
 
   ``-gpu``:
     Comma-separated list of GPU IDs (required).
+
+  ``-tta``:
+    Test time augmentation. (optional, default 1). Integer between 1 and 8. If 1, no test time augmentation applied. If 2 - 8, the tomogram is processed multiple times in different orientations and the results averaged. Orientations are [0, 90, 180, 270, 0', 90', 180', 270'] (': horizontal flip); e.g., when -tta 4, each input tomogram is segmented four times, sampled with 0, 90, 180, and 270 deg. rotations relative to the original.
 
   ``-overwrite``:
     If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).

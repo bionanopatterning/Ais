@@ -635,7 +635,7 @@ class SurfaceModel:
         self.bin = 2
         header = mrcfile.open(self.path, header_only=True, mode='r').header
         n_voxels = header.nx * header.ny * header.nz
-        self.bin = np.round(n_voxels**0.5 / 4e3)
+        self.bin = max(int(np.round(n_voxels**0.5 / 4e3)), 1)
         self.latest_bin = -1
         self.hide = False
         self.alpha = 1.0
@@ -647,7 +647,7 @@ class SurfaceModel:
 
         self.particles = list()
         self.particle_size = 0.0
-        self.particle_colour = self.colour
+        self.particle_colour = (0.0, 0.0, 0.0)
         self.find_coordinates()
 
         # if a feature that corresponds to this SurfaceModel exists in the feature library, edit settings accordingly.

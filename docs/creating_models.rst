@@ -30,7 +30,7 @@ Collapse the ‘Create a training dataset’ header and open the ‘Models’ on
 
 In the ‘Training’ tab of the model, click the ‘browse’ button and find and open the previously generated training dataset. By default, the filenames of training datasets and models begin with something like ’12.34_64_...’. The first number is the pixel size, in Å per pixel, and the second is the box size. By training a model on a dataset with a particular box size, that box size also becomes the box size of the model – it can not be changed afterwards. The box size of the model determines the size of the images that the model can process. When processing an entire slice, the slice is chopped up into square images with that box size. These images are then processed individually, after which the resulting segmentation images are tiled back into the shape of the original image. More about this later.
 
-Up to five training parameters can be specified:
+A number of training parameters can be specified:
 
 1)	*The number of epochs* – this is the amount of times that the neural network processes the entire dataset during training. A good starting value is 25. With too few epochs, the model won’t learn as effectively as with more, but with too many epochs overfitting or vanishing or exploding gradients may become a problem.
 
@@ -40,7 +40,9 @@ Up to five training parameters can be specified:
 
 4)	*The number of copies* – positive images in the raw training dataset are samples multiple times and in random orientations, in order to enhance the generalizability of the data. The number of copies dictates how often each input positive is sample. In case the training dataset contains, e.g., 50 positives and 200 negatives, and the excess negative rate is +100%, at least 2 copies are required to make full use of the training data: there would then be 2 * 50 = 100 positive images, and 100 * (100% + 100%) = 200 negatives. Any fewer copies or lower negative ratio would mean that not all negative images are utilized.
 
-5) *The validation split size* - as of Ais version 1.0.27 (July 17th, 2024), the Settings menu in the top menu bar allows specifying whether or not to use a validation split during training. By default, the split is 0% (i.e. all input data is used for training, and the training loss is reported in the software). Splits of 10, 20, or 50% can be applied - when chosen, the software reports the validation loss rather than the overall loss.
+5) *The validation split size* - the Settings -> Model settings -> Validation splits option in the top menu bar allows specifying whether or not to use a validation split during training. By default, the split is 0% (i.e. all input data is used for training, and the training loss is reported in the software). Splits of 10, 20, or 50% can be applied - when chosen, the software reports the validation loss rather than the overall loss.
+
+6) *The learning rate* - the Settings -> Model settings -> Learning rate option in the top menu bar allows changing the learning rate of the optimizer (Adam) used during training. The default (1e-3) is usually fine, but if your training dataset is particularly large it can help to set a lower rate.
 
 .. figure:: ./res/models_2.png
    :class: with-border

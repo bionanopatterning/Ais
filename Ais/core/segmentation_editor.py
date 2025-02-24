@@ -22,6 +22,8 @@ except ImportError:
     pass
 
 
+# TODO: fix error in Render -> pick in GUI
+
 class SegmentationEditor:
     CAMERA_ZOOM_STEP = 0.1
     CAMERA_MAX_ZOOM = 100.0
@@ -1138,7 +1140,6 @@ class SegmentationEditor:
                             imgui.push_item_width((cw - 7) / 2)
                             _, m.epochs = imgui.slider_int("##epochs", m.epochs, 1, 50, f"{m.epochs} epoch"+("s" if m.epochs>1 else ""))
                             imgui.same_line()
-                            excess_negative_label = f"{'' if m.excess_negative<0 else '+'}{m.excess_negative}%% negatives"
                             _, m.excess_negative = imgui.slider_int("##excessnegative", m.excess_negative, 0, 100, f"+{m.excess_negative}%% negatives")
                             _, m.batch_size = imgui.slider_int("##batchs", m.batch_size, 1, 128, f"{m.batch_size} batch size")
                             imgui.same_line()
@@ -1508,7 +1509,7 @@ class SegmentationEditor:
 
 
                     files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "__*.mrc"))
-                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "__*.mrc"))
+                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
                     for f in sorted(files):
                         print(f)
                         cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
@@ -1569,7 +1570,7 @@ class SegmentationEditor:
 
                     imgui.push_item_width(cw)
                     original_level = s.level
-                    _, s.level = imgui.slider_int("##level", s.level, 0, 256, f"level = {s.level}")
+                    _, s.level = imgui.slider_int("##level", s.level, 1, 256, f"level = {s.level}")
                     if s.process is not None:
                         s.level = original_level
                         _ = False
@@ -1865,6 +1866,19 @@ class SegmentationEditor:
                             for k in split_options:
                                 if imgui.menu_item(k, None, split_setting == split_options[k])[0]:
                                     cfg.edit_setting("VALIDATION_SPLIT", split_options[k])
+                            imgui.end_menu()
+
+                        if imgui.begin_menu("Learning rate"):
+                            rate_setting = cfg.settings["LEARNING_RATE"]
+                            rate_options = {'5.0e-3': 5.0e-3, '1.0e-3 (default)': 1.0e-3, '5.0e-4': 5.0e-4, '1.0e-4': 1.0e-4, '5e.0-5': 5.0e-5}
+                            for k in rate_options:
+                                if imgui.menu_item(k, None, rate_setting == rate_options[k])[0]:
+                                    cfg.edit_setting("LEARNING_RATE", rate_options[k])
+                            if imgui.begin_menu("Custom"):
+                                _, custom_rate = imgui.input_float("##lrate", rate_setting,  0.0, 0.0, '%.6f')
+                                if _:
+                                    cfg.edit_setting("LEARNING_RATE", custom_rate)
+                                imgui.end_menu()
                             imgui.end_menu()
 
                         if imgui.begin_menu("Overlap mode"):
@@ -4211,7 +4225,8 @@ class QueuedExtract:
 
     def do_export(self, process):
         try:
-            get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, save_dir=self.dir, process=self.process, binning=self.binning, output_star=self.star_format)
+            out_path = os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0]+"_coords.tsv")
+            get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, out_path=out_path, process=self.process, binning=self.binning, output_star=self.star_format)
             for s in cfg.se_surface_models:
                 if s.path == self.path:
                     s.find_coordinates()

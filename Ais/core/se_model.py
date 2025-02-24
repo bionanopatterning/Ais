@@ -200,9 +200,9 @@ class SEModel:
         except Exception as e:
             print("Error loading model - see details below", e)
 
-    def train(self):
+    def train(self, rate=None, external_callbacks=None):
         if self.train_data_path:
-            process = BackgroundProcess(self._train, (), name=f"{self.title} training")
+            process = BackgroundProcess(self._train, (rate, external_callbacks), name=f"{self.title} training")
             self.background_process_train = process
             process.start()
 
@@ -257,18 +257,20 @@ class SEModel:
         if n_neg == 0:
             return np.array(positive_x), np.array(positive_y)
 
-        extra_negative_factor = 1 + self.excess_negative / 100.0
-        negative_sample_indices = negative_indices * int(extra_negative_factor * self.n_copies * n_pos // n_neg) + negative_indices[:int(extra_negative_factor * self.n_copies * n_pos) % n_neg]
+        if self.excess_negative != -100:
+            extra_negative_factor = 1 + self.excess_negative / 100.0
+            negative_sample_indices = negative_indices * int(extra_negative_factor * self.n_copies * n_pos // n_neg) + negative_indices[:int(extra_negative_factor * self.n_copies * n_pos) % n_neg]
+        else:
+            negative_sample_indices = negative_indices * self.n_copies
 
         negative_x = list()
         negative_y = list()
         n_neg_copied = 0
         for i in negative_sample_indices:
-            angle = np.random.uniform(0, 360)
-            if self.n_copies == 1:
-                angle = (n_neg_copied // n_neg) * 90.0
-            x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
+            _ = (n_neg_copied // n_neg)
+            angle = [0, 90, 180, 270][_] if _ < 4 else np.random.uniform(0, 360)
 
+            x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
             x_rotated = (x_rotated - np.mean(x_rotated))
             denom = np.std(x_rotated)
             if denom != 0.0:
@@ -280,7 +282,7 @@ class SEModel:
         print(f"Loaded a training dataset with {len(positive_x)} positive and {len(negative_x)} negative samples.")
         return np.array(positive_x + negative_x), np.array(positive_y + negative_y)
 
-    def _train(self, process):
+    def _train(self, rate=None, external_callbacks=None, process=None):
         try:
             start_time = time.time()
             train_x, train_y = self.load_training_data()
@@ -297,7 +299,12 @@ class SEModel:
 
             # train
             validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
-            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split, callbacks=[TrainingProgressCallback(process, n_samples, self.batch_size, self), StopTrainingCallback(process.stop_request)])
+            learning_rate = rate if rate is not None else cfg.settings["LEARNING_RATE"]
+            self.model.optimizer.learning_rate.assign(learning_rate)
+            callbacks = [TrainingProgressCallback(process, n_samples, self.batch_size, self), StopTrainingCallback(process.stop_request)]
+            if not external_callbacks is None:
+                callbacks += external_callbacks
+            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split, callbacks=callbacks)
             process.set_progress(1.0)
             print(f"{self.title} " + self.info + f" {time.time() - start_time:.1f} seconds of training.")
         except Exception as e:
@@ -399,7 +406,7 @@ class SEModel:
         out_image = out_image[:w, :h]
         out_image = out_image[:w, :h]
         if cfg.settings["TRIM_EDGES"] == 1:
-            margin = box_size // 2
+            margin = 16
             out_image[:margin, :] = 0
             out_image[-margin:, :] = 0
             out_image[:, :margin] = 0
