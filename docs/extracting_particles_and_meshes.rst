@@ -4,9 +4,13 @@ Extracting particle coordinates and meshes
 Particle picking
 ^^^^^^^^^^^^^^
 
-Ais can automate particle picking. When rendering 3D models in the 'Render' tab, the user can adjust certain parameters, such as the isosurface level and minimum particle size, to change how a segmented volume is rendered as a mesh in 3D. When doing so for a segmentation of, e.g., ribosomes, many distinct particles are usually visible within the volume of the tomogram. In such a case, the job of particle picking is simply to convert each of these visible particles into a coordinate, which can subsequently be used to, for example, extract subvolumes from the dataset.
+The text below describes how to use the Ais GUI for picking. Instructions for using the cli tool instead can be found `here <https://ais-cryoet.readthedocs.io/en/latest/command_line_interface.html>`_.
 
-The particle picking interface can be accessed by right-clicking any of the available volumes in the Rendering -> Volumes tab. A menu appears, offering the option to pick particles in either the active dataset, or all linked datasets that have a segmentation for the chosen feature of interest available (change the directory in which files are searched for using the directory selection widget at the top of the 'Volumes' header)
+Ais can automate particle picking. When rendering 3D models in the 'Render' tab, you can adjust certain parameters, such as the isosurface level and minimum particle size, to change how a segmented volume is rendered as a mesh in 3D. When doing so for a segmentation of, e.g., ribosomes, many distinct particles are usually visible within the volume of the tomogram. In such a case, the job of particle picking is simply to convert each of these visible particles into a coordinate.
+
+The particle picking interface can be accessed by right-clicking any of the available volumes in the Render tab (press '4' on the keyboard to jump to this tab). Ais tried to automatically import segmented volumes that belong to the opened dataset, based on the filenames of the dataset and the segmentations. For instance, if the input .mrc is '.../data/TS_001.mrc' and a network named 'Ribosome' was used to segment ribosomes, the corresponding output file '.../data/TS_001__Ribosome.mrc' will automatically be opened when in the Render tab. If segmented volumes were saved to a different directory than the input data, you will have to select this directory first.
+
+When a segmented feature is found, right click it's panel to open the particle picking mune, as in the image below:
 
 .. figure:: ./res/picking_1.png
    :class: with-border

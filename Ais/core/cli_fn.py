@@ -64,6 +64,7 @@ def _segment_tomo(tomo_path, model, tta=1):
             segmented_volume += segmented_instance
         segmented_volume /= tta
 
+    segmented_volume = np.clip(segmented_volume, 0.0, 1.0)
     return segmented_volume
 
 def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_augmentation=1, overwrite=False):
@@ -75,7 +76,6 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
-    #glfw_init()
 
     se_model = SEModel(no_glfw=True)
     se_model.load(model_path, compile=False)
@@ -90,6 +90,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             tomo_name = os.path.basename(os.path.splitext(p)[0])
             out_path = os.path.join(output_dir, tomo_name+"__"+se_model.title+".mrc")
             if os.path.exists(out_path) and not overwrite:
+                print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {p}")
                 continue
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(np.zeros((10, 10, 10), dtype=np.float32))
@@ -101,7 +102,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(segmented_volume)
                 mrc.voxel_size = in_voxel_size
-            print(f"{j+1}/{len(data_paths)} (GPU {gpu_id}) - {p}")
+            print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {p}")
         except Exception as e:
             print(f"Error segmenting {p}:\n{e}")
 
@@ -162,6 +163,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
             if loss is not None and loss < self.best_loss:
                 self.best_loss = loss
                 self.se_model.save(self.path)
+                print(f" - saved checkpoint\r")
 
     if not os.path.isabs(training_data):
         training_data = os.path.join(os.getcwd(), training_data)
@@ -175,12 +177,12 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     model = SEModel(no_glfw=True)
     model.load_models()
     model.title = name
-    if architecture is None and model_path is '':
+    if architecture is None and model_path == '':
         print(f"using default model architecture: {SEModel.AVAILABLE_MODELS[SEModel.DEFAULT_MODEL_ENUM]}")
     elif architecture is None:
         print(f"loading model {model_path}")
         model.load(model_path)
-    elif model_path is '':
+    elif model_path == '':
         model.model_enum = architecture
         print(f"using model architecture {architecture}: {SEModel.AVAILABLE_MODELS[architecture]}")
 
@@ -210,7 +212,9 @@ def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size
 
     # find right values for spacing and size.
     voxel_size = mrcfile.open(tomo_path, header_only=True).voxel_size.x
-
+    if voxel_size == 0.0:
+        print(f"warning: {tomo_path} has voxel size 0.0")
+        voxel_size = 10.0
     if spacing_px is None:
         min_spacing = spacing / 10.0
     else:

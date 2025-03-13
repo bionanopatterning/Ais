@@ -196,9 +196,9 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
                 print(f"\toutputting coordinates to {os.path.splitext(out_path)[0]+'.star'}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
-                x = int(coordinates[i][2] * binning - 1)
-                y = int(coordinates[i][1] * binning - 1)
-                z = int(coordinates[i][0] * binning - 1)
+                x = int(coordinates[i][2] * binning)
+                y = int(coordinates[i][1] * binning)
+                z = int(coordinates[i][0] * binning)
                 out_file.write(f"{x}\t{y}\t{z}\n")
         if output_star:
             if verbose:

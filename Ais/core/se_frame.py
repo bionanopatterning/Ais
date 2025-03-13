@@ -667,7 +667,7 @@ class SurfaceModel:
             print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
             with open(txt_file, 'r') as f:
                 for line in f:
-                    xyz = [int(val) for val in line.strip().split('\t')]
+                    xyz = [int(val)-1 for val in line.strip().split('\t')]
                     self.particles.append(xyz)
         elif os.path.exists(star_file):
             print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")

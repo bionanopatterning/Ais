@@ -243,7 +243,11 @@ class SegmentationEditor:
                     scn_cfg.active_editor = (scn_cfg.active_editor + 1) % len(scn_cfg.editors)
 
         for filepath in self.window.dropped_files:
-            self.import_dataset(filepath)
+            if os.path.splitext(filepath)[-1] == cfg.filetype_semodel:
+                self.load_model(filepath)
+                SegmentationEditor.FORCE_SELECT_TAB = 1
+            else:
+                self.import_dataset(filepath)
 
         if cfg.settings["POM_SYNCHRONIZE"]:
             SegmentationEditor.POM_SYNCHRONIZE_TIMER += self.window.delta_time
@@ -659,7 +663,7 @@ class SegmentationEditor:
                             self.parse_available_features()
                         if imgui.menu_item("Relink dataset")[0]:
                             selected_file = filedialog.askopenfilename(filetypes=[("mrcfile", ".mrc")])
-                            if selected_file != "":
+                            if isinstance(selected_file, str) and os.path.exists(selected_file):
                                 s.path = selected_file
                                 s.title = os.path.splitext(os.path.basename(s.path))[0]
                         if imgui.menu_item("Copy path to .mrc")[0]:
@@ -1634,10 +1638,10 @@ class SegmentationEditor:
 
                             imgui.pop_style_var(1)
                             imgui.end_menu()
-                        # if imgui.menu_item("Invert")[0]:
-                        #     s.data = 255 - s.data
-                        #     s.latest_bin = -1
-                        #     s.generate_model()
+                        if imgui.menu_item("Invert")[0]:
+                            s.data = 255 - s.data
+                            s.latest_bin = -1
+                            s.generate_model()
                         if imgui.menu_item("Remove volume")[0]:
                             s_to_remove.append(s)
                         imgui.end_popup()
@@ -1735,7 +1739,7 @@ class SegmentationEditor:
                     SegmentationEditor.open_objs_in_blender(obj_paths)
                 if imgui.begin_popup_context_window():
                     if imgui.menu_item("Set path to blender.exe")[0]:
-                        path = filedialog.askopenfilename(filetypes=[("Blender executable", ".exe")])
+                        path = filedialog.askopenfilename(filetypes=[("Blender executable", ".exe .sh")])
                         if path != "":
                             cfg.edit_setting("BLENDER_EXE", path)
                     imgui.end_popup()
@@ -1748,7 +1752,7 @@ class SegmentationEditor:
                     SegmentationEditor.open_in_chimerax(models)
                 if imgui.begin_popup_context_window():
                     if imgui.menu_item("Set path to ChimeraX.exe")[0]:
-                        path = filedialog.askopenfilename(filetypes=[("ChimeraX executable", ".exe")])
+                        path = filedialog.askopenfilename(filetypes=[("ChimeraX executable", ".exe .sh")])
                         if path != "":
                             cfg.edit_setting("CHIMERAX_EXE", path)
                     imgui.end_popup()
@@ -1921,7 +1925,7 @@ class SegmentationEditor:
                             imgui.separator()
                             if imgui.menu_item("Set path to .exe")[0]:
                                 path = filedialog.askopenfilename(filetypes=[("Blender executable", ".exe")])
-                                if path != "":
+                                if isinstance(path, str) and path != "":
                                     cfg.edit_setting("BLENDER_EXE", path)
                             if os.path.exists(blender_path) and imgui.menu_item("Launch")[0]:
                                 subprocess.Popen([cfg.settings["BLENDER_EXE"]])
@@ -1941,7 +1945,7 @@ class SegmentationEditor:
                             imgui.separator()
                             if imgui.menu_item("Set path to .exe")[0]:
                                 path = filedialog.askopenfilename(filetypes=[("ChimeraX executable", ".exe")])
-                                if path != "":
+                                if isinstance(path, str) and path != "":
                                     cfg.edit_setting("CHIMERAX_EXE", path)
 
                             if os.path.exists(chimerax_path) and imgui.menu_item("Launch")[0]:
@@ -1952,6 +1956,17 @@ class SegmentationEditor:
                     if imgui.begin_menu("File manager"):
                         if imgui.menu_item("Open file manager")[0]:
                             SegmentationEditor.PATH_VIEWER_OPEN = True
+                        if imgui.begin_menu("Quick-save directory"):
+                            if imgui.menu_item("same as tomogram", selected=cfg.settings["QUICK_SAVE_DIRECTORY"]=="")[0]:
+                                cfg.edit_setting("QUICK_SAVE_DIRECTORY", "")
+                            if imgui.menu_item("custom", selected=cfg.settings["QUICK_SAVE_DIRECTORY"]!="")[0]:
+                                custom_dir = filedialog.askdirectory()
+                                if isinstance(custom_dir, str):
+                                    cfg.edit_setting("QUICK_SAVE_DIRECTORY", custom_dir)
+                            if cfg.settings["QUICK_SAVE_DIRECTORY"] != "":
+                                imgui.separator()
+                                imgui.text(cfg.settings["QUICK_SAVE_DIRECTORY"])
+                            imgui.end_menu()
                         imgui.end_menu()
 
                     if imgui.begin_menu("Rendering"):
@@ -2830,7 +2845,7 @@ class SegmentationEditor:
         if len(positive_feature_names) == 0:
             return
         path = filedialog.asksaveasfilename(filetypes=[("Ais training data", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{SegmentationEditor.trainset_apix:.3f}_{positive_feature_names[0]}")
-        if path == "":
+        if not isinstance(path, str):
             return
         if path[-len(cfg.filetype_traindata):] != cfg.filetype_traindata:
             path += cfg.filetype_traindata
@@ -3008,11 +3023,15 @@ class SegmentationEditor:
     @staticmethod
     def save_surface_models_as_objs():
         obj_path = os.path.dirname(cfg.se_active_frame.path)
+        base_name = os.path.splitext(os.path.basename(cfg.se_active_frame.path))[0]
         paths = list()
         for m in cfg.se_surface_models:
-            m_path = m.save_as_obj(path=os.path.join(obj_path, m.title + ".obj"))
-            if m_path is not None:
-                paths.append(m_path)
+            try:
+                m_path = m.save_as_obj(path=os.path.join(obj_path, f"{base_name}__{m.title}.obj"))
+                if m_path is not None:
+                    paths.append(m_path)
+            except Exception as e:
+                cfg.set_error(e, f"Error saving {base_name} {m.title} as .obj.")
         return paths
 
     @staticmethod
@@ -3029,7 +3048,7 @@ class SegmentationEditor:
             subprocess.Popen([cfg.settings["BLENDER_EXE"], "--python", os.path.join(cfg.root, "core", "open_in_blender.py")])
 
         except Exception as e:
-            cfg.set_error(e, "Could not open models in Blender - is the path to the Blender executable set in settings.txt?")
+            cfg.set_error(e, "Could not open models in Blender - is the path to the Blender executable set? See Settings -> 3rd Party Applications -> Blender ")
 
     @staticmethod
     def open_in_chimerax(surface_models):
@@ -3058,7 +3077,7 @@ class SegmentationEditor:
 
             subprocess.Popen([cfg.settings["CHIMERAX_EXE"], os.path.join(cfg.root, "core", "open_in_chimerax.py")])
         except Exception as e:
-            cfg.set_error(e, "Could not open volumes in ChimeraX - is the path to the ChimeraX executable set in settings.txt?")
+            cfg.set_error(e, "Could not open volumes in ChimeraX - is the path to the ChimeraX executable set? See Settings -> 3rd Party Applications -> ChimeraX.")
 
     def camera_control(self):
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
