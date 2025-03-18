@@ -1078,7 +1078,7 @@ class SegmentationEditor:
                     if m.active_tab == 0:
                         panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_TRAINING
                     elif m.active_tab == 1:
-                        panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_PREDICTION
+                        panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_PREDICTION - 16
                     elif m.active_tab == 2:
                         panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_LOGIC + 57 * len(m.interactions) - 20 * (len(cfg.se_models) < 2)
                     panel_height += 10 if m.background_process_train is not None else 0
@@ -1132,7 +1132,7 @@ class SegmentationEditor:
                             imgui.same_line()
                             if imgui.button("browse", 56, 19):
                                 selected_file = filedialog.askopenfilename(filetypes=[("Ais training data", f"{cfg.filetype_traindata}")])
-                                if selected_file is not None:
+                                if selected_file:
                                     m.train_data_path = selected_file
 
                             # Training parameters
@@ -1209,8 +1209,9 @@ class SegmentationEditor:
 
                             imgui.push_item_width(imgui.get_content_region_available_width())
                             _, m.alpha = imgui.slider_float("##alpha", m.alpha, 0.0, 1.0, format=f"{m.alpha:.2f} alpha")
-                            _, m.overlap = imgui.slider_float("##overlap", m.overlap, 0.0, 0.67, format=f"{m.overlap:.2f} overlap")
-                            m.overlap = max(0.0, m.overlap)
+                            if cfg.settings["TILED_MODE"] == 1:
+                                _, m.overlap = imgui.slider_float("##overlap", m.overlap, 0.0, 0.67, format=f"{m.overlap:.2f} overlap")
+                                m.overlap = max(0.0, m.overlap)
                             _, m.threshold = imgui.slider_float("##thershold", m.threshold, 0.0, 1.0, format=f"{m.threshold:.2f} threshold")
                             imgui.pop_item_width()
 
@@ -1884,24 +1885,30 @@ class SegmentationEditor:
                                     cfg.edit_setting("LEARNING_RATE", custom_rate)
                                 imgui.end_menu()
                             imgui.end_menu()
-
-                        if imgui.begin_menu("Overlap mode"):
-                            if imgui.menu_item("best", None, cfg.settings["OVERLAP_MODE"] == 1)[0]:
-                                cfg.edit_setting("OVERLAP_MODE", 1)
-                            self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
-                                         "the tiles processed by the neural network, and the data then detiled back\n"
-                                         "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
-                                         "del parameters) is handled either by averaging the overlapping regions of\n"
-                                         "and image, or by retaining predictions closest to the center of a box,\n"
-                                         "where model predictions are typically the best quality.")
-                            if imgui.menu_item("average", None, cfg.settings["OVERLAP_MODE"] == 0)[0]:
-                                cfg.edit_setting("OVERLAP_MODE", 0)
-                            self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
-                                         "the tiles processed by the neural network, and the data then detiled back\n"
-                                         "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
-                                         "del parameters) is handled either by averaging the overlapping regions of\n"
-                                         "and image, or by retaining predictions closest to the center of a box,\n"
-                                         "where model predictions are typically the best quality.")
+                        if imgui.begin_menu("Processing strategy"):
+                            if imgui.menu_item("full image", None, cfg.settings["TILED_MODE"] == 0)[0]:
+                                cfg.edit_setting("TILED_MODE", 0)
+                            if imgui.menu_item("tiled (legacy)", None, cfg.settings["TILED_MODE"] == 1)[0]:
+                                cfg.edit_setting("TILED_MODE", 1)
+                            if cfg.settings["TILED_MODE"] == 1:
+                                if imgui.begin_menu("Tile overlap mode"):
+                                    if imgui.menu_item("best", None, cfg.settings["OVERLAP_MODE"] == 1)[0]:
+                                        cfg.edit_setting("OVERLAP_MODE", 1)
+                                    self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
+                                                 "the tiles processed by the neural network, and the data then detiled back\n"
+                                                 "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
+                                                 "del parameters) is handled either by averaging the overlapping regions of\n"
+                                                 "and image, or by retaining predictions closest to the center of a box,\n"
+                                                 "where model predictions are typically the best quality.")
+                                    if imgui.menu_item("average", None, cfg.settings["OVERLAP_MODE"] == 0)[0]:
+                                        cfg.edit_setting("OVERLAP_MODE", 0)
+                                    self.tooltip("When processing a slice, the input image is tiled into e.g. 64 x 64 boxes,\n"
+                                                 "the tiles processed by the neural network, and the data then detiled back\n"
+                                                 "into image shape. Overlap between tiles (the 'overlap' setting in the mo-\n"
+                                                 "del parameters) is handled either by averaging the overlapping regions of\n"
+                                                 "and image, or by retaining predictions closest to the center of a box,\n"
+                                                 "where model predictions are typically the best quality.")
+                                    imgui.end_menu()
                             imgui.end_menu()
                         if imgui.menu_item("Trim edges", None, cfg.settings["TRIM_EDGES"] == 1)[0]:
                             cfg.edit_setting("TRIM_EDGES", 0 if cfg.settings["TRIM_EDGES"] == 1 else 1)
@@ -1956,17 +1963,17 @@ class SegmentationEditor:
                     if imgui.begin_menu("File manager"):
                         if imgui.menu_item("Open file manager")[0]:
                             SegmentationEditor.PATH_VIEWER_OPEN = True
-                        if imgui.begin_menu("Quick-save directory"):
-                            if imgui.menu_item("same as tomogram", selected=cfg.settings["QUICK_SAVE_DIRECTORY"]=="")[0]:
-                                cfg.edit_setting("QUICK_SAVE_DIRECTORY", "")
-                            if imgui.menu_item("custom", selected=cfg.settings["QUICK_SAVE_DIRECTORY"]!="")[0]:
-                                custom_dir = filedialog.askdirectory()
-                                if isinstance(custom_dir, str):
-                                    cfg.edit_setting("QUICK_SAVE_DIRECTORY", custom_dir)
-                            if cfg.settings["QUICK_SAVE_DIRECTORY"] != "":
-                                imgui.separator()
-                                imgui.text(cfg.settings["QUICK_SAVE_DIRECTORY"])
-                            imgui.end_menu()
+                        # if imgui.begin_menu("Quick-save directory"):
+                        #     if imgui.menu_item("same as tomogram", selected=cfg.settings["QUICK_SAVE_DIRECTORY"]=="")[0]:
+                        #         cfg.edit_setting("QUICK_SAVE_DIRECTORY", "")
+                        #     if imgui.menu_item("custom", selected=cfg.settings["QUICK_SAVE_DIRECTORY"]!="")[0]:
+                        #         custom_dir = filedialog.askdirectory()
+                        #         if isinstance(custom_dir, str):
+                        #             cfg.edit_setting("QUICK_SAVE_DIRECTORY", custom_dir)
+                        #     if cfg.settings["QUICK_SAVE_DIRECTORY"] != "":
+                        #         imgui.separator()
+                        #         imgui.text(cfg.settings["QUICK_SAVE_DIRECTORY"])
+                        #     imgui.end_menu()
                         imgui.end_menu()
 
                     if imgui.begin_menu("Rendering"):
@@ -4087,23 +4094,14 @@ class QueuedExport:
             for m in self.models:
                 print(f"QueuedExport - applying model {m.title} ({m.info})")
                 self.colour = m.colour
-                slices_to_process = list(range(self.dataset.export_bottom, self.dataset.export_top))
-                while len(slices_to_process) > 0:
+                for j in range(self.dataset.export_bottom, self.dataset.export_top):
                     self.check_stop_request()
-                    indices = list()
-                    images = list()
-                    for i in range(self.batch_size):
-                        if len(slices_to_process) > 0:
-                            indices.append(slices_to_process.pop(0))
-                            images.append(mrcd[indices[-1], rx[0]:rx[1], ry[0]:ry[1]])
-                    seg_images = m.apply_to_multiple_slices(images, self.dataset.pixel_size)
-                    for i in range(len(indices)):
-                        segmentations[m_idx, indices[i], rx[0]:rx[1], ry[0]:ry[1]] = (seg_images[i] * 255).astype(np.uint8)
-                        n_slices_complete += 1
-                        self.process.set_progress(min([0.999, n_slices_complete / n_slices_total]))
-
+                    segmented_slice = m.apply_to_slice(mrcd[j, rx[0]:rx[1], ry[0]:ry[1]], self.dataset.pixel_size) * 255
+                    segmentations[m_idx, j, rx[0]:rx[1], ry[0]:ry[1]] = segmented_slice
+                    n_slices_complete += 1
+                    self.process.set_progress(min([0.999, n_slices_complete / n_slices_total]))
                 m_idx += 1
-            self.check_stop_request()
+
             # apply competition
             print(f"QueuedExport - model competition")
             emission_indices = list()

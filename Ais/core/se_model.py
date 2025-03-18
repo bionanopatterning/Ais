@@ -1,5 +1,7 @@
 from tensorflow.keras.callbacks import Callback
-import tensorflow as tf
+from tensorflow.keras.models import load_model, clone_model, Model
+from tensorflow.keras.layers import Input
+from tensorflow.keras.backend import clear_session
 import tifffile
 import numpy as np
 from itertools import count
@@ -49,6 +51,8 @@ class SEModel:
         self.colour = SEModel.DEFAULT_COLOURS[(uid_counter) % len(SEModel.DEFAULT_COLOURS)]
         self.apix = -1.0
         self.compiled = False
+        self.compilation_mode = None
+        self.inference_model = None
         self.box_size = -1
         self.model = None
         self.model_enum = SEModel.DEFAULT_MODEL_ENUM
@@ -155,7 +159,7 @@ class SEModel:
                 return metadata
 
         except Exception as e:
-            print("Error loading model - see details below", e)
+            print("Error loading model - see details below\n", e)
 
     def load(self, file_path, compile=False):
         try:
@@ -167,8 +171,8 @@ class SEModel:
                 metadata_file = glob.glob(os.path.join(temp_dir, "*_metadata.json"))[0]
 
                 # Load the Keras model
-                self.model = tf.keras.models.load_model(model_file, compile=compile)
-
+                self.model = load_model(model_file, compile=compile)
+                self.toggle_inference()
                 # Load metadata
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
@@ -198,12 +202,15 @@ class SEModel:
                 self.loss = metadata['loss']
 
         except Exception as e:
-            print("Error loading model - see details below", e)
+            print("Error loading model - see details below\n", e)
 
     def train(self, rate=None, external_callbacks=None):
         if self.train_data_path:
+            if self.compilation_mode == 'inference':
+                self.toggle_training()
             process = BackgroundProcess(self._train, (rate, external_callbacks), name=f"{self.title} training")
             self.background_process_train = process
+            self.inference_model = None
             process.start()
 
     def load_training_data(self):
@@ -318,14 +325,47 @@ class SEModel:
         model_module_name = SEModel.AVAILABLE_MODELS[self.model_enum]
         self.model = SEModel.MODELS[model_module_name]((box_size, box_size, 1))
         self.compiled = True
+        self.compilation_mode = 'training'
         self.box_size = box_size
         self.n_parameters = self.model.count_params()
         self.update_info()
 
+    def toggle_inference(self):
+        config = self.model.get_config()
+        weights = self.model.get_weights()
+
+        del self.model
+        clear_session()
+
+        self.model = None
+        config["layers"][0]["config"]["batch_input_shape"] = (1, None, None, 1)
+        self.model = Model.from_config(config)
+        self.model.set_weights(weights)
+
+        self.update_info()
+        self.compilation_mode = 'inference'
+
+    def toggle_training(self):
+        weights = self.model.get_weights()
+
+        del self.model
+        clear_session()
+
+        self.model = None
+        self.compile(self.box_size)
+        self.model.set_weights(weights)
+
+        self.update_info()
+        self.compilation_mode = 'training'
+
     def update_info(self):
         validation_split_tag = "" if ("VALIDATION_SPLIT" not in self.bcprms or self.bcprms["VALIDATION_SPLIT"] == 0.0) else f"|{int(self.bcprms['VALIDATION_SPLIT']*100.0)}%"
-        self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
-        self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+        if self.compilation_mode == 'training':
+            self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+            self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+        elif self.compilation_mode == 'inference':
+            self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+            self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
 
     def get_model_title(self):
         return SEModel.AVAILABLE_MODELS[self.model_enum]
@@ -400,47 +440,40 @@ class SEModel:
                 count[x:x + self.box_size, y:y + self.box_size] += mask
                 i += 1
         c_mask = count == 0
-        count[c_mask] = 1  # edited 231018
-        out_image[c_mask] = 0  # edited 231018
+        count[c_mask] = 1
+        out_image[c_mask] = 0
         out_image = out_image / count
         out_image = out_image[:w, :h]
         out_image = out_image[:w, :h]
-        if cfg.settings["TRIM_EDGES"] == 1:
-            margin = 16
-            out_image[:margin, :] = 0
-            out_image[-margin:, :] = 0
-            out_image[:, :margin] = 0
-            out_image[:, -margin:] = 0
         return out_image
 
     def apply_to_slice(self, image, pixel_size):
-        # tile
-        boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
-        # apply model
+        if self.compilation_mode == 'training' and self.background_process_train is None and cfg.settings["TILED_MODE"]==0:
+            self.toggle_inference()
+
         start_time = time.time()
-        seg_boxes = np.squeeze(self.model.predict(boxes))
-        print(self.info + f" cost for {image.shape[0]}x{image.shape[1]} slice: {time.time()-start_time:.3f} s.")
-        # detile
-        segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
+
+        if self.compilation_mode == 'inference' and cfg.settings["TILED_MODE"]==0:  # improved way of doing segmentation (250318)
+            j, k = image.shape
+            image -= np.mean(image)
+            image /= np.std(image)
+            image = np.pad(image, ((0, 32 - (image.shape[0] % 32)), (0, 32 - (image.shape[1] % 32))))
+            segmentation = np.squeeze(self.model.predict(image[np.newaxis, :, :]))[:j, :k]
+            print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice: {time.time() - start_time:.3f} s.")
+        else:  # original Ais gui segmentation way
+            boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
+            seg_boxes = np.squeeze(self.model.predict(boxes))
+            segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
+            print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice ({len(boxes.shape[0])} boxes): {time.time()-start_time:.3f} s.")
+
+        if cfg.settings["TRIM_EDGES"] == 1:
+            margin = 16
+            segmentation[:margin, :] = 0
+            segmentation[-margin:, :] = 0
+            segmentation[:, :margin] = 0
+            segmentation[:, -margin:] = 0
         return segmentation
 
-    def apply_to_multiple_slices(self, slice_list, pixel_size):
-        all_boxes = list()
-        n_boxes_per_slice = 0
-        image_size = (0, 0)
-        padding = (0, 0)
-        stride = 0
-        for image in slice_list:
-            boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size, as_array=False)
-            n_boxes_per_slice = len(boxes)
-            all_boxes += boxes
-        all_boxes = np.array(all_boxes)
-        seg_boxes = np.squeeze(self.model.predict(all_boxes))
-        image_list = list()
-        for i in range(len(slice_list)):
-            image_seg_boxes = seg_boxes[i * n_boxes_per_slice: (i+1) * n_boxes_per_slice]
-            image_list.append(self.boxes_to_slice(image_seg_boxes, image_size, pixel_size, padding, stride))
-        return image_list
 
     @staticmethod
     def load_models():
