@@ -39,6 +39,7 @@ setup(
         "tifffile>=2022.8.12",
         "dill>=0.3.5.1",
         "pyperclip>=1.8.2",
-        "scikit-image"
+        "scikit-image",
+        "Pommie"
     ]
 )
