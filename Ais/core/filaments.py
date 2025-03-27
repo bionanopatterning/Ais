@@ -1,5 +1,3 @@
-# Ais filament
-
 import mrcfile
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,9 +10,8 @@ from skimage.morphology import skeletonize
 from collections import deque
 from scipy.ndimage import gaussian_filter
 import json
+from copy import copy
 
-volume_path = 'C:/Users/mart_/Downloads/transfer (2)/20230908_lmla011_ts_003__MT.mrc'
-volume = mrcfile.open(volume_path)
 
 def semantic_to_instance(volume, volume_voxel_size, filament_diameter_angstrom=250, n_transforms=500, score_threshold=0.75, blur_sigma=2.0):
     compute.initialize()
@@ -40,7 +37,7 @@ def semantic_to_instance(volume, volume_voxel_size, filament_diameter_angstrom=2
 
     transforms = Pommie.Transform.sample_unit_sphere(n_transforms, polar_lims=(-np.pi / 2, 0.0))
 
-    volume = Pommie.Volume.from_array(volume.data, volume.voxel_size.x)
+    volume = Pommie.Volume.from_array(volume, volume_voxel_size)
     volume = volume.bin(binning)
     volume_mask = volume.copy()
 
@@ -48,13 +45,14 @@ def semantic_to_instance(volume, volume_voxel_size, filament_diameter_angstrom=2
                                                       volume_mask=volume_mask,
                                                       template=template,
                                                       template_mask=template_mask,
-                                                      transforms=transforms)
+                                                      transforms=transforms,
+                                                      verbose=False)
 
     labels, n_labels = label(scores > score_threshold)
     return labels.astype(np.float32)
 
 
-def longest_path_in_skeleton(skel):
+def prune_skeleton(skel):
     coords = np.column_stack(np.where(skel))
     if coords.size == 0:
         return np.zeros_like(skel, dtype=bool)
@@ -130,39 +128,54 @@ def longest_path_in_skeleton(skel):
     return out_vol
 
 
-def parameterize_instances(labels, smoothing=500.0):
-    filaments = []
-    max_label = labels.max()
+def parameterize_instances(labels):
+    filaments = list()
+    for j in range(1, int(labels.max()) + 1):
+        mask = (labels == j)
+        if not np.any(mask):
+            continue
 
-    neighbor_shifts = [
+        skel = skeletonize(mask)
+        skel = prune_skeleton(skel)
+
+        coords = np.column_stack(np.where(skel))
+        filaments.append(Filament(coords))
+
+    return filaments
+
+
+class Filament:
+    SHIFTS = [
         (dz, dy, dx)
         for dz in (-1, 0, 1)
         for dy in (-1, 0, 1)
         for dx in (-1, 0, 1)
         if not (dz == 0 and dy == 0 and dx == 0)
     ]
+    SMOOTHING = 500.0
 
-    for j in range(1, max_label + 1):
-        mask = (labels == j)
-        if not np.any(mask):
-            continue
+    def __init__(self, skeleton_coordinates):
+        self.coords = skeleton_coordinates
+        self.valid = False
+        self.tck = None
+        self.length = None
+        self.gen_spline()
+        self.linearize_spline()
 
-        skel = skeletonize(mask)
-        skel = longest_path_in_skeleton(skel)
+    def gen_spline(self):
+        if len(self.coords) < 4:
+            return
 
-        coords = np.column_stack(np.where(skel))
-        if len(coords) < 4:
-            continue
-
-        skel_voxels = set(map(tuple, coords))
+        skel_voxels = set(map(tuple, self.coords))
         endpoints = []
-        for c in coords:
+        for c in self.coords:
             c_tup = tuple(c)
-            nbr_count = sum(((c_tup[0] + dz, c_tup[1] + dy, c_tup[2] + dx) in skel_voxels) for dz, dy, dx in neighbor_shifts)
+            nbr_count = sum(
+                ((c_tup[0] + dz, c_tup[1] + dy, c_tup[2] + dx) in skel_voxels) for dz, dy, dx in Filament.SHIFTS)
             if nbr_count == 1:
                 endpoints.append(c_tup)
         if not endpoints:
-            continue
+            return
 
         start = endpoints[0]
 
@@ -174,39 +187,25 @@ def parameterize_instances(labels, smoothing=500.0):
             if v not in visited:
                 visited.add(v)
                 path.append(v)
-                for dz, dy, dx in neighbor_shifts:
+                for dz, dy, dx in Filament.SHIFTS:
                     nbr = (v[0] + dz, v[1] + dy, v[2] + dx)
                     if nbr in skel_voxels and nbr not in visited:
                         queue.append(nbr)
 
         path = np.array(path)
         if path.shape[0] < 4:
-            continue
+            return
+        self.coords = path
+        self.tck, u = splprep(path.T, s=Filament.SMOOTHING)
+        self.valid = True
 
-        tck, u = splprep(path.T, s=smoothing)
+    def plot(self):
+        filament_coords = np.array(splev(np.linspace(0, 1, 100), self.tck))
+        plt.plot(filament_coords[2], filament_coords[1], linewidth=10, alpha=0.2)
 
-        filaments.append(tck)
-
-    return filaments
-
-class Filament:
-    def __init__(self, tck):
-        self.tck = tck  # (t, c, k)
-        self.length = None
-
-    def __str__(self):
-        return self.to_str()
-
-    def inspect_linearity(self):
-        dD = []
-        p = splev(0.0, self.tck)
-        for u in np.linspace(0.0, 1.0, 20)[1:]:
-            q = splev(u, self.tck)
-            dD.append(np.linalg.norm(np.array(q) - np.array(p)) / self.length)
-            p = q
-        plt.plot(dD)
-
-    def reparameterize(self, n_samples=100):
+    def linearize_spline(self, n_samples=100):
+        if not self.valid:
+            return
         u_test = np.linspace(0, 1, n_samples)
         coords = np.array(splev(u_test, self.tck))
         diffs = np.diff(coords, axis=1)
@@ -220,37 +219,53 @@ class Filament:
         tck_new, _ = splprep(coords_uniform, u=np.linspace(0, 1, n_samples), s=0, k=self.tck[2])
         self.tck = tck_new
 
-    def to_str(self):
-        t, c, k = self.tck
-        return json.dumps({
-            "t": t.tolist(),
-            "c": [ci.tolist() for ci in c],
-            "k": k
-        })
+    def to_dict(self):
+        return {"skeleton_coordinates": self.coords.tolist()}
 
     @staticmethod
-    def from_str(s):
-        data = json.loads(s)
-        t = np.array(data["t"], dtype=float)
-        c = [np.array(ci, dtype=float) for ci in data["c"]]
-        k = int(data["k"])
-        # We directly call the Filament constructor here
-        return Filament((t, c, k))
+    def from_dict(d):
+        skeleton_coordinates = d['skeleton_coordinates']
+        return Filament(skeleton_coordinates)
+
+    @classmethod
+    def from_path(cls, path):
+        with open(path, 'r') as f:
+            filaments = json.load(f)
+        out_filaments = list()
+        for f in filaments:
+            out_filaments.append(cls.from_dict(f))
+        return out_filaments
+
+    def __str__(self):
+        return f"Filament with length {self.length:.1f}, {len(self.coords)}-voxel skeleton."
+
+def detect_filaments(filament_segmentation_path, filament_diameter_angstrom=250, out_path=None):
+    voxel_size = copy(mrcfile.open(filament_segmentation_path, header_only=True).voxel_size.x)
+    volume = mrcfile.read(filament_segmentation_path)
+
+    labels = semantic_to_instance(volume, voxel_size, filament_diameter_angstrom=filament_diameter_angstrom)
+    filaments = parameterize_instances(labels)
+
+    filaments_out = list()
+    for j, f in enumerate(filaments):
+        if f.valid:
+            filaments_out.append(f.to_dict())
+
+    out_path = os.path.splitext(filament_segmentation_path)[0]+"__filaments.json" if out_path is None else out_path
+    with open(out_path, 'w') as f:
+        json.dump(filaments_out, f, indent=1)
 
 
-def splines_to_filaments(splines):
-    filaments = []
-    for s in splines:
-        filaments.append(Filament(s))
-        filaments[-1].reparameterize()
-    return filaments
+def plot_example():
+    volume = Pommie.Volume.from_path('C:/Users/mart_/Downloads/transfer (2)/20230908_lmla011_ts_003.mrc').bin(2)
+    filaments = Filament.from_path('C:/Users/mart_/Downloads/transfer (2)/20230908_lmla011_ts_003__MT__filaments.json')
 
 
-labels = mrcfile.read(os.path.splitext(volume_path)[0]+"__labels.mrc").astype(np.int32)
-splines = parameterize_instances(labels, smoothing=500)
-filaments = splines_to_filaments(splines)
+    slice = np.sum(volume.data, axis=0)
+    plt.imshow(slice, cmap='gray')
+    [f.plot() for f in reversed(filaments)]
+    plt.show()
 
-l = [f.length for f in filaments]
-
-
-
+# next up:
+# - sample coordinates along path (method in Filament)
+# - consensus polarity measurement
