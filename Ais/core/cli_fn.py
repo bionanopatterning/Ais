@@ -90,7 +90,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             tomo_name = os.path.basename(os.path.splitext(p)[0])
             out_path = os.path.join(output_dir, tomo_name+"__"+se_model.title+".mrc")
             if os.path.exists(out_path) and not overwrite:
-                print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {p}")
+                print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {os.path.basename(model_path)} - {p}")
                 continue
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(np.zeros((10, 10, 10), dtype=np.float32))
@@ -102,7 +102,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(segmented_volume)
                 mrc.voxel_size = in_voxel_size
-            print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {p}")
+            print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {os.path.basename(model_path)} - {p}")
         except Exception as e:
             print(f"Error segmenting {p}:\n{e}")
 
@@ -163,7 +163,6 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
             if loss is not None and loss < self.best_loss:
                 self.best_loss = loss
                 self.se_model.save(self.path)
-                print(f" - saved checkpoint\r")
 
     if not os.path.isabs(training_data):
         training_data = os.path.join(os.getcwd(), training_data)
@@ -204,6 +203,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     while model.background_process_train.progress < 1.0:
         time.sleep(0.2)
 
+    print(f"\nDone training {os.path.join(output_directory, f'{model.title}{cfg.filetype_semodel}')}")
 
 
 

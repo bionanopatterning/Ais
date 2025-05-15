@@ -227,6 +227,16 @@ def apply_feature_library():
                 f.alpha = library_feature.alpha
                 f.colour = library_feature.colour
 
+    for f in se_surface_models:
+        if s.title in flib_dict:
+            library_feature = flib_dict[s.title]
+            f.colour = library_feature.colour
+            f.alpha = library_feature.render_alpha
+            f.dust = library_feature.dust
+            f.level = library_feature.level
+            f.hide = library_feature.hide
+
+
 
 def sort_frames_by_feature(title):
     global se_frames

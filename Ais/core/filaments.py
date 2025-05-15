@@ -11,45 +11,9 @@ from collections import deque
 from scipy.ndimage import gaussian_filter
 import json
 from copy import copy
+import starfile
 
-
-def semantic_to_instance(volume, volume_voxel_size, filament_diameter_angstrom=250, n_transforms=500, score_threshold=0.75, blur_sigma=2.0):
-    compute.initialize()
-
-    volume = gaussian_filter(volume, sigma=blur_sigma)
-    filament_width_px = int(filament_diameter_angstrom // volume_voxel_size)
-    box_size = 2 * filament_width_px
-    binning = 1
-
-    while box_size > 32:
-        volume_voxel_size *= 2.0
-        binning *= 2
-        filament_width_px = int(filament_diameter_angstrom // volume_voxel_size)
-        box_size = 2 * filament_width_px
-
-    template = Pommie.Mask.new(box_size)
-    template.cylindrical(radius_px=filament_width_px/2)
-    compute.set_tm2d_n(box_size)
-
-    template = Pommie.Particle(template.data)
-    template_mask = Pommie.Mask(template)
-    template_mask.cylindrical(radius_px=template.n//2)
-
-    transforms = Pommie.Transform.sample_unit_sphere(n_transforms, polar_lims=(-np.pi / 2, 0.0))
-
-    volume = Pommie.Volume.from_array(volume, volume_voxel_size)
-    volume = volume.bin(binning)
-    volume_mask = volume.copy()
-
-    scores, indices = compute.find_template_in_volume(volume=volume,
-                                                      volume_mask=volume_mask,
-                                                      template=template,
-                                                      template_mask=template_mask,
-                                                      transforms=transforms,
-                                                      verbose=False)
-
-    labels, n_labels = label(scores > score_threshold)
-    return labels.astype(np.float32)
+INSTANCE_TEMPLATE_N = 32
 
 
 def prune_skeleton(skel):
@@ -199,10 +163,6 @@ class Filament:
         self.tck, u = splprep(path.T, s=Filament.SMOOTHING)
         self.valid = True
 
-    def plot(self):
-        filament_coords = np.array(splev(np.linspace(0, 1, 100), self.tck))
-        plt.plot(filament_coords[2], filament_coords[1], linewidth=10, alpha=0.2)
-
     def linearize_spline(self, n_samples=100):
         if not self.valid:
             return
@@ -219,8 +179,19 @@ class Filament:
         tck_new, _ = splprep(coords_uniform, u=np.linspace(0, 1, n_samples), s=0, k=self.tck[2])
         self.tck = tck_new
 
+    def unbin(self, b=2):
+        self.coords *= b
+        self.gen_spline()
+        self.linearize_spline()
+        return self
+
     def to_dict(self):
         return {"skeleton_coordinates": self.coords.tolist()}
+
+    @staticmethod
+    def read(p):
+        with open(p, 'r') as f:
+            return Filament.from_dict(json.load(f))
 
     @staticmethod
     def from_dict(d):
@@ -239,33 +210,96 @@ class Filament:
     def __str__(self):
         return f"Filament with length {self.length:.1f}, {len(self.coords)}-voxel skeleton."
 
-def detect_filaments(filament_segmentation_path, filament_diameter_angstrom=250, out_path=None):
-    voxel_size = copy(mrcfile.open(filament_segmentation_path, header_only=True).voxel_size.x)
-    volume = mrcfile.read(filament_segmentation_path)
+    def plot(self):
+        filament_coords = np.array(splev(np.linspace(0, 1, 100), self.tck))
+        plt.plot(filament_coords[2], filament_coords[1], linewidth=10, alpha=0.2)
 
-    labels = semantic_to_instance(volume, voxel_size, filament_diameter_angstrom=filament_diameter_angstrom)
+    def sample_coordinates(self, spacing, offset=0):
+        """
+        spacing: spacing (in px) along filament between coordinates.
+        """
+        x = np.arange(offset, self.length, spacing) / self.length
+        if x.any():
+            return np.array(splev(x, self.tck)).T
+        return np.array([])
+
+def detect_filaments(filament_segmentation_path, out_path=None, save_labels=False):
+    """
+    input: path to a semantic segmentation volume.
+    output: saves a json file with filament paths.
+    """
+    volume = mrcfile.read(filament_segmentation_path)
+    labels, _ = label(volume > 128)
+
     filaments = parameterize_instances(labels)
 
-    filaments_out = list()
+    if save_labels:
+        with mrcfile.new(filament_segmentation_path.replace('.mrc', '_labels.mrc'), overwrite=True) as f:
+            f.set_data(labels.astype(np.float32))
+
+    filaments_out = dict()
     for j, f in enumerate(filaments):
         if f.valid:
-            filaments_out.append(f.to_dict())
+            filaments_out[j] = f.to_dict()
 
     out_path = os.path.splitext(filament_segmentation_path)[0]+"__filaments.json" if out_path is None else out_path
     with open(out_path, 'w') as f:
         json.dump(filaments_out, f, indent=1)
+    return out_path
+
+import glob
+import pandas as pd
+#
+# volumes = glob.glob('/cephfs/mlast/dev/ais_filament/segmentations/*thin.mrc')
+# for v in volumes:
+#     if not os.path.exists(v.replace('.mrc', '__filaments.json')):
+#         print(v)
+#         detect_filaments(v)
 
 
-def plot_example():
-    volume = Pommie.Volume.from_path('C:/Users/mart_/Downloads/transfer (2)/20230908_lmla011_ts_003.mrc').bin(2)
-    filaments = Filament.from_path('C:/Users/mart_/Downloads/transfer (2)/20230908_lmla011_ts_003__MT__filaments.json')
+files = glob.glob('/cephfs/mlast/dev/ais_filament/segmentations/*filaments.json')
+apix = 19.12
+sample_spacing = 500.0 / apix
+
+for file in files:
+    tomo_name = os.path.basename(file).split('_bin2')[0]
+    tomo_path = f'/cephfs/mlast/dev/ais_filament/tomos/{tomo_name}_bin2.mrc'
+    volume_shape = np.array(mrcfile.open(tomo_path).data.shape) * apix
+    rln_origin = -volume_shape / 2.0
+    df_coords = pd.DataFrame(columns=['_rlnTomoName',
+                                      '_aisFilamentId',
+                                      '_rlnTomoManifoldIndex',
+                                      '_rlnCoordinateX',
+                                      '_rlnCoordinateY',
+                                      '_rlnCoordinateZ'])
+
+    filaments = dict()
+    with open(file, 'r') as _:
+        data = json.load(_)
+        for j in data:
+            filaments[j] = Filament.from_dict(data[j])
+
+    coordinates_old = list()
+    for f in filaments:
+        coordinates = filaments[f].sample_coordinates(sample_spacing, offset=sample_spacing / 2.0)
+
+        for j in range(coordinates.shape[0]):
+            z = coordinates[j, 0]# * apix + rln_origin[0]
+            y = coordinates[j, 1]# * apix + rln_origin[1]
+            x = coordinates[j, 2]# * apix + rln_origin[2]
+
+            # adda  new row to the df:
+            idx = len(df_coords)
+            df_coords.loc[idx, '_rlnTomoName'] = tomo_name
+            df_coords.loc[idx, '_aisFilamentId'] = f
+            df_coords.loc[idx, '_rlnTomoManifoldIndex'] = 0
+            df_coords.loc[idx, '_rlnCoordinateX'] = x
+            df_coords.loc[idx, '_rlnCoordinateY'] = y
+            df_coords.loc[idx, '_rlnCoordinateZ'] = z
+            coordinates_old.append(f"{int(coordinates[j, 2])}\t{int(coordinates[j, 1])}\t{int(coordinates[j, 0])}\n")
+
+    starfile.write(df_coords, file.replace('.json', '_coordinates.star'), overwrite=True)
+    with open(file.replace('__filaments.json', '_coords.tsv'), 'w') as f:
+        f.writelines(coordinates_old)
 
 
-    slice = np.sum(volume.data, axis=0)
-    plt.imshow(slice, cmap='gray')
-    [f.plot() for f in reversed(filaments)]
-    plt.show()
-
-# next up:
-# - sample coordinates along path (method in Filament)
-# - consensus polarity measurement

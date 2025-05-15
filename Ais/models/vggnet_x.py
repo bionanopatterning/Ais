@@ -10,23 +10,23 @@ def create(input_shape):
     inputs = Input(input_shape)
 
     # Block 1
-    conv1 = Conv2D(128, (3, 3), activation='relu', padding='same')(inputs)
+    conv1 = Conv2D(64, (3, 3), activation='relu', padding='same')(inputs)
     conv1 = BatchNormalization()(conv1)
-    conv2 = Conv2D(128, (3, 3), activation='relu', padding='same')(conv1)
+    conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(conv1)
     conv2 = BatchNormalization()(conv2)
     pool1 = MaxPooling2D(pool_size=(2, 2))(conv2)
 
     # Block 2
-    conv3 = Conv2D(256, (3, 3), activation='relu', padding='same')(pool1)
+    conv3 = Conv2D(128, (3, 3), activation='relu', padding='same')(pool1)
     conv3 = BatchNormalization()(conv3)
-    conv4 = Conv2D(256, (3, 3), activation='relu', padding='same')(conv3)
+    conv4 = Conv2D(128, (3, 3), activation='relu', padding='same')(conv3)
     conv4 = BatchNormalization()(conv4)
     pool2 = MaxPooling2D(pool_size=(2, 2))(conv4)
 
     # Block 3
-    conv5 = Conv2D(512, (3, 3), activation='relu', padding='same')(pool2)
+    conv5 = Conv2D(256, (3, 3), activation='relu', padding='same')(pool2)
     conv5 = BatchNormalization()(conv5)
-    conv6 = Conv2D(512, (3, 3), activation='relu', padding='same')(conv5)
+    conv6 = Conv2D(256, (3, 3), activation='relu', padding='same')(conv5)
     conv6 = BatchNormalization()(conv6)
     pool3 = MaxPooling2D(pool_size=(2, 2))(conv6)
 
@@ -36,26 +36,23 @@ def create(input_shape):
     conv8 = Conv2D(512, (3, 3), activation='relu', padding='same')(conv7)
     conv8 = BatchNormalization()(conv8)
     pool4 = MaxPooling2D(pool_size=(2, 2))(conv8)
-    pool4 = Dropout(0.25)(pool4)
 
     # Block 5
-    conv9 = Conv2D(512, (3, 3), activation='relu', padding='same')(pool4)
+    conv9 = Conv2D(1024, (3, 3), activation='relu', padding='same')(pool4)
     conv9 = BatchNormalization()(conv9)
-    conv10 = Conv2D(512, (3, 3), activation='relu', padding='same')(conv9)
+    conv10 = Conv2D(1024, (3, 3), activation='relu', padding='same')(conv9)
     conv10 = BatchNormalization()(conv10)
     pool5 = MaxPooling2D(pool_size=(2, 2))(conv10)
     pool5 = Dropout(0.25)(pool5)
 
     # Upsampling and Decoding
-    up1 = Conv2DTranspose(512, (2, 2), strides=(2, 2), padding='same')(pool5)
-    up1 = Conv2D(512, (3, 3), activation='relu', padding='same')(up1)
+    up1 = Conv2DTranspose(1024, (2, 2), strides=(2, 2), padding='same')(pool5)
+    up1 = Conv2D(1024, (3, 3), activation='relu', padding='same')(up1)
     up1 = BatchNormalization()(up1)
-    up1 = Dropout(0.25)(up1)
 
     up2 = Conv2DTranspose(512, (2, 2), strides=(2, 2), padding='same')(up1)
     up2 = Conv2D(512, (3, 3), activation='relu', padding='same')(up2)
     up2 = BatchNormalization()(up2)
-    up2 = Dropout(0.25)(up2)
 
     up3 = Conv2DTranspose(256, (2, 2), strides=(2, 2), padding='same')(up2)
     up3 = Conv2D(256, (3, 3), activation='relu', padding='same')(up3)
@@ -65,8 +62,8 @@ def create(input_shape):
     up4 = Conv2D(128, (3, 3), activation='relu', padding='same')(up4)
     up4 = BatchNormalization()(up4)
 
-    up5 = Conv2DTranspose(128, (2, 2), strides=(2, 2), padding='same')(up4)
-    up5 = Conv2D(128, (3, 3), activation='relu', padding='same')(up5)
+    up5 = Conv2DTranspose(64, (2, 2), strides=(2, 2), padding='same')(up4)
+    up5 = Conv2D(64, (3, 3), activation='relu', padding='same')(up5)
     up5 = BatchNormalization()(up5)
 
     output = Conv2D(1, (1, 1), activation='sigmoid')(up5)

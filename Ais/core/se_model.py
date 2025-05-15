@@ -215,7 +215,10 @@ class SEModel:
 
     def load_training_data(self):
         with tifffile.TiffFile(self.train_data_path) as train_data:
-            train_data_apix = float(train_data.pages[0].description.split("=")[1])
+            try:
+                train_data_apix = float(train_data.pages[0].description.split("=")[1])
+            except ValueError as e:
+                train_data_apix = 1.0
             if self.apix == -1.0:
                 self.apix = train_data_apix
             elif self.apix != train_data_apix:
@@ -236,9 +239,11 @@ class SEModel:
 
         n_pos = len(positive_indices)
         n_neg = len(negative_indices)
+        print(f'Original images: {n_pos} positive, {n_neg} negative.')
         positive_x = list()
         positive_y = list()
 
+        print(f'Loading training data and generating {self.n_copies} copies')
         for i in positive_indices:
             for _ in range(self.n_copies):
                 if self.n_copies == 1:
@@ -249,18 +254,21 @@ class SEModel:
                     positive_x.append(norm_train_x)
                     positive_y.append(train_y[i])
                 else:
-                    angle = [0, 90, 180, 270][_] if _ < 4 else np.random.uniform(0, 360)
+                    flip = [0, 0, 0, 0, 1, 1, 1, 1][_] if _ < 8 else np.random.randint(0, 2, 1)[0]
+                    angle = [0, 90, 180, 270, 0, 90, 180, 270][_] if _ < 8 else np.random.uniform(0, 360)
                     x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
                     y_rotated = rotate(train_y[i], angle, reshape=False, cval=0.0)
                     y_rotated = np.clip(y_rotated, 0, 1)
-                    x_rotated = (x_rotated - np.mean(x_rotated))
+                    x_rotated = x_rotated - np.mean(x_rotated)
                     denom = np.std(x_rotated)
                     if denom != 0.0:
                         x_rotated /= np.std(x_rotated)
-
-                    positive_x.append(x_rotated)
-                    positive_y.append(y_rotated)
-
+                    if flip:
+                        positive_x.append(np.flip(x_rotated, axis=0))
+                        positive_y.append(np.flip(y_rotated, axis=0))
+                    else:
+                        positive_x.append(x_rotated)
+                        positive_y.append(y_rotated)
         if n_neg == 0:
             return np.array(positive_x), np.array(positive_y)
 
@@ -275,16 +283,20 @@ class SEModel:
         n_neg_copied = 0
         for i in negative_sample_indices:
             _ = (n_neg_copied // n_neg)
-            angle = [0, 90, 180, 270][_] if _ < 4 else np.random.uniform(0, 360)
+            flip = [0, 0, 0, 0, 1, 1, 1, 1][_] if _ < 8 else np.random.randint(0, 2, 1)[0]
+            angle = [0, 90, 180, 270, 0, 90, 180, 270][_] if _ < 8 else np.random.uniform(0, 360)
 
             x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
             x_rotated = (x_rotated - np.mean(x_rotated))
             denom = np.std(x_rotated)
             if denom != 0.0:
                 x_rotated /= denom
-
-            negative_x.append(x_rotated)
-            negative_y.append(train_y[i])
+            if flip:
+                negative_x.append(np.flip(x_rotated, axis=0))
+                negative_y.append(train_y[i])
+            else:
+                negative_x.append(x_rotated)
+                negative_y.append(train_y[i])
             n_neg_copied += 1
         print(f"Loaded a training dataset with {len(positive_x)} positive and {len(negative_x)} negative samples.")
         return np.array(positive_x + negative_x), np.array(positive_y + negative_y)

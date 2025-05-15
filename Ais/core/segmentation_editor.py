@@ -119,6 +119,7 @@ class SegmentationEditor:
     FEATURE_LIB_OPEN = False
     FEATURE_LIB_OPEN_INCLUDE_SESSION = False
     FEATURE_LIB_ANNOTATION = True
+    FEATURE_LIB_HIDE_DEACTIVATED_FEATURES = False
 
     POM_SYNCHRONIZE_INTERVAL = 0.5  # seconds
     POM_SYNCHRONIZE_TIMER = 0
@@ -913,10 +914,12 @@ class SegmentationEditor:
                             for i in f.edited_slices:
                                 imgui.push_id(f"{f.uid}{i}")
 
-                                _, _ = imgui.selectable(f"Slice {i} ({len(f.boxes[i])} boxes)", f.current_slice == i, width=cw - 23)
+                                slice_clicked, _ = imgui.selectable(f"Slice {i} ({len(f.boxes[i])} boxes)", f.current_slice == i, width=cw - 23)
                                 if imgui.is_item_hovered():
                                     f.parent.set_slice(i)
                                     SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
+                                if slice_clicked:
+                                    imgui.close_current_popup()
                                 imgui.same_line(position=cw - 5)
                                 if imgui.image_button(self.icon_close.renderer_id, 13, 13):
                                     f.remove_slice(i)
@@ -1049,10 +1052,10 @@ class SegmentationEditor:
 
 
                 imgui.text("Set parameters")
-                imgui.begin_child("params", 0.0, 80, True)
+                imgui.begin_child("params", 0.0, 60, True)
                 imgui.push_item_width(cw - 53)
                 _, self.trainset_boxsize = imgui.slider_int("boxes", self.trainset_boxsize, 8, 128, format=f"{self.trainset_boxsize} pixel")
-                _, SegmentationEditor.trainset_apix = imgui.slider_float("A/pix", SegmentationEditor.trainset_apix, 1.0, 20.0, format=f"{SegmentationEditor.trainset_apix:.2f}")
+                #_, SegmentationEditor.trainset_apix = imgui.slider_float("A/pix", SegmentationEditor.trainset_apix, 1.0, 20.0, format=f"{SegmentationEditor.trainset_apix:.2f}")
                 imgui.pop_item_width()
                 calculate_number_of_boxes()
                 imgui.text(f"Positive samples: {self.trainset_num_boxes_positive}")
@@ -1078,7 +1081,7 @@ class SegmentationEditor:
                     if m.active_tab == 0:
                         panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_TRAINING
                     elif m.active_tab == 1:
-                        panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_PREDICTION - 16
+                        panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_PREDICTION - 16 if cfg.settings["TILED_MODE"] == 0 else SegmentationEditor.MODEL_PANEL_HEIGHT_PREDICTION
                     elif m.active_tab == 2:
                         panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_LOGIC + 57 * len(m.interactions) - 20 * (len(cfg.se_models) < 2)
                     panel_height += 10 if m.background_process_train is not None else 0
@@ -1513,7 +1516,7 @@ class SegmentationEditor:
                     # find segmentations in the selected dataset's folder.
 
 
-                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.splitext(se_frame.title)[0] + "__*.mrc"))
+                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
                     print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
                     for f in sorted(files):
                         print(f)
@@ -2182,7 +2185,8 @@ class SegmentationEditor:
                             h_id_str = h_id_str[8:]
                         imgui.set_next_item_width(imgui.get_column_width())
                         imgui.input_text(f"##{s.uid}col1", h_id_str, 1024, imgui.INPUT_TEXT_READ_ONLY)
-
+                        if imgui.is_item_clicked():
+                            SegmentationEditor.set_active_dataset(s)
                         imgui.table_next_column()
                         mrc_found = False
                         # TODO: the highlight and if os.path.exists thing: don't do it every frame, only when changes might have occurred.
@@ -2258,9 +2262,10 @@ class SegmentationEditor:
                     imgui.push_style_color(imgui.COLOR_TABLE_BORDER_LIGHT, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
 
                 j = 0
+                visible_features = cfg.feature_library if not SegmentationEditor.FEATURE_LIB_HIDE_DEACTIVATED_FEATURES else [f for f in cfg.feature_library if f.use]
                 with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = 580):
 
-                    for j, feature in enumerate(cfg.feature_library):
+                    for j, feature in enumerate(visible_features):
                         if j % 3 == 0:
                             imgui.table_next_row()
                         imgui.table_next_column()
@@ -2396,12 +2401,29 @@ class SegmentationEditor:
 
                 imgui.pop_style_color(2)
 
-                imgui.new_line()
-                imgui.same_line(position=imgui.get_content_region_available_width() - 270)
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
 
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+
+                all_active = not False in [f.use for f in cfg.feature_library]
+                enable_all, _ = imgui.checkbox("activate all", all_active)
+                if _ and enable_all:
+                    for f in cfg.feature_library:
+                        f.use = True
+                imgui.same_line()
+                none_active = not True in [f.use for f in cfg.feature_library]
+                disable_all, _ = imgui.checkbox("disable all", none_active)
+                if _ and disable_all:
+                    for f in cfg.feature_library:
+                        f.use = False
+                imgui.same_line()
+                _, SegmentationEditor.FEATURE_LIB_HIDE_DEACTIVATED_FEATURES = imgui.checkbox("hide deactivated features", SegmentationEditor.FEATURE_LIB_HIDE_DEACTIVATED_FEATURES)
+
+
+
+                imgui.same_line(position=imgui.get_content_region_available_width() - 270)
+
 
                 imgui.align_text_to_frame_padding()
                 imgui.text("settings for:")
@@ -2420,22 +2442,21 @@ class SegmentationEditor:
 
                 if imgui.button("reset", 55, 25):
                     cfg.feature_library = cfg.parse_feature_library()
+                    self.parse_available_features()
                 imgui.same_line()
                 if imgui.button("apply", 55, 25):
                     cfg.apply_feature_library()
+                    self.parse_available_features()
                 imgui.same_line()
                 if imgui.button("save", 55, 25):
                     cfg.save_feature_library()
+                    self.parse_available_features()
                 imgui.pop_style_var(2)
 
                 imgui.end()
                 imgui.pop_style_color(2)
 
-        # START GUI:
-        # Menu bar
         menu_bar()
-
-        # Render the currently active frame
 
         if cfg.se_active_frame is not None:
             if self.active_tab != "Render":
@@ -2484,7 +2505,8 @@ class SegmentationEditor:
                         for box in f.boxes[f.current_slice]:
                             box_x_pos = frame_xy[0] + (box[0] - f.parent.width / 2) * f.parent.pixel_size
                             box_y_pos = frame_xy[1] + (box[1] - f.parent.height / 2) * f.parent.pixel_size
-                            box_size = SegmentationEditor.trainset_apix * self.trainset_boxsize / 10.0
+                            #box_size = SegmentationEditor.trainset_apix * self.trainset_boxsize / 10.0
+                            box_size = f.parent.pixel_size * self.trainset_boxsize
                             SegmentationEditor.renderer.add_square((box_x_pos, box_y_pos), box_size, clr)
             if self.active_tab != "Render":
                 overlay_blend_mode = SegmentationEditor.BLEND_MODES[SegmentationEditor.BLEND_MODES_LIST[SegmentationEditor.OVERLAY_BLEND_MODE]]
@@ -2709,7 +2731,7 @@ class SegmentationEditor:
                         flib_titles = [f.title for f in cfg.feature_library]
                         if t in flib_titles:
                             library_feature = cfg.feature_library[flib_titles.index(t)]
-                            feature_or_model.brush_size = library_feature.brush_size / feature_or_model.parent.pixel_size / 2
+                            feature_or_model.brush_size = library_feature.brush_size / (feature_or_model.parent.pixel_size * 2.0)
                             feature_or_model.set_box_size(library_feature.box_size)
                             feature_or_model.alpha = library_feature.alpha
                 imgui.spacing()
@@ -2851,8 +2873,8 @@ class SegmentationEditor:
                 negative_feature_names.append(f)
         if len(positive_feature_names) == 0:
             return
-        path = filedialog.asksaveasfilename(filetypes=[("Ais training data", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{SegmentationEditor.trainset_apix:.3f}_{positive_feature_names[0]}")
-        if not isinstance(path, str):
+        path = filedialog.asksaveasfilename(filetypes=[("Ais training data", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{positive_feature_names[0]}")
+        if not isinstance(path, str) or path == '':
             return
         if path[-len(cfg.filetype_traindata):] != cfg.filetype_traindata:
             path += cfg.filetype_traindata
@@ -2890,11 +2912,11 @@ class SegmentationEditor:
 
             w = d.width
             h = d.height
-            crop_px = int(np.ceil((boxsize * apix) / (d.pixel_size * 10.0)))  # size to crop so that the crop contains at least a boxsize*apix sized region
-            scale_fac = (d.pixel_size * 10.0) / apix  # how much to scale the cropped images.
-            nm = int(np.floor(crop_px / 2))
-            pm = int(np.ceil(crop_px / 2))
-            is_positive = True
+            # crop_px = int(np.ceil((boxsize * apix) / (d.pixel_size * 10.0)))  # size to crop so that the crop contains at least a boxsize*apix sized region
+            # nm = int(np.floor(crop_px / 2))
+            # pm = int(np.ceil(crop_px / 2))
+            nm = int(np.floor(boxsize / 2))
+            pm = int(np.ceil(boxsize / 2))
             # find all boxes
             for f in d.features:
                 if f.title in positives:
@@ -2915,14 +2937,8 @@ class SegmentationEditor:
                             if x_min > 0 and y_min > 0 and x_max < w and y_max < h:
                                 image = np.flipud(mrcf.data[z, y_min:y_max, x_min:x_max])
                                 image = np.array(image.astype(out_type, copy=False), dtype=float)
-                                image = zoom(image, scale_fac)
-                                image = image[:boxsize, :boxsize]
                                 if z in f.slices and f.slices[z] is not None and is_positive:
                                     segmentation = np.flipud(f.slices[z][y_min:y_max, x_min:x_max])
-                                    segmentation = zoom(segmentation, scale_fac)
-                                    segmentation = segmentation[:boxsize, :boxsize]
-                                    segmentation = zoom(segmentation, scale_fac)
-                                    segmentation = segmentation[:boxsize, :boxsize]
                                 else:
                                     segmentation = np.zeros_like(image)
                                 if is_positive:
@@ -3633,7 +3649,7 @@ class Renderer:
                 continue
             if s.particle_size > 0.0:
                 self.particle_shader.uniform3f("particleColour", s.particle_colour)
-                self.particle_shader.uniform1f("particleSize", s.particle_size)
+                self.particle_shader.uniform1f("particleSize", s.particle_size / 2.0)
                 self.particle_shader.uniform1f("pixelSize", s.pixel_size)
                 self.particle_shader.uniform3f("origin", s.center_xyz / 2.0)
                 for p in s.particles:

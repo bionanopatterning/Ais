@@ -67,7 +67,7 @@ def coords_from_tsv_to_star(tsv_path, delete_tsv=False):
     tomo_name = tsv_path[:tsv_path.rfind("__")]
     print(f"Saving to {os.path.splitext(tsv_path)[0]+'.star'}")
     with open(os.path.splitext(tsv_path)[0]+".star", 'w') as f:
-        f.write("data_particles\n\n\nloop_\n_rlnTomoName #1\n_rlnTomoParticleId\n_rlnCoordinateX #2\n_rlnCoordinateY #3\n_rlnCoordinateZ #4\n\n")
+        f.write("data_particles\n\n\nloop_\n_rlnTomoName #1\n_rlnTomoParticleId #2\n_rlnCoordinateX #3\n_rlnCoordinateY #4\n_rlnCoordinateZ #5\n\n")
         coords = np.loadtxt(tsv_path, delimiter='\t').astype(int)
         N = coords.shape[0]
         if N == 1:

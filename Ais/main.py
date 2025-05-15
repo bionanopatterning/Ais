@@ -79,9 +79,9 @@ def main():
     train_parser.add_argument('-e', '--epochs', required=False, type=int, default=50, help="Number of epochs to train the model for (default: 50).")
     train_parser.add_argument('-b', '--batch_size', required=False, type=int, default=32, help="Batch size to use during training (default: 32).")
     train_parser.add_argument('-n', '--negatives', required=False, type=float, default=0.0, help="If 0.0 (default), all images in the input training data are weighted identically. If argument supplied, the value determines the ratio of negative to positive samples to use. For example: if the training data contains 50 positive samples and 50 negatives, and the negative to positive ratio is 1.5, a number of negatives will be sampled twice in order to reach this ratio.") # TODO: maybe remove this altogether
-    train_parser.add_argument('-c', '--copies', required=False, type=int, default=10, help="Number of copies of the input images to include in the training data (all samples in different orientations).")
+    train_parser.add_argument('-c', '--copies', required=False, type=int, default=8, help="Number of copies of the input images to include in the training data (all samples in different orientations). Default 8 (which would be the eight permutations of 90 degree rotations + horizontal flips; An argument >8 would include randomly rotated versions of the input images).")
     train_parser.add_argument('-r', '--rate', required=False, type=float, default=1e-3,help="Learning rate (default 1e-3)")
-    train_parser.add_argument('-name', '--model_name', required=False, type=str, default="Unnamed model", help="Model name. File will be saved as output_directory/<boxsize>_<apix>_<name>.scnm")
+    train_parser.add_argument('-name', '--model_name', required=False, type=str, default="Unnamed model", help="Model name. File will be saved as output_directory/{name}.scnm")
     train_parser.add_argument('-models', '--model_architectures', required=False, action='store_true', help='List available model architectures.')
 
     args, unknown = parser.parse_known_args()
