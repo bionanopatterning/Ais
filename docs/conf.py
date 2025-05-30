@@ -7,9 +7,9 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Ais'
-copyright = '2023, Mart G. F. Last'
+copyright = '2025, Mart G. F. Last'
 author = 'Mart G. F. Last'
-release = '1.0.43'
+release = '1.0.44'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

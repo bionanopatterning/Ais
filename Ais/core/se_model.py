@@ -71,7 +71,7 @@ class SEModel:
         self.background_process_apply = None
         self.n_parameters = 0
         self.n_copies = 4
-        self.excess_negative = 30
+        self.excess_negative = -100
         self.info = ""
         self.info_short = ""
         self.loss = 0.0
@@ -312,7 +312,7 @@ class SEModel:
                 self.compile(box_size)
             # if training data box size is not compatible with the compiled model, abort.
             if box_size != self.box_size:
-                self.train_data_path = f"DATA HAS WRONG BOX SIZE ({box_size[0]} x {box_size[1]})"
+                self.train_data_path = f"DATA HAS WRONG BOX SIZE ({box_size[0]} x {box_size[1]})"  # TODO: make this not an issue - since we're now recompiling before each training call, just recompile with the new box size.
                 process.set_progress(1.0)
                 return
 
@@ -476,7 +476,7 @@ class SEModel:
             boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
             seg_boxes = np.squeeze(self.model.predict(boxes))
             segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
-            print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice ({len(boxes.shape[0])} boxes): {time.time()-start_time:.3f} s.")
+            print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice ({boxes.shape[0]} boxes): {time.time()-start_time:.3f} s.")
 
         if cfg.settings["TRIM_EDGES"] == 1:
             margin = 16

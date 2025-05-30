@@ -1144,10 +1144,10 @@ class SegmentationEditor:
                             imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
                             imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
 
-                            imgui.push_item_width((cw - 7) / 2)
+                            imgui.set_next_item_width(cw)
                             _, m.epochs = imgui.slider_int("##epochs", m.epochs, 1, 50, f"{m.epochs} epoch"+("s" if m.epochs>1 else ""))
-                            imgui.same_line()
-                            _, m.excess_negative = imgui.slider_int("##excessnegative", m.excess_negative, 0, 100, f"+{m.excess_negative}%% negatives")
+                            imgui.push_item_width((cw - 7) / 2)
+                            #_, m.excess_negative = imgui.slider_int("##excessnegative", m.excess_negative, 0, 100, f"+{m.excess_negative}%% negatives")
                             _, m.batch_size = imgui.slider_int("##batchs", m.batch_size, 1, 128, f"{m.batch_size} batch size")
                             imgui.same_line()
                             _, m.n_copies = imgui.slider_int("##copies", m.n_copies, 1, 10, f"{m.n_copies} copies")
@@ -2296,7 +2296,7 @@ class SegmentationEditor:
                             if SegmentationEditor.FEATURE_LIB_ANNOTATION:
                                 imgui.push_item_width(imgui.get_content_region_available_width() - 38)
                                 _, feature.brush_size = imgui.slider_float("brush", feature.brush_size, 1.0, 25.0, format=f"{feature.brush_size:.1f} nm")
-                                _, feature.box_size = imgui.slider_int("boxes", feature.box_size, 8, 128, format=f"{feature.box_size} pixel")
+                                _, feature.box_size = imgui.slider_int("boxes", feature.box_size, 32, 256, format=f"{feature.box_size} pixel")
                                 _, feature.alpha = imgui.slider_float("alpha", feature.alpha, 0.0, 1.0, format="%.2f")
                                 imgui.pop_item_width()
                                 sort_requested, sort_by = imgui.checkbox("sort", cfg.FeatureLibraryFeature.SORT_TITLE == feature.title)
@@ -4153,7 +4153,7 @@ class QueuedExport:
             for m in self.models:
                 self.check_stop_request()
                 print(f"QueuedExport - saving output of model {m.info}")
-                out_path = os.path.join(self.directory, os.path.splitext(self.dataset.title)[0]+"__"+m.title+".mrc")
+                out_path = os.path.join(self.directory, self.dataset.title+"__"+m.title+".mrc")
                 with mrcfile.new(out_path, overwrite=True) as mrc:
                     s = segmentations[i, :, :, :].squeeze()
                     mrc.set_data(s)

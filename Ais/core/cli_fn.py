@@ -25,8 +25,10 @@ def glfw_init():
     return window
 
 
-def _segment_tomo(tomo_path, model, tta=1):
+def _segment_tomo(tomo_path, model, tta=1, binning=1):
     volume = np.array(mrcfile.read(tomo_path).data)
+    if binning != 1:
+        volume = _bin_volume(volume, binning)
     volume -= np.mean(volume)
     volume /= np.std(volume)
     segmented_volume = np.zeros_like(volume)
@@ -67,7 +69,16 @@ def _segment_tomo(tomo_path, model, tta=1):
     segmented_volume = np.clip(segmented_volume, 0.0, 1.0)
     return segmented_volume
 
-def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_augmentation=1, overwrite=False):
+def _bin_volume(vol, b=1):
+    if b == 1:
+        return vol
+    else:
+        j, k, l = vol.shape
+        vol = vol[:j // b * b, :k // b * b, :l // b * b]
+        vol = vol.reshape((j // b, b, k // b, b, l // b, b)).mean(5).mean(3).mean(1)
+        return vol
+
+def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_augmentation=1, overwrite=False, binning=1):
     from keras.models import clone_model
     from keras.layers import Input
 
@@ -97,7 +108,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
                 mrc.voxel_size = 1.0
 
             in_voxel_size = mrcfile.open(p, header_only=True).voxel_size
-            segmented_volume = _segment_tomo(p, new_model, tta=test_time_augmentation)
+            segmented_volume = _segment_tomo(p, new_model, tta=test_time_augmentation, binning=binning)
             segmented_volume = (segmented_volume * 255).astype(np.uint8)
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(segmented_volume)
@@ -107,7 +118,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             print(f"Error segmenting {p}:\n{e}")
 
 
-def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, test_time_augmentation=1, parallel=1, overwrite=0):
+def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus, test_time_augmentation=1, parallel=1, overwrite=0, binning=1):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -131,14 +142,14 @@ def dispatch_parallel_segment(model_path, data_directory, output_directory, gpus
         processes = []
         for gpu_id in data_div:
             p = multiprocessing.Process(target=_segmentation_thread,
-                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id, test_time_augmentation, overwrite))
+                                        args=(model_path, data_div[gpu_id], output_directory, gpu_id, test_time_augmentation, overwrite, binning))
             processes.append(p)
             p.start()
 
         for p in processes:
             p.join()
     else:
-        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), test_time_augmentation=test_time_augmentation, overwrite=bool(overwrite))
+        _segmentation_thread(model_path, all_data_paths, output_directory, gpu_id=",".join(str(n) for n in gpus), test_time_augmentation=test_time_augmentation, overwrite=bool(overwrite), binning=binning)
 
 
 def print_available_model_architectures():
@@ -225,7 +236,7 @@ def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size
     else:
         min_size = size_px * (voxel_size / 10.0)**3
 
-    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, verbose=verbose)
+    n_particles = get_maxima_3d_watershed(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, verbose=verbose, output_star=True)
     return n_particles
 
 
@@ -242,6 +253,7 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
 
     os.makedirs(output_directory, exist_ok=True)
     all_data_paths = glob.glob(os.path.join(data_directory, f"*__{target}.mrc"))
+    print(f'Found {len(all_data_paths)} files with pattern {os.path.join(data_directory, f"*__{target}.mrc")}')
     data_div = {p_id: list() for p_id in range(parallel)}
     for p_id, data_path in zip(itertools.cycle(range(parallel)), all_data_paths):
         data_div[p_id].append(data_path)

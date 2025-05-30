@@ -1,8 +1,6 @@
 import mrcfile
 import matplotlib.pyplot as plt
 import numpy as np
-import Pommie
-import Pommie.compute as compute
 import os
 from scipy.ndimage import label
 from scipy.interpolate import splprep, splev
@@ -95,11 +93,14 @@ def prune_skeleton(skel):
 def parameterize_instances(labels):
     filaments = list()
     for j in range(1, int(labels.max()) + 1):
+        print(f'tracing filament {j}/{int(labels.max())}')
         mask = (labels == j)
         if not np.any(mask):
             continue
 
+        print(f'\tskeletonize')
         skel = skeletonize(mask)
+        print(f'\tprune')
         skel = prune_skeleton(skel)
 
         coords = np.column_stack(np.where(skel))
@@ -217,11 +218,23 @@ class Filament:
     def sample_coordinates(self, spacing, offset=0):
         """
         spacing: spacing (in px) along filament between coordinates.
+        offset: offset (in px <TODO: check>) to start sampling.
         """
-        x = np.arange(offset, self.length, spacing) / self.length
+        x = np.arange(offset, 1.0, spacing / self.length)
         if x.any():
             return np.array(splev(x, self.tck)).T
         return np.array([])
+
+    def sample_coordinates_normalized_indices(self, indices):
+        """
+        indices: list of normalized coordinates to sample along the spline (0.0 would be the filament start position, 1.0 the end; values < 0.0 and > 1.0 are also ok).
+
+        """
+        if isinstance(indices, int) or isinstance(indices, float):
+            indices = [indices]
+        return np.array(splev(np.array(indices), self.tck)).T
+
+
 
 def detect_filaments(filament_segmentation_path, out_path=None, save_labels=False):
     """
@@ -229,8 +242,10 @@ def detect_filaments(filament_segmentation_path, out_path=None, save_labels=Fals
     output: saves a json file with filament paths.
     """
     volume = mrcfile.read(filament_segmentation_path)
+    print('Labelling volume')
     labels, _ = label(volume > 128)
 
+    print('Beginning parametrization')
     filaments = parameterize_instances(labels)
 
     if save_labels:
@@ -249,57 +264,56 @@ def detect_filaments(filament_segmentation_path, out_path=None, save_labels=Fals
 
 import glob
 import pandas as pd
-#
-# volumes = glob.glob('/cephfs/mlast/dev/ais_filament/segmentations/*thin.mrc')
-# for v in volumes:
-#     if not os.path.exists(v.replace('.mrc', '__filaments.json')):
-#         print(v)
-#         detect_filaments(v)
 
+volumes = glob.glob('/cephfs/mlast/compu_projects/mt_tip_pick/segmented/*.mrc')
+for v in volumes:
+    print(v)
+    if not os.path.exists(v.replace('.mrc', '__filaments.json')):
+        detect_filaments(v)
 
 files = glob.glob('/cephfs/mlast/dev/ais_filament/segmentations/*filaments.json')
-apix = 19.12
-sample_spacing = 500.0 / apix
 
+all_coords = list()
 for file in files:
-    tomo_name = os.path.basename(file).split('_bin2')[0]
-    tomo_path = f'/cephfs/mlast/dev/ais_filament/tomos/{tomo_name}_bin2.mrc'
-    volume_shape = np.array(mrcfile.open(tomo_path).data.shape) * apix
-    rln_origin = -volume_shape / 2.0
-    df_coords = pd.DataFrame(columns=['_rlnTomoName',
-                                      '_aisFilamentId',
-                                      '_rlnTomoManifoldIndex',
-                                      '_rlnCoordinateX',
-                                      '_rlnCoordinateY',
-                                      '_rlnCoordinateZ'])
-
     filaments = dict()
+    coordinates = list()
+    tomo = os.path.basename(file).split('__')[0]
     with open(file, 'r') as _:
         data = json.load(_)
         for j in data:
             filaments[j] = Filament.from_dict(data[j])
+            if filaments[j].length < 50:
+                continue
+            tip_coordinates = filaments[j].sample_coordinates_normalized_indices([0.0, 1.0])
 
-    coordinates_old = list()
-    for f in filaments:
-        coordinates = filaments[f].sample_coordinates(sample_spacing, offset=sample_spacing / 2.0)
+            for k, l, m in tip_coordinates:
+                all_coords.append((m, l, k, tomo))
+                print(all_coords[-1])
 
-        for j in range(coordinates.shape[0]):
-            z = coordinates[j, 0]# * apix + rln_origin[0]
-            y = coordinates[j, 1]# * apix + rln_origin[1]
-            x = coordinates[j, 2]# * apix + rln_origin[2]
+# Try making a fake Pom project.
+root = '/cephfs/mlast/dev/ais_filament/'
+os.makedirs(root, exist_ok=True)
+os.makedirs(os.path.join(root, 'capp'), exist_ok=True)
+os.makedirs(os.path.join(root, 'capp', 'mt_forson'), exist_ok=True)
+os.system(f'cd {root}')
+os.system(f'pom')
 
-            # adda  new row to the df:
-            idx = len(df_coords)
-            df_coords.loc[idx, '_rlnTomoName'] = tomo_name
-            df_coords.loc[idx, '_aisFilamentId'] = f
-            df_coords.loc[idx, '_rlnTomoManifoldIndex'] = 0
-            df_coords.loc[idx, '_rlnCoordinateX'] = x
-            df_coords.loc[idx, '_rlnCoordinateY'] = y
-            df_coords.loc[idx, '_rlnCoordinateZ'] = z
-            coordinates_old.append(f"{int(coordinates[j, 2])}\t{int(coordinates[j, 1])}\t{int(coordinates[j, 0])}\n")
+with open(os.path.join(root, 'capp', 'mt_forson', 'config.json'), 'w') as f:
+    json.dump({'target': '', 'job_name': 'mt_forson', 'context_elements': []}, f)
 
-    starfile.write(df_coords, file.replace('.json', '_coordinates.star'), overwrite=True)
-    with open(file.replace('__filaments.json', '_coords.tsv'), 'w') as f:
-        f.writelines(coordinates_old)
+with open(os.path.join(root, 'project_configuration.json'), 'r') as f:
+    cfg = json.load(f)
+    cfg['root'] = root
+    cfg['tomogram_dir'] = 'tomos'
+
+with open(os.path.join(root, 'project_configuration.json'), 'w') as f:
+    json.dump(cfg, f, indent=4)
+
+with open(os.path.join(root, 'capp', 'mt_forson', 'all_particles.tsv'), 'w') as f:
+    f.write('X\tY\tZ\ttomo\n')
+    for _ in all_coords:
+        f.write(f'{int(_[0])}\t{int(_[1])}\t{int(_[2])}\t{_[3]}\n')
+
+
 
 

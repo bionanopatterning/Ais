@@ -661,11 +661,11 @@ class SurfaceModel:
     def find_coordinates(self):
         # is there a coordinate file?
         self.particles = list()
-        txt_file = os.path.splitext(self.path)[0]+"_coords.tsv"
+        tsv_file = os.path.splitext(self.path)[0]+"_coords.tsv"
         star_file = os.path.splitext(self.path)[0] + "_coords.star"
-        if os.path.exists(txt_file):
+        if os.path.exists(tsv_file):
             print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
-            with open(txt_file, 'r') as f:
+            with open(tsv_file, 'r') as f:
                 for line in f:
                     xyz = [int(val)-1 for val in line.strip().split('\t')]
                     self.particles.append(xyz)

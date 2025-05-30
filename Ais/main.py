@@ -54,6 +54,7 @@ def main():
     segment_parser.add_argument('-tta', '--test-time-augmentation', required=False, type=int, default=1, help="Integer between 1 and 8. If 1, no test time augmentation applied. If 2 - 8, differently oriented copies of the input tomogram are also segmented and the results averaged; orientations are [0, 90, 180, 270, 0*, 90*, 180*, 270*] (*=horizontal flip); e.g., when -tta 4, four samples of each tomogram are segmented, sampled with 0, 90, 180, and 270 deg. rotations relative to the original.")
     segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
     segment_parser.add_argument('-overwrite', '--overwrite', required=False, type=int, default=0, help="If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).")
+    segment_parser.add_argument('-bin', required=False, type=int, default=1, help="Binning factor to apply before processing. Default is 1 (no binning)")
 
     pick_parser = subparsers.add_parser('pick', help='Pick particles using segmented volumes.')
     pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input .mrc's.")
@@ -98,7 +99,8 @@ def main():
                                              gpus=gpus,
                                              test_time_augmentation=args.test_time_augmentation,
                                              parallel=args.parallel,
-                                             overwrite=args.overwrite)
+                                             overwrite=args.overwrite,
+                                             binning=args.bin)
         elif args.command == 'pick':
             output_directory = args.output_directory if args.output_directory else args.data_directory
             aiscli.dispatch_parallel_pick(target=args.target,

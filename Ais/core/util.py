@@ -8,6 +8,8 @@ import time
 import mrcfile
 from scipy.ndimage import label, distance_transform_edt
 from skimage.feature import peak_local_max
+import starfile
+import pandas as pd
 timer = 0.0
 
 
@@ -49,14 +51,13 @@ def coords_from_tsv(coords_path):
 def coords_from_star(coords_path):
     try:
         coords = list()
-        with open(coords_path, 'r') as file:
-            for line in file:
-                parts = line.split(sep='\t')
-                if len(parts) == 5:
-                    x = int(parts[2])
-                    y = int(parts[3])
-                    z = int(parts[4])
-                    coords.append((x, y, z))
+        df = starfile.read(coords_path)
+        # next we iterate over rows in df:
+        for _, row in df.iterrows():
+            x = int(row['rlnCoordinateX'])
+            y = int(row['rlnCoordinateY'])
+            z = int(row['rlnCoordinateZ'])
+            coords.append((x, y, z))
         return coords
     except Exception as e:
         cfg.set_error(e, f"Could not parse coordinates from star file {coords_path}")
@@ -64,18 +65,13 @@ def coords_from_star(coords_path):
 
 
 def coords_from_tsv_to_star(tsv_path, delete_tsv=False):
-    tomo_name = tsv_path[:tsv_path.rfind("__")]
-    print(f"Saving to {os.path.splitext(tsv_path)[0]+'.star'}")
-    with open(os.path.splitext(tsv_path)[0]+".star", 'w') as f:
-        f.write("data_particles\n\n\nloop_\n_rlnTomoName #1\n_rlnTomoParticleId #2\n_rlnCoordinateX #3\n_rlnCoordinateY #4\n_rlnCoordinateZ #5\n\n")
-        coords = np.loadtxt(tsv_path, delimiter='\t').astype(int)
-        N = coords.shape[0]
-        if N == 1:
-            f.write(f"{tomo_name}\t{1}\t{coords[0]}\t{coords[1]}\t{coords[2]}\n")
-        else:
-            for n in range(N):
-                f.write(f"{tomo_name}\t{n+1}\t{coords[n, 0]}\t{coords[n, 1]}\t{coords[n, 2]}\n")
+    tomo_name = os.path.basename(tsv_path[:tsv_path.rfind("__")])
+    star_path = os.path.splitext(tsv_path)[0]+'.star'
+    df = pd.read_csv(tsv_path, sep='\t', header=None, names=['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ'])
+    df['rlnMicrographName'] = tomo_name
+    starfile.write({'particles': df}, star_path, overwrite=True)
     if delete_tsv:
+        print(f'Removing {tsv_path}')
         os.remove(tsv_path)
 
 
@@ -110,6 +106,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
     pixel_size: in nanometer
     """
     if array is None:
+        if verbose:
+            print(f'Reading {mrcpath}')
         data = mrcfile.read(mrcpath)
         if process:
             process.set_progress(0.2)
@@ -136,6 +134,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
     if process:
         process.set_progress(0.4)
     # set regions with insufficient volume to 0
+    if verbose:
+        print(f'Labelling maxima in {mrcpath}')
     labeled, n = label(binary_vol)
     voxels_per_group = np.bincount(labeled.ravel())
     small_blobs = np.where(voxels_per_group < min_size)[0]
@@ -143,6 +143,7 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
         binary_vol[labeled == sb] = 0
 
     # find maxima in distance map
+    print(f'Computing distance transform of {mrcpath}')
     distance = distance_transform_edt(binary_vol, return_distances=True)
     if process:
         process.set_progress(0.9)
@@ -190,10 +191,10 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
 
         if not output_star:
             if verbose:
-                print(f"\toutputting coordinates to {out_path}")
+                print(f"Saving coordinates to {out_path}")
         else:
             if verbose:
-                print(f"\toutputting coordinates to {os.path.splitext(out_path)[0]+'.star'}")
+                print(f"Saving coordinates to {os.path.splitext(out_path)[0]+'.star'}")
         with open(out_path, 'w') as out_file:
             for i in range(len(coordinates)):
                 x = int(coordinates[i][2] * binning)
@@ -202,7 +203,7 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
                 out_file.write(f"{x}\t{y}\t{z}\n")
         if output_star:
             if verbose:
-                print("CHANGING TO STAR")
+                print("Reformatting coordinates to Relion .star format")
             coords_from_tsv_to_star(out_path, delete_tsv=True)
         if process:
             process.set_progress(0.99)
