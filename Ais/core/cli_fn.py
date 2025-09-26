@@ -388,18 +388,21 @@ def _clr_print(txt, clr):
     print(f"{colors[clr]}{txt}\033[0m")
 
 def _picking_thread(data_paths, output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, process_id, verbose):
-    for j, p in enumerate(data_paths):
-        out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.tsv")
-        n_particles = _pick_tomo(p, out_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose)
+    try:
+        for j, p in enumerate(data_paths):
+            out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.tsv")
+            n_particles = _pick_tomo(p, out_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose)
 
-        clr = 'none'
-        if 0 < n_particles < 10:
-            clr = 'few'
-        elif 10 <= n_particles < 100:
-            clr = 'mid'
-        elif n_particles >= 100:
-            clr = 'many'
-        _clr_print(f"{j+1}/{len(data_paths)} (process {process_id}) - {n_particles} particles in {p}", clr)
+            clr = 'none'
+            if 0 < n_particles < 10:
+                clr = 'few'
+            elif 10 <= n_particles < 100:
+                clr = 'mid'
+            elif n_particles >= 100:
+                clr = 'many'
+            _clr_print(f"{j+1}/{len(data_paths)} (process {process_id}) - {n_particles} particles in {p}", clr)
+    except KeyboardInterrupt:
+        pass
 
 
 def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config=""):
