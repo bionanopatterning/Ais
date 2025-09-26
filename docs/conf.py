@@ -9,7 +9,7 @@
 project = 'Ais'
 copyright = '2025, Mart G. F. Last'
 author = 'Mart G. F. Last'
-release = '1.0.44'
+release = '1.0.46'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

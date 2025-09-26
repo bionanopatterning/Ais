@@ -13,7 +13,7 @@ import os
 import subprocess
 import shutil
 from time import sleep
-from Ais.core.util import get_maxima_3d_watershed, icosphere_va
+from Ais.core.util import pick_particles, icosphere_va
 EMBEDDED = False
 try:
     import scNodes.core.config as scn_cfg
@@ -23,6 +23,7 @@ except ImportError:
 
 
 # TODO: fix error in Render -> pick in GUI
+# TODO: when choosing a session feature in annotation context menu, brush size doesnt get set.
 
 class SegmentationEditor:
     CAMERA_ZOOM_STEP = 0.1
@@ -382,10 +383,10 @@ class SegmentationEditor:
                 idx = min(idx, len(cfg.se_frames) - 1)
                 SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
             elif imgui.is_key_pressed(glfw.KEY_LEFT, True):
-                active_frame.set_slice(active_frame.current_slice - 1)
+                active_frame.set_slice(active_frame.current_slice - (5 if SegmentationEditor.is_shift_down() else 1))
                 SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
             elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
-                active_frame.set_slice(active_frame.current_slice + 1)
+                active_frame.set_slice(active_frame.current_slice + (5 if SegmentationEditor.is_shift_down() else 1))
                 SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
         active_feature = None
         if active_frame is not None:
@@ -479,6 +480,7 @@ class SegmentationEditor:
     def import_dataset(self, filename):
         # TODO: upon import, if scNodes, if has overlay and overlay.clem_frame.path found in any CLEMFrame's path, link CLEMFrame and SEFrame s.t. overlay can be updated.
         SegmentationEditor.SHOW_BOOT_SPRITE = False
+        print(f'Importing {filename}')
         if isinstance(filename, str):
             filename = (filename, )
         if not isinstance(filename, tuple):
@@ -520,18 +522,22 @@ class SegmentationEditor:
                 # only one command for now:
                 #   open <filepath> slice <n>
                 if bars[0] == "open":
-                    dataset_already_imported = False
-                    tomo_name = os.path.splitext(os.path.basename(bars[1]))[0]
-                    for f in cfg.se_frames:
-                        if tomo_name == os.path.splitext(os.path.basename(f.path))[0]:
-                            SegmentationEditor.set_active_dataset(f)
+                    filetype = os.path.splitext(bars[1])[-1]
+                    if filetype in ['.mrc', cfg.filetype_segmentation]:
+                        dataset_already_imported = False
+                        tomo_name = os.path.splitext(os.path.basename(bars[1]))[0]
+                        for f in cfg.se_frames:
+                            if tomo_name == os.path.splitext(os.path.basename(f.path))[0]:
+                                SegmentationEditor.set_active_dataset(f)
+                                if "slice" in bars:
+                                    cfg.se_active_frame.set_slice(int(bars[3]))
+                                dataset_already_imported = True
+                        if not dataset_already_imported:
+                            self.import_dataset(bars[1])
                             if "slice" in bars:
-                                cfg.se_active_frame.set_slice(int(bars[3]))
-                            dataset_already_imported = True
-                    if not dataset_already_imported:
-                        self.import_dataset(bars[1])
-                        if "slice" in bars:
-                            cfg.se_frames[-1].set_slice(int(bars[3]))
+                                cfg.se_frames[-1].set_slice(int(bars[3]))
+                    elif filetype in [cfg.filetype_semodel]:
+                        SegmentationEditor.load_model(bars[1])
 
             self.window.bring_to_front()
 
@@ -693,6 +699,13 @@ class SegmentationEditor:
                             if _:
                                 s.pixel_size = pxs_ang / 10.0
                             imgui.end_menu()
+                        if imgui.menu_item("Flip")[0]:
+                            with mrcfile.new(os.path.splitext(s.path)[0]+'_flipped.mrc', overwrite=True) as f:
+                                volume = mrcfile.read(s.path)
+                                volume = np.swapaxes(volume, 0, 1)
+                                f.set_data(volume)
+                                f.voxel_size = s.pixel_size * 10.0
+                            self.import_dataset(os.path.splitext(s.path)[0]+'_flipped.mrc')
                         imgui.end_popup()
                     self.tooltip(f"{s.title}\nPixel size: {s.pixel_size * 10.0:.4f} Angstrom\nLocation: {s.path}")
                     if _change and _selected:
@@ -730,8 +743,8 @@ class SegmentationEditor:
                     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                     imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_TEXT)
 
-                    _minc, sef.contrast_lims[0] = imgui.slider_float("min", sef.contrast_lims[0], sef.hist_bins[0], sef.hist_bins[-1], format='min %.1f')
-                    _maxc, sef.contrast_lims[1] = imgui.slider_float("max", sef.contrast_lims[1], sef.hist_bins[0], sef.hist_bins[-1], format='max %.1f')
+                    _minc, sef.contrast_lims[0] = imgui.slider_float("min", sef.contrast_lims[0], sef.hist_bins[0], sef.hist_bins[-1], format='min %.2f')
+                    _maxc, sef.contrast_lims[1] = imgui.slider_float("max", sef.contrast_lims[1], sef.hist_bins[0], sef.hist_bins[-1], format='max %.2f')
                     if self.active_tab == "Render":
                         _, SegmentationEditor.PICKING_FRAME_ALPHA = imgui.slider_float("alpha", SegmentationEditor.PICKING_FRAME_ALPHA, 0.0, 1.0, format="alpha %.1f")
                     if _minc or _maxc:
@@ -868,7 +881,7 @@ class SegmentationEditor:
                         imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
                         imgui.push_item_width(cw - 40)
                         pxs = cfg.se_active_frame.pixel_size
-                        _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{f.brush_size:.1f} px / {2 * f.brush_size * pxs:.1f} nm ")
+                        _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{2 * f.brush_size:.1f} px / {2 * f.brush_size * pxs:.1f} nm ")
                         if f.magic:
                             _, f.magic_strength = imgui.slider_float("flood", f.magic_strength, 1.0, 100.0, format=f"{f.magic_strength:.1f}%% sensitivity")
                         _, f.alpha = imgui.slider_float("alpha", f.alpha, 0.0, 1.0, format="%.2f")
@@ -1052,8 +1065,8 @@ class SegmentationEditor:
 
 
                 imgui.text("Set parameters")
-                imgui.begin_child("params", 0.0, 60, True)
-                imgui.push_item_width(cw - 53)
+                imgui.begin_child("params", 0.0, 62, True)
+                imgui.push_item_width(cw - 58)
                 _, self.trainset_boxsize = imgui.slider_int("boxes", self.trainset_boxsize, 8, 128, format=f"{self.trainset_boxsize} pixel")
                 #_, SegmentationEditor.trainset_apix = imgui.slider_float("A/pix", SegmentationEditor.trainset_apix, 1.0, 20.0, format=f"{SegmentationEditor.trainset_apix:.2f}")
                 imgui.pop_item_width()
@@ -1516,10 +1529,14 @@ class SegmentationEditor:
                     # find segmentations in the selected dataset's folder.
 
 
-                    files = glob.glob(os.path.join(SegmentationEditor.seg_folder, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
-                    print(f"Looking for segmentation.mrc's using filename template ", os.path.join(SegmentationEditor.seg_folder, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
+                    files = []
+                    directories = cfg.settings["SEARCH_DIRECTORIES"] + [SegmentationEditor.seg_folder]
+                    print(f'Searching for segmentations related to {se_frame.path} in:')
+                    for d in directories:
+                        files += glob.glob(os.path.join(d, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
+                        print(f"\t", os.path.join(d, os.path.basename(os.path.splitext(se_frame.path)[0]) + "__*.mrc"))
                     for f in sorted(files):
-                        print(f)
+                        print(f'\t{f}')
                         cfg.se_surface_models.append(SurfaceModel(f, se_frame.pixel_size))
                     # set the size of the volume spanning box
                     w, h, d = se_frame.width / 2, se_frame.height / 2, se_frame.n_slices / 2
@@ -1913,6 +1930,12 @@ class SegmentationEditor:
                                                  "where model predictions are typically the best quality.")
                                     imgui.end_menu()
                             imgui.end_menu()
+                        if imgui.begin_menu("TTA multiplicity"):
+                            for i in range(1, 9):
+                                if imgui.menu_item(f'{i}', None, cfg.settings["TEST_TIME_AUGMENTATIONS"] == i)[0]:
+                                    cfg.edit_setting("TEST_TIME_AUGMENTATIONS", i)
+                            imgui.end_menu()
+
                         if imgui.menu_item("Trim edges", None, cfg.settings["TRIM_EDGES"] == 1)[0]:
                             cfg.edit_setting("TRIM_EDGES", 0 if cfg.settings["TRIM_EDGES"] == 1 else 1)
                         self.tooltip("When active, the margins of output segmentations are forced to zero.\n"
@@ -1993,6 +2016,18 @@ class SegmentationEditor:
                             _, self.camera3d.pitch = imgui.input_float("Pitch", self.camera3d.pitch, 5.0, 20.0)
                             if _:
                                 self.camera3d.on_update()
+                            imgui.end_menu()
+                        if imgui.begin_menu("Search directories"):
+                            for d in cfg.settings["SEARCH_DIRECTORIES"]:
+                                if imgui.begin_menu(d):
+                                    if imgui.menu_item("Remove")[0]:
+                                        cfg.settings["SEARCH_DIRECTORIES"].remove(d)
+                                        cfg.edit_setting("SEARCH_DIRECTORIES", cfg.settings["SEARCH_DIRECTORIES"])
+                                    imgui.end_menu()
+                            if imgui.menu_item("Add")[0]:
+                                d = filedialog.askdirectory()
+                                if isinstance(d, str) and d != "":
+                                    cfg.settings["SEARCH_DIRECTORIES"].append(d)
                             imgui.end_menu()
                         imgui.end_menu()
 
@@ -2813,7 +2848,8 @@ class SegmentationEditor:
                 datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*__{feature.title}.mrc'))
             else:
                 se_frame = cfg.se_active_frame
-                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'*{os.path.splitext(se_frame.title)[0]}*__{feature.title}.mrc'))[0]
+                print(os.path.join(SegmentationEditor.seg_folder, f'{se_frame.title}__{feature.title}.mrc'))
+                datasets = glob.glob(os.path.join(SegmentationEditor.seg_folder, f'{se_frame.title}__{feature.title}.mrc'))[0]
 
             # TODO: remove datasets that aren't open in Ais
 
@@ -4259,7 +4295,7 @@ class QueuedExtract:
     def do_export(self, process):
         try:
             out_path = os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0]+"_coords.tsv")
-            get_maxima_3d_watershed(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, out_path=out_path, process=self.process, binning=self.binning, output_star=self.star_format)
+            pick_particles(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, out_path=out_path, process=self.process, binning=self.binning, output_star=self.star_format)
             for s in cfg.se_surface_models:
                 if s.path == self.path:
                     s.find_coordinates()

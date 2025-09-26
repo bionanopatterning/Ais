@@ -4,7 +4,7 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
 from tensorflow.keras.optimizers import Adam
 
 
-title = "cryoPom-comb"
+title = "cryoPom-dice"
 include = True
 
 

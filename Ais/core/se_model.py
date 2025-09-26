@@ -56,7 +56,7 @@ class SEModel:
         self.box_size = -1
         self.model = None
         self.model_enum = SEModel.DEFAULT_MODEL_ENUM
-        self.epochs = 25
+        self.epochs = 50
         self.batch_size = 32
         self.train_data_path = "(path to training dataset)"
         self.active = True
@@ -70,7 +70,7 @@ class SEModel:
         self.background_process_train = None
         self.background_process_apply = None
         self.n_parameters = 0
-        self.n_copies = 4
+        self.n_copies = 10
         self.excess_negative = -100
         self.info = ""
         self.info_short = ""
@@ -459,6 +459,8 @@ class SEModel:
         out_image = out_image[:w, :h]
         return out_image
 
+
+
     def apply_to_slice(self, image, pixel_size):
         if self.compilation_mode == 'training' and self.background_process_train is None and cfg.settings["TILED_MODE"]==0:
             self.toggle_inference()
@@ -470,9 +472,21 @@ class SEModel:
             image -= np.mean(image)
             image /= np.std(image)
             image = np.pad(image, ((0, 32 - (image.shape[0] % 32)), (0, 32 - (image.shape[1] % 32))))
-            segmentation = np.squeeze(self.model.predict(image[np.newaxis, :, :]))[:j, :k]
-            print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice: {time.time() - start_time:.3f} s.")
-        else:  # original Ais gui segmentation way
+            segmentation = np.zeros_like(image)
+            _rot = [0, 1, 2, 3, 0, 1, 2, 3]
+            _flip = [0, 0, 0, 0, 1, 1, 1, 1]
+            for i in range(cfg.settings['TEST_TIME_AUGMENTATIONS']):
+                tta_img = np.rot90(image, k=_rot[i], axes=(0, 1))
+                if _flip[i]:
+                    tta_img = np.flip(tta_img, axis=0)
+                tta_img_segmented = np.squeeze(self.model.predict(tta_img[np.newaxis, :, :]))
+                if _flip[i]:
+                    tta_img_segmented = np.flip(tta_img_segmented, axis=0)
+                tta_img_segmented = np.rot90(tta_img_segmented, k=-_rot[i], axes=(0, 1))
+                segmentation += tta_img_segmented
+            segmentation = segmentation[:j, :k] / cfg.settings['TEST_TIME_AUGMENTATIONS']
+            print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice: {time.time() - start_time:.3f} s (multiplicity {cfg.settings['TEST_TIME_AUGMENTATIONS']}).")
+        else:  # original Ais in-gui segmentation way
             boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
             seg_boxes = np.squeeze(self.model.predict(boxes))
             segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)

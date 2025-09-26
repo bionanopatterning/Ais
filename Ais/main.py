@@ -5,13 +5,13 @@ import tkinter as tk
 import argparse
 import time
 
+# TODO: in segment command add a -z_start and z-stop fractionl argument
 
 directory = os.path.join(os.path.dirname(__file__))
 directory = directory[:directory.rfind("\\")]
 sys.path.insert(0, os.path.abspath("../.."))
 sys.path.append(directory)
 cfg.root = os.path.join(os.path.dirname(__file__))
-
 
 def run_ais():
     tkroot = tk.Tk()
@@ -69,12 +69,13 @@ def main():
     pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
     pick_parser.add_argument('-v', '--verbose', required=False, type=int, default=0, help="Verbose (1 or 0)")
+    pick_parser.add_argument('-capp', '--pom-capp-config', required=False, type=str, default="", help="A Pom context-aware particle picking configuration file (optional).")
 
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
     train_parser.add_argument('-m', '--model_path', required=False, type=str, default='', help="(Optional) path to a previously saved model to continue training. Overrides -a argument.")
     train_parser.add_argument('-t', '--training_data', required=False, type=str, help="Path to the training data (.scnt) file")
-    train_parser.add_argument('-ou', '--output_directory', required=False, type=str, help="Directory to save the output")
+    train_parser.add_argument('-ou', '--output_directory', required=False, type=str, default='.', help="Directory to save the output")
     train_parser.add_argument('-gpu', '--gpus', required=False, default="0", type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,4,5)")
     train_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to use TensorFlow's distribute.MirroredStrategy() for training in parallel on multiple GPUs, or a single process using all GPUs.")
     train_parser.add_argument('-e', '--epochs', required=False, type=int, default=50, help="Number of epochs to train the model for (default: 50).")
@@ -114,10 +115,12 @@ def main():
                                           parallel=args.parallel,
                                           spacing_px=args.spacing_px,
                                           size_px=args.size_px,
-                                          verbose=args.verbose==1)
+                                          verbose=args.verbose==1,
+                                          pom_capp_config=args.pom_capp_config)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()
+                exit()
             else:
                 aiscli.train_model(training_data=args.training_data,
                                    output_directory=args.output_directory,

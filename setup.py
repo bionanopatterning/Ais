@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-
+import shutil
 # how to release:
 # UPDATE VERSION IN 3 PLACES: Ais/core/config.py, setup.py, docs/conf.py
 
@@ -7,14 +7,14 @@ from setuptools import setup, find_packages
 # python setup.py sdist
 # twine upload dist/*
 
-
+VERSION = '1.0.46'
 
 with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
 
 setup(
     name='Ais-cryoET',
-    version='1.0.44',
+    version=VERSION,
     packages=find_packages(),
     entry_points={'console_scripts': ['ais=Ais.main:main', 'ais-cryoet=Ais.main:main']},
     url='https://github.com/bionanopatterning/Ais',
@@ -35,7 +35,7 @@ setup(
         "numpy>=1.23.2,<2.0",
         "mrcfile>=1.4.3",
         "Pillow>=9.2.0",
-        "scipy>=1.9.1",
+        "scipy>=1.11.0",
         "tifffile>=2022.8.12",
         "dill>=0.3.5.1",
         "pyperclip>=1.8.2",
@@ -43,3 +43,4 @@ setup(
         "Pommie"
     ]
 )
+

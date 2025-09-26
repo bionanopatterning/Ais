@@ -71,7 +71,6 @@ def coords_from_tsv_to_star(tsv_path, delete_tsv=False):
     df['rlnMicrographName'] = tomo_name
     starfile.write({'particles': df}, star_path, overwrite=True)
     if delete_tsv:
-        print(f'Removing {tsv_path}')
         os.remove(tsv_path)
 
 
@@ -98,7 +97,7 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
+def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
     ## TODO: clean up
     """
     min_spacing: in nanometer
@@ -118,6 +117,10 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
         pixel_size = array_pixel_size
     if data.dtype == np.float32:
         threshold /= 255
+    if data.dtype == np.int8:
+        threshold /= 2
+
+    data = data.astype(np.float32)
     if binning > 1:
         z, y, x = data.shape
         b = int(binning)
@@ -143,7 +146,8 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
         binary_vol[labeled == sb] = 0
 
     # find maxima in distance map
-    print(f'Computing distance transform of {mrcpath}')
+    if verbose:
+        print(f'Computing distance transform of {mrcpath}')
     distance = distance_transform_edt(binary_vol, return_distances=True)
     if process:
         process.set_progress(0.9)
@@ -160,27 +164,6 @@ def get_maxima_3d_watershed(mrcpath="", threshold=128, margin=16, min_spacing=10
 
     particles.sort(key=lambda x: x.score, reverse=True)
     coordinates = [p.coordinate for p in particles]
-
-    remove = list()
-    i = 0
-    while i < len(coordinates):
-        for j in range(0, i):
-            if i in remove:
-                continue
-            p = np.array(coordinates[i])
-            q = np.array(coordinates[j])
-            d = np.sum((p - q) ** 2) ** 0.5 * pixel_size
-            if d < min_spacing:
-                remove.append(j)
-        i += 1
-
-    for j, c in enumerate(coordinates):
-        if np.any(c < margin) or np.any(c > (np.array(data.shape) - margin)):
-            remove.append(j)
-    remove.sort()
-
-    for i in reversed(remove):
-        coordinates.pop(i)
 
     if not return_coords:
         if not save_txt:

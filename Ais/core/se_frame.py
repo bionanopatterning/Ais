@@ -64,7 +64,6 @@ class SEFrame:
             self.contrast_lims = [0, 512.0]
             self.compute_autocontrast()
             self.compute_histogram()
-            self.toggle_interpolation()
             self.set_slice(self.n_slices // 2, True)
 
     def __getstate(self):
@@ -642,7 +641,6 @@ class SurfaceModel:
         self.process = None
         self.pixel_size = pixel_size
         self.center_xyz = np.array([header.nx, header.ny, header.nz])
-        self.coordinates = None  # obsolete?
         self.initialized = False
 
         self.particles = list()
@@ -661,20 +659,15 @@ class SurfaceModel:
     def find_coordinates(self):
         # is there a coordinate file?
         self.particles = list()
-        tsv_file = os.path.splitext(self.path)[0]+"_coords.tsv"
-        star_file = os.path.splitext(self.path)[0] + "_coords.star"
-        if os.path.exists(tsv_file):
-            print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
-            with open(tsv_file, 'r') as f:
-                for line in f:
-                    xyz = [int(val)-1 for val in line.strip().split('\t')]
-                    self.particles.append(xyz)
-        elif os.path.exists(star_file):
-            print(f"Ais.renderer: loading coordinates for SurfaceModel object with path {self.path}")
-            with open(star_file, 'r') as f:
-                coordinates = coords_from_star(star_file)
+        star_file = os.path.basename(os.path.splitext(self.path)[0]) + "_coords.star"
+        for d in cfg.settings["SEARCH_DIRECTORIES"] + [os.path.dirname(self.path)]:
+            coordinate_file = os.path.join(d, star_file)
+            if os.path.exists(coordinate_file):
+                coordinates = coords_from_star(coordinate_file)
                 if isinstance(coordinates, list):
                     self.particles = coordinates
+                    print(f"\t\tloading coordinates for SurfaceModel object with path {self.path}")
+                    return
 
     def set_colour(self):
         for feature in cfg.feature_library:
@@ -719,7 +712,9 @@ class SurfaceModel:
             self.data[:, :, :MARGIN] = 0
             self.data[:, :, -MARGIN:] = 0
             if self.data.dtype == np.float32:
-                self.data *= 255
+                self.data *= 255.0
+            if self.data.dtype == np.int8:
+                self.data = self.data.astype(np.float32) * 255.0 / 127.0
 
         if self.latest_bin != self.bin and self.bin != 1:
             self.latest_bin = self.bin
