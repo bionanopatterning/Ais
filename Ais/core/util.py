@@ -170,27 +170,17 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
             return len(coordinates)
 
         if out_path is None:
-            out_path = os.path.splitext(mrcpath)[0] + "_coords.tsv"
+            out_path = os.path.splitext(mrcpath)[0] + "_coords.star"
+        print(f"Saving coordinates to {out_path}")
 
-        if not output_star:
-            if verbose:
-                print(f"Saving coordinates to {out_path}")
-        else:
-            if verbose:
-                print(f"Saving coordinates to {os.path.splitext(out_path)[0]+'.star'}")
-        with open(out_path, 'w') as out_file:
-            for i in range(len(coordinates)):
-                x = int(coordinates[i][2] * binning)
-                y = int(coordinates[i][1] * binning)
-                z = int(coordinates[i][0] * binning)
-                out_file.write(f"{x}\t{y}\t{z}\n")
-        if output_star:
-            if verbose:
-                print("Reformatting coordinates to Relion .star format")
-            coords_from_tsv_to_star(out_path, delete_tsv=True)
+        df = pd.DataFrame(columns=['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ', 'rlnMicrographName'])
+        micrograph_name = os.path.basename(mrcpath).split("__")[0]
+        for i in range(len(coordinates)):
+            df.loc[len(df)] = [coordinates[i][2] * binning, coordinates[i][1] * binning, coordinates[i][0] * binning, micrograph_name]
+        starfile.write({'particles': df}, out_path, overwrite=True)
         if process:
             process.set_progress(0.99)
-        return len(coordinates)
+        return len(coordinates), 0
     else:
         if process:
             process.set_progress(0.99)

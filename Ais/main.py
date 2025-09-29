@@ -67,6 +67,7 @@ def main():
     pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
     pick_parser.add_argument('-size', required=False, type=float, default=10.0, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in cubic voxel units instead.")
     pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
+    pick_parser.add_argument('-filament', required=False, action='store_true', help="If set, pick in filament mode rather than blob mode.")
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
     pick_parser.add_argument('-v', '--verbose', required=False, type=int, default=0, help="Verbose (1 or 0)")
     pick_parser.add_argument('-capp', '--pom-capp-config', required=False, type=str, default="", help="A Pom context-aware particle picking configuration file (optional).")
@@ -116,7 +117,8 @@ def main():
                                           spacing_px=args.spacing_px,
                                           size_px=args.size_px,
                                           verbose=args.verbose==1,
-                                          pom_capp_config=args.pom_capp_config)
+                                          pom_capp_config=args.pom_capp_config,
+                                          filament=args.filament)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()

@@ -6,12 +6,11 @@ from scipy.ndimage import label
 from scipy.interpolate import splprep, splev
 from skimage.morphology import skeletonize
 from collections import deque
+import pandas as pd
 from scipy.ndimage import gaussian_filter
 import json
 from copy import copy
 import starfile
-
-INSTANCE_TEMPLATE_N = 32
 
 
 def prune_skeleton(skel):
@@ -180,12 +179,6 @@ class Filament:
         tck_new, _ = splprep(coords_uniform, u=np.linspace(0, 1, n_samples), s=0, k=self.tck[2])
         self.tck = tck_new
 
-    def unbin(self, b=2):
-        self.coords *= b
-        self.gen_spline()
-        self.linearize_spline()
-        return self
-
     def to_dict(self):
         return {"skeleton_coordinates": self.coords.tolist()}
 
@@ -235,85 +228,86 @@ class Filament:
         return np.array(splev(np.array(indices), self.tck)).T
 
 
+def bin_volume(vol, b):
+    j, k, l = vol.shape
+    vol = vol[:j // b * b, :k // b * b, :l // b * b]
+    vol = vol.reshape((j // b, b, k // b, b, l // b, b)).mean(axis=(1, 3, 5))
+    return vol
 
-def detect_filaments(filament_segmentation_path, out_path=None, save_labels=False):
-    """
-    input: path to a semantic segmentation volume.
-    output: saves a json file with filament paths.
-    """
-    volume = mrcfile.read(filament_segmentation_path)
-    print('Labelling volume')
-    labels, _ = label(volume > 128)
 
-    print('Beginning parametrization')
+#
+# def detect_filaments(filament_segmentation_path, out_path=None, save_labels=False):
+#     """
+#     input: path to a semantic segmentation volume.
+#     output: saves a json file with filament paths.
+#     """
+#     volume = mrcfile.read(filament_segmentation_path)
+#     print('Labelling volume')
+#     labels, _ = label(volume > 128)
+#
+#     print('Beginning parametrization')
+#     filaments = parameterize_instances(labels)
+#
+#     if save_labels:
+#         with mrcfile.new(filament_segmentation_path.replace('.mrc', '_labels.mrc'), overwrite=True) as f:
+#             f.set_data(labels.astype(np.float32))
+#
+#     filaments_out = dict()
+#     for j, f in enumerate(filaments):
+#         if f.valid:
+#             filaments_out[j] = f.to_dict()
+#
+#     out_path = os.path.splitext(filament_segmentation_path)[0]+"__filaments.json" if out_path is None else out_path
+#     with open(out_path, 'w') as f:
+#         json.dump(filaments_out, f, indent=1)
+#     return out_path
+
+def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, margin, pixel_size=10.0):
+    """
+    volume_path: path to a semantic segmentation volume.
+    threshold: threshold to binarize the volume (0-255)
+    spacing: spacing between picked points along the filament (in nm)
+    size: minimum blob size (in nm3)
+    binning: binning factor to apply to the volume before processing
+    margin: margin (in nm) to exclude points too close to the border of the volume
+    """
+    volume = mrcfile.read(mrcpath)
+
+    if volume.dtype == np.float32:
+        threshold /= 255
+    elif volume.dtype == np.int8:
+        threshold /= 2
+
+    volume = volume.astype(np.float32)
+    volume = bin_volume(volume, binning)
+    pixel_size *= binning
+    margin = int(margin / pixel_size)
+
+    labels, _ = label(volume > threshold)
+    group_sizes = np.bincount(labels.ravel())
+    for n in np.where(group_sizes < (size_nm / (pixel_size**3)))[0].tolist():
+        labels[labels == n] = 0
+
     filaments = parameterize_instances(labels)
 
-    if save_labels:
-        with mrcfile.new(filament_segmentation_path.replace('.mrc', '_labels.mrc'), overwrite=True) as f:
-            f.set_data(labels.astype(np.float32))
-
-    filaments_out = dict()
+    df = pd.DataFrame(columns=['rlnCoordinateZ', 'rlnCoordinateY', 'rlnCoordinateX', 'aisFilamentID'])
     for j, f in enumerate(filaments):
-        if f.valid:
-            filaments_out[j] = f.to_dict()
+        c = f.sample_coordinates(spacing=spacing_nm / pixel_size, offset=spacing_nm / pixel_size / 2.0)
+        for z, y, x in c:
+            df.loc[len(df)] = [z, y, x, j]
 
-    out_path = os.path.splitext(filament_segmentation_path)[0]+"__filaments.json" if out_path is None else out_path
-    with open(out_path, 'w') as f:
-        json.dump(filaments_out, f, indent=1)
-    return out_path
+    j, k, l = volume.shape
+    df = df[(df['rlnCoordinateX'] > margin) & (df['rlnCoordinateX'] < j - margin) &
+            (df['rlnCoordinateY'] > margin) & (df['rlnCoordinateY'] < k - margin) &
+            (df['rlnCoordinateZ'] > margin) & (df['rlnCoordinateZ'] < l - margin)]
 
-import glob
-import pandas as pd
+    df['rlnCoordinateX'] *= binning
+    df['rlnCoordinateY'] *= binning
+    df['rlnCoordinateZ'] *= binning
+    df['rlnMicrographName'] = os.path.basename(mrcpath).split("__")[0]+".mrc"
+    starfile.write({'particles': df}, out_path, overwrite=True)
 
-volumes = glob.glob('/cephfs/mlast/compu_projects/mt_tip_pick/segmented/*.mrc')
-for v in volumes:
-    print(v)
-    if not os.path.exists(v.replace('.mrc', '__filaments.json')):
-        detect_filaments(v)
-
-files = glob.glob('/cephfs/mlast/dev/ais_filament/segmentations/*filaments.json')
-
-all_coords = list()
-for file in files:
-    filaments = dict()
-    coordinates = list()
-    tomo = os.path.basename(file).split('__')[0]
-    with open(file, 'r') as _:
-        data = json.load(_)
-        for j in data:
-            filaments[j] = Filament.from_dict(data[j])
-            if filaments[j].length < 50:
-                continue
-            tip_coordinates = filaments[j].sample_coordinates_normalized_indices([0.0, 1.0])
-
-            for k, l, m in tip_coordinates:
-                all_coords.append((m, l, k, tomo))
-                print(all_coords[-1])
-
-# Try making a fake Pom project.
-root = '/cephfs/mlast/dev/ais_filament/'
-os.makedirs(root, exist_ok=True)
-os.makedirs(os.path.join(root, 'capp'), exist_ok=True)
-os.makedirs(os.path.join(root, 'capp', 'mt_forson'), exist_ok=True)
-os.system(f'cd {root}')
-os.system(f'pom')
-
-with open(os.path.join(root, 'capp', 'mt_forson', 'config.json'), 'w') as f:
-    json.dump({'target': '', 'job_name': 'mt_forson', 'context_elements': []}, f)
-
-with open(os.path.join(root, 'project_configuration.json'), 'r') as f:
-    cfg = json.load(f)
-    cfg['root'] = root
-    cfg['tomogram_dir'] = 'tomos'
-
-with open(os.path.join(root, 'project_configuration.json'), 'w') as f:
-    json.dump(cfg, f, indent=4)
-
-with open(os.path.join(root, 'capp', 'mt_forson', 'all_particles.tsv'), 'w') as f:
-    f.write('X\tY\tZ\ttomo\n')
-    for _ in all_coords:
-        f.write(f'{int(_[0])}\t{int(_[1])}\t{int(_[2])}\t{_[3]}\n')
-
+    return len(df), len(filaments)
 
 
 
