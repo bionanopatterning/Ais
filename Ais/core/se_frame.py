@@ -381,6 +381,8 @@ class Segmentation:
                        (0 / 255, 247 / 255, 255 / 255),
                        (0 / 255, 255 / 255, 0 / 255)]
 
+    __debug_easymode_annotate_filaments_previous_coordinate = None
+
     def __init__(self, parent_frame, title):
         uid_counter = next(Segmentation.idgen)
         self.uid = int(datetime.datetime.now().strftime('%Y%m%d%H%M%S%f') + "000") + uid_counter
@@ -398,7 +400,7 @@ class Segmentation:
         self.brush_size = 10.0
         self.show_boxes = True
         self.magic = False
-        self.magic_strength = 95.0
+        self.magic_strength = 10.0
         self.box_size = 64
         self.box_size_nm = self.box_size * self.parent.pixel_size
         self.slices = dict()
@@ -483,6 +485,7 @@ class Segmentation:
                 self.texture.update(self.data, self.width, self.height)
                 self.edited_slices.append(self.current_slice)
         else:
+            print('DEBUG adding new slice to self slices')
             self.slices[self.current_slice] = np.zeros((self.height, self.width), dtype=np.uint8)
             self.data = self.slices[self.current_slice]
             self.texture.update(self.data, self.width, self.height)

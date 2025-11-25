@@ -7,21 +7,17 @@ from scipy.interpolate import splprep, splev
 from skimage.morphology import skeletonize
 from collections import deque
 import pandas as pd
-from scipy.ndimage import gaussian_filter
+from scipy.spatial.transform import Rotation as R
 import json
-from copy import copy
 import starfile
 
 
-def prune_skeleton(skel):
+def prune_skeleton(skel, min_branch_length=5):
     coords = np.column_stack(np.where(skel))
     if coords.size == 0:
-        return np.zeros_like(skel, dtype=bool)
+        return []
 
-    voxel_to_index = {}
-    for i, c in enumerate(coords):
-        voxel_to_index[tuple(c)] = i
-
+    voxel_to_index = {tuple(c): i for i, c in enumerate(coords)}
     neighbor_shifts = [
         (dz, dy, dx)
         for dz in (-1, 0, 1)
@@ -39,22 +35,63 @@ def prune_skeleton(skel):
             if nbr in voxel_set:
                 adjacency[i].append(voxel_to_index[nbr])
 
-    def bfs_farthest(start_idx):
-        visited = set([start_idx])
-        queue = deque([(start_idx, 0)])
-        farthest_node = start_idx
+    # Iteratively remove short terminal branches
+    keep = set(range(len(coords)))
+    changed = True
+    while changed:
+        changed = False
+        endpoints = [i for i in keep if i < len(adjacency) and len([n for n in adjacency[i] if n in keep]) == 1]
 
+        for ep in endpoints:
+            path = [ep]
+            current = ep
+            while len(path) < min_branch_length:
+                neighbors = [n for n in adjacency[current] if n in keep and n not in path]
+                if not neighbors:
+                    break
+                current = neighbors[0]
+                path.append(current)
+                # Stop if we hit a branch point or another endpoint
+                active_neighbors = [n for n in adjacency[current] if n in keep]
+                if len(active_neighbors) != 2:
+                    break
+
+            if len(path) < min_branch_length:
+                keep -= set(path)
+                changed = True
+
+    # Now split at remaining branch points
+    branch_points = {i for i in keep if len([n for n in adjacency[i] if n in keep]) > 2}
+    visited = set(branch_points)
+    components = []
+
+    for start in keep:
+        if start in visited:
+            continue
+        component = []
+        queue = deque([start])
         while queue:
-            node, dist = queue.popleft()
-            farthest_node = node
+            node = queue.popleft()
+            if node in visited:
+                continue
+            visited.add(node)
+            component.append(node)
             for nbr in adjacency[node]:
-                if nbr not in visited:
-                    visited.add(nbr)
-                    queue.append((nbr, dist + 1))
-        return farthest_node
+                if nbr in keep and nbr not in visited:
+                    queue.append(nbr)
+        if len(component) >= 4:
+            components.append(component)
 
-    def bfs_path(start, end):
-        visited = set([start])
+    results = []
+    for component in components:
+        comp_set = set(component)
+        comp_adj = {i: [n for n in adjacency[i] if n in comp_set] for i in component}
+        endpoints = [i for i in component if len(comp_adj[i]) == 1]
+        if len(endpoints) < 2:
+            continue
+
+        start, end = endpoints[0], endpoints[1]
+        visited_comp = {start}
         parent = {start: None}
         queue = deque([start])
 
@@ -62,50 +99,64 @@ def prune_skeleton(skel):
             node = queue.popleft()
             if node == end:
                 break
-            for nbr in adjacency[node]:
-                if nbr not in visited:
-                    visited.add(nbr)
+            for nbr in comp_adj[node]:
+                if nbr not in visited_comp:
+                    visited_comp.add(nbr)
                     parent[nbr] = node
                     queue.append(nbr)
 
-        # Reconstruct path from end -> start
         path_indices = []
         cur = end
         while cur is not None:
             path_indices.append(cur)
-            cur = parent.get(cur, None)
+            cur = parent.get(cur)
         path_indices.reverse()
-        return path_indices
 
-    e2 = bfs_farthest(0)
-    e3 = bfs_farthest(e2)
-    path_indices = bfs_path(e2, e3)
+        out_vol = np.zeros_like(skel, dtype=bool)
+        for idx in path_indices:
+            z, y, x = coords[idx]
+            out_vol[z, y, x] = True
+        results.append(out_vol)
 
-    out_vol = np.zeros_like(skel, dtype=bool)
-    for idx in path_indices:
-        z, y, x = coords[idx]
-        out_vol[z, y, x] = True
-
-    return out_vol
+    return results if results else [np.zeros_like(skel, dtype=bool)]
 
 
-def parameterize_instances(labels):
-    filaments = list()
+def parameterize_instances(labels, min_branch_length_px=5):
+    filaments = []
     for j in range(1, int(labels.max()) + 1):
-        print(f'tracing filament {j}/{int(labels.max())}')
         mask = (labels == j)
         if not np.any(mask):
             continue
 
-        print(f'\tskeletonize')
         skel = skeletonize(mask)
-        print(f'\tprune')
-        skel = prune_skeleton(skel)
+        pruned_skels = prune_skeleton(skel, min_branch_length_px)
 
-        coords = np.column_stack(np.where(skel))
-        filaments.append(Filament(coords))
+        for pruned_skel in pruned_skels:
+            coords = np.column_stack(np.where(pruned_skel))
+            if len(coords) > 0:
+                filaments.append(Filament(coords))
 
     return filaments
+
+
+def enforce_tangent_consistency(tangent_xyz):
+    t = tangent_xyz.copy()
+    for i in range(1, t.shape[0]):
+        if np.dot(t[i], t[i-1]) < 0:   # angle > 90° → flip
+            t[i] *= -1
+    return t
+
+
+def tangent_to_euler_zyz(tangent_xyz):
+    tangent_xyz = np.atleast_2d(tangent_xyz)
+    tangent_xyz = tangent_xyz / np.linalg.norm(tangent_xyz, axis=1, keepdims=True)
+
+    tilt = np.degrees(np.arccos(tangent_xyz[:, 2]))
+    psi = np.degrees(np.arctan2(tangent_xyz[:, 1], -tangent_xyz[:, 0]))
+    rot = np.zeros_like(tilt)
+
+    return np.column_stack((rot, tilt, psi))
+
 
 
 class Filament:
@@ -179,6 +230,12 @@ class Filament:
         tck_new, _ = splprep(coords_uniform, u=np.linspace(0, 1, n_samples), s=0, k=self.tck[2])
         self.tck = tck_new
 
+    def unbin(self, b=2):
+        self.coords *= b
+        self.gen_spline()
+        self.linearize_spline()
+        return self
+
     def to_dict(self):
         return {"skeleton_coordinates": self.coords.tolist()}
 
@@ -208,24 +265,28 @@ class Filament:
         filament_coords = np.array(splev(np.linspace(0, 1, 100), self.tck))
         plt.plot(filament_coords[2], filament_coords[1], linewidth=10, alpha=0.2)
 
-    def sample_coordinates(self, spacing, offset=0):
-        """
-        spacing: spacing (in px) along filament between coordinates.
-        offset: offset (in px <TODO: check>) to start sampling.
-        """
-        x = np.arange(offset, 1.0, spacing / self.length)
-        if x.any():
-            return np.array(splev(x, self.tck)).T
-        return np.array([])
+    def sample_coordinates(self, spacing, offset=0, curvature_ruler_vox=None):
+        if self.length is None or self.length == 0.0:
+            return np.array([])
 
-    def sample_coordinates_normalized_indices(self, indices):
-        """
-        indices: list of normalized coordinates to sample along the spline (0.0 would be the filament start position, 1.0 the end; values < 0.0 and > 1.0 are also ok).
+        x = np.arange(offset, self.length, spacing) / self.length
+        if not x.any():
+            return np.array([])
 
-        """
-        if isinstance(indices, int) or isinstance(indices, float):
-            indices = [indices]
-        return np.array(splev(np.array(indices), self.tck)).T
+        coords = np.array(splev(x, self.tck)).T  # [z, y, x]
+
+        tangents = np.array(splev(x, self.tck, der=1)).T
+        tangents_xyz = tangents[:, [2, 1, 0]]  # normal vector in [x, y, z]
+        tangents_xyz - tangents_xyz / (np.linalg.norm(tangents_xyz, axis=1, keepdims=True) + 1e-12)
+        tangents_xyz = enforce_tangent_consistency(tangents_xyz)
+        euler_angles = tangent_to_euler_zyz(tangents_xyz)
+
+        drdx = np.array(splev(x, self.tck, der=1)).T
+        ddrddx = np.array(splev(x, self.tck, der=2)).T
+        radius_of_curvature = (np.linalg.norm(drdx, axis=1)**3 / np.linalg.norm(np.cross(drdx, ddrddx), axis=1))
+        radius_of_curvature = radius_of_curvature[:, None]
+
+        return np.hstack([coords, euler_angles, radius_of_curvature])
 
 
 def bin_volume(vol, b):
@@ -235,34 +296,7 @@ def bin_volume(vol, b):
     return vol
 
 
-#
-# def detect_filaments(filament_segmentation_path, out_path=None, save_labels=False):
-#     """
-#     input: path to a semantic segmentation volume.
-#     output: saves a json file with filament paths.
-#     """
-#     volume = mrcfile.read(filament_segmentation_path)
-#     print('Labelling volume')
-#     labels, _ = label(volume > 128)
-#
-#     print('Beginning parametrization')
-#     filaments = parameterize_instances(labels)
-#
-#     if save_labels:
-#         with mrcfile.new(filament_segmentation_path.replace('.mrc', '_labels.mrc'), overwrite=True) as f:
-#             f.set_data(labels.astype(np.float32))
-#
-#     filaments_out = dict()
-#     for j, f in enumerate(filaments):
-#         if f.valid:
-#             filaments_out[j] = f.to_dict()
-#
-#     out_path = os.path.splitext(filament_segmentation_path)[0]+"__filaments.json" if out_path is None else out_path
-#     with open(out_path, 'w') as f:
-#         json.dump(filaments_out, f, indent=1)
-#     return out_path
-
-def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, margin, pixel_size=10.0):
+def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, margin, pixel_size=1.0, min_length=50.0):
     """
     volume_path: path to a semantic segmentation volume.
     threshold: threshold to binarize the volume (0-255)
@@ -270,6 +304,8 @@ def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, ma
     size: minimum blob size (in nm3)
     binning: binning factor to apply to the volume before processing
     margin: margin (in nm) to exclude points too close to the border of the volume
+    pixel_size: original pixel size of the volume (in nm)
+    min_length: minimum length of filaments to keep (in nm)
     """
     volume = mrcfile.read(mrcpath)
 
@@ -288,18 +324,19 @@ def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, ma
     for n in np.where(group_sizes < (size_nm / (pixel_size**3)))[0].tolist():
         labels[labels == n] = 0
 
-    filaments = parameterize_instances(labels)
+    filaments = parameterize_instances(labels, int(min_length // pixel_size))
 
-    df = pd.DataFrame(columns=['rlnCoordinateZ', 'rlnCoordinateY', 'rlnCoordinateX', 'aisFilamentID'])
+    df = pd.DataFrame(columns=['rlnCoordinateZ', 'rlnCoordinateY', 'rlnCoordinateX', 'rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi', 'aisRadiusOfCurvature', 'aisLog10RadiusOfCurvature', 'aisFilamentID'])
     for j, f in enumerate(filaments):
         c = f.sample_coordinates(spacing=spacing_nm / pixel_size, offset=spacing_nm / pixel_size / 2.0)
-        for z, y, x in c:
-            df.loc[len(df)] = [z, y, x, j]
+        for z, y, x, rot, tilt, psi, roc in c:
+            _roc = roc * pixel_size * 10.0
+            df.loc[len(df)] = [z, y, x, rot, tilt, psi, _roc, np.log10(_roc), int(j)]
 
     j, k, l = volume.shape
-    df = df[(df['rlnCoordinateX'] > margin) & (df['rlnCoordinateX'] < j - margin) &
+    df = df[(df['rlnCoordinateZ'] > margin) & (df['rlnCoordinateZ'] < j - margin) &
             (df['rlnCoordinateY'] > margin) & (df['rlnCoordinateY'] < k - margin) &
-            (df['rlnCoordinateZ'] > margin) & (df['rlnCoordinateZ'] < l - margin)]
+            (df['rlnCoordinateX'] > margin) & (df['rlnCoordinateX'] < l - margin)]
 
     df['rlnCoordinateX'] *= binning
     df['rlnCoordinateY'] *= binning
@@ -310,4 +347,5 @@ def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, ma
     return len(df), len(filaments)
 
 
-
+if __name__ == "__main__":
+    pick_filament('Z:/compu_projects/easymode/segmented/20230908_lmla003_ts_006_10.00Apx__microtubule.mrc', 'C:/Users/Mart Last/Desktop/temp.star', 128, 10, 100, 2, 16, pixel_size=1.0, min_length=10.0)

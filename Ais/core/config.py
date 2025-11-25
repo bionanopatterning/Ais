@@ -13,7 +13,7 @@ glfw_initialized = False
 
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.0.46"
+version = "1.0.47"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -222,7 +222,7 @@ def apply_feature_library():
         for f in s.features:
             if f.title in flib_dict:
                 library_feature = flib_dict[f.title]
-                f.box_size = library_feature.box_size
+                f.set_box_size(library_feature.box_size)
                 f.brush_size = library_feature.brush_size
                 f.alpha = library_feature.alpha
                 f.colour = library_feature.colour
@@ -297,6 +297,7 @@ COLOUR_NEGATIVE = (0.8, 0.1, 0.1, 1.0)
 COLOUR_NEUTRAL = (0.6, 0.6, 0.6, 1.0)
 COLOUR_NEUTRAL_LIGHT = (0.8, 0.8, 0.8, 1.0)
 COLOUR_HIGHLIGHT = (1.0, 1.0, 0.1, 1.0)
+COLOUR_FLIB_HIGHLIGHT = (1.0, 0.9, 0.3, 0.3)
 COLOUR_SESSION_FEATURE = (0.94, 0.94, 0.94, 0.94)
 COLOUR_SESSION_FEATURE_BORDER = (0.0, 0.0, 0.0, 0.3)
 

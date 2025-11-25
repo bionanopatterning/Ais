@@ -97,9 +97,10 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, output_star=False, verbose=True):
+def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, verbose=True, centroid=False, min_particles=0):
     ## TODO: clean up
     """
+    Ais pick particles blob mode.
     min_spacing: in nanometer
     min_size: in cubic nanometer
     pixel_size: in nanometer
@@ -130,6 +131,7 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
         pixel_size *= b
         margin = margin // b
 
+
     min_distance = max(3, int(min_spacing / pixel_size))
     min_size = min_size / pixel_size ** 3
 
@@ -145,13 +147,6 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
     for sb in small_blobs:
         binary_vol[labeled == sb] = 0
 
-    # find maxima in distance map
-    if verbose:
-        print(f'Computing distance transform of {mrcpath}')
-    distance = distance_transform_edt(binary_vol, return_distances=True)
-    if process:
-        process.set_progress(0.9)
-    coordinates = peak_local_max(distance, min_distance=min_distance)
 
     class Particle:
         def __init__(self, coordinate, score):
@@ -159,11 +154,32 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
             self.score = score
 
     particles = list()
-    for c in coordinates:
-        particles.append(Particle(c, distance[c[0], c[1], c[2]]))
+
+    if not centroid:    # pick by distance transform peaks, particle score is distance to edge of blob.
+        distance = distance_transform_edt(binary_vol, return_distances=True)
+        coordinates = peak_local_max(distance, min_distance=min_distance)
+        for c in coordinates:
+            particles.append(Particle(c, distance[c[0], c[1], c[2]]))
+    else:               # pick by centroid of labeled regions, particle score is size of blob.
+        coordinates = []
+        scores = []
+        for label_id in range(1, n + 1):
+            if label_id in small_blobs:
+                continue
+            mask = labeled == label_id
+            coords = np.argwhere(mask)
+            if len(coords) > 0:
+                coordinates.append(coords.mean(axis=0))
+                scores.append(np.sum(mask))
+        coordinates = np.array(coordinates) if coordinates else np.empty((0, 3))
+        for c, s in zip(coordinates, scores):
+            particles.append(Particle(c, s))
 
     particles.sort(key=lambda x: x.score, reverse=True)
     coordinates = [p.coordinate for p in particles]
+
+    if len(coordinates) < min_particles:
+        return len(coordinates), 0
 
     if not return_coords:
         if not save_txt:
@@ -171,7 +187,6 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
 
         if out_path is None:
             out_path = os.path.splitext(mrcpath)[0] + "_coords.star"
-        print(f"Saving coordinates to {out_path}")
 
         df = pd.DataFrame(columns=['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ', 'rlnMicrographName'])
         micrograph_name = os.path.basename(mrcpath).split("__")[0]

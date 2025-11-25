@@ -54,6 +54,7 @@ class SEModel:
         self.compilation_mode = None
         self.inference_model = None
         self.box_size = -1
+        self.box_depth = 1
         self.model = None
         self.model_enum = SEModel.DEFAULT_MODEL_ENUM
         self.epochs = 50
@@ -113,6 +114,7 @@ class SEModel:
                 'apix': self.apix,
                 'compiled': self.compiled,
                 'box_size': self.box_size,
+                'box_depth': self.box_depth,
                 'model_enum': self.model_enum,
                 'epochs': self.epochs,
                 'batch_size': self.batch_size,
@@ -182,6 +184,7 @@ class SEModel:
                 self.apix = metadata['apix']
                 self.compiled = metadata['compiled']
                 self.box_size = metadata['box_size']
+                self.box_depth = metadata.get('box_depth', 1)
                 self.model_enum = metadata['model_enum']
                 self.epochs = metadata['epochs']
                 self.batch_size = metadata['batch_size']
@@ -459,19 +462,30 @@ class SEModel:
         out_image = out_image[:w, :h]
         return out_image
 
-
-
     def apply_to_slice(self, image, pixel_size):
         if self.compilation_mode == 'training' and self.background_process_train is None and cfg.settings["TILED_MODE"]==0:
             self.toggle_inference()
 
         start_time = time.time()
 
+        _j, _k = image.shape
+        if cfg.settings["DEBUG_PREPROC_BIN_2"]:
+            image = image[:_j // 2 * 2, :_k // 2 * 2].reshape(_j // 2, 2, _k // 2, 2).mean(axis=(1, 3))
+        elif cfg.settings["DEBUG_PREPROC_BIN_3"]:
+            image = image[:_j // 3 * 3, :_k // 3 * 3].reshape(_j // 3, 3, _k // 3, 3).mean(axis=(1, 3))
         if self.compilation_mode == 'inference' and cfg.settings["TILED_MODE"]==0:  # improved way of doing segmentation (250318)
+
             j, k = image.shape
             image -= np.mean(image)
             image /= np.std(image)
-            image = np.pad(image, ((0, 32 - (image.shape[0] % 32)), (0, 32 - (image.shape[1] % 32))))
+
+            pad_h_min = (32 - (image.shape[0] % 32)) % 32
+            pad_w_min = (32 - (image.shape[1] % 32)) % 32
+            pad_h = pad_h_min + 32
+            pad_w = pad_w_min + 32
+
+            image = np.pad(image, ((pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2)), mode='reflect')
+
             segmentation = np.zeros_like(image)
             _rot = [0, 1, 2, 3, 0, 1, 2, 3]
             _flip = [0, 0, 0, 0, 1, 1, 1, 1]
@@ -484,7 +498,7 @@ class SEModel:
                     tta_img_segmented = np.flip(tta_img_segmented, axis=0)
                 tta_img_segmented = np.rot90(tta_img_segmented, k=-_rot[i], axes=(0, 1))
                 segmentation += tta_img_segmented
-            segmentation = segmentation[:j, :k] / cfg.settings['TEST_TIME_AUGMENTATIONS']
+            segmentation = segmentation[pad_h//2:pad_h//2+j, pad_w//2:pad_w//2+k] / cfg.settings['TEST_TIME_AUGMENTATIONS']
             print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice: {time.time() - start_time:.3f} s (multiplicity {cfg.settings['TEST_TIME_AUGMENTATIONS']}).")
         else:  # original Ais in-gui segmentation way
             boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
@@ -498,8 +512,16 @@ class SEModel:
             segmentation[-margin:, :] = 0
             segmentation[:, :margin] = 0
             segmentation[:, -margin:] = 0
-        return segmentation
 
+
+        if cfg.settings["DEBUG_PREPROC_BIN_2"]:
+            from scipy.ndimage import zoom
+            segmentation = zoom(segmentation, (_j / segmentation.shape[0], _k / segmentation.shape[1]), order=1)
+        elif cfg.settings["DEBUG_PREPROC_BIN_3"]:
+            from scipy.ndimage import zoom
+            segmentation = zoom(segmentation, (_j / segmentation.shape[0], _k / segmentation.shape[1]), order=1)
+
+        return segmentation
 
     @staticmethod
     def load_models():

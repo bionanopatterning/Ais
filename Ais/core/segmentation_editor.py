@@ -121,6 +121,7 @@ class SegmentationEditor:
     FEATURE_LIB_OPEN_INCLUDE_SESSION = False
     FEATURE_LIB_ANNOTATION = True
     FEATURE_LIB_HIDE_DEACTIVATED_FEATURES = False
+    FEATURE_LIB_HIGHLIGHT_TEXT = ''
 
     POM_SYNCHRONIZE_INTERVAL = 0.5  # seconds
     POM_SYNCHRONIZE_TIMER = 0
@@ -153,6 +154,7 @@ class SegmentationEditor:
         self.trainset_num_boxes_positive = 0
         self.trainset_num_boxes_negative = 0
         self.trainset_boxsize = 64
+        self.trainset_boxdepth = 1
         self.show_trainset_boxes = False
         self.active_trainset_exports = list()
 
@@ -382,10 +384,10 @@ class SegmentationEditor:
                 idx = cfg.se_frames.index(active_frame) + 1
                 idx = min(idx, len(cfg.se_frames) - 1)
                 SegmentationEditor.set_active_dataset(cfg.se_frames[idx])
-            elif imgui.is_key_pressed(glfw.KEY_LEFT, True):
+            elif imgui.is_key_pressed(glfw.KEY_LEFT, True) and not SegmentationEditor.is_ctrl_down():
                 active_frame.set_slice(active_frame.current_slice - (5 if SegmentationEditor.is_shift_down() else 1))
                 SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
-            elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
+            elif imgui.is_key_pressed(glfw.KEY_RIGHT, True) and not SegmentationEditor.is_ctrl_down():
                 active_frame.set_slice(active_frame.current_slice + (5 if SegmentationEditor.is_shift_down() else 1))
                 SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
         active_feature = None
@@ -404,7 +406,7 @@ class SegmentationEditor:
         if self.active_tab == "Segmentation":
             if active_feature is not None:
                 if SegmentationEditor.is_ctrl_down() and active_feature is not None:
-                    active_feature.brush_size += self.window.scroll_delta[1]
+                    active_feature.brush_size += 2.5 * self.window.scroll_delta[1]
                     active_feature.brush_size = max([1, active_feature.brush_size])
                 if imgui.is_key_pressed(glfw.KEY_S) and not imgui.is_key_down(glfw.KEY_LEFT_CONTROL):
                     idx = 0 if active_feature not in active_frame.features else active_frame.features.index(active_feature)
@@ -881,11 +883,13 @@ class SegmentationEditor:
                         imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
                         imgui.push_item_width(cw - 40)
                         pxs = cfg.se_active_frame.pixel_size
-                        _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{2 * f.brush_size:.1f} px / {2 * f.brush_size * pxs:.1f} nm ")
+                        _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{f.brush_size:.1f} px / {f.brush_size * pxs:.1f} nm ")
                         if f.magic:
                             _, f.magic_strength = imgui.slider_float("flood", f.magic_strength, 1.0, 100.0, format=f"{f.magic_strength:.1f}%% sensitivity")
                         _, f.alpha = imgui.slider_float("alpha", f.alpha, 0.0, 1.0, format="%.2f")
-                        _, f.box_size = imgui.slider_int("boxes", f.box_size, 8, 128, format=f"{f.box_size} pixel")
+                        _, f.box_size = imgui.slider_int("boxes", f.box_size, 8, 256, format=f"{f.box_size} pixel")
+                        f.box_size = int(np.round(f.box_size / 32) * 32)
+
                         imgui.pop_item_width()
                         f.brush_size = int(f.brush_size)
                         if _:
@@ -1065,9 +1069,13 @@ class SegmentationEditor:
 
 
                 imgui.text("Set parameters")
-                imgui.begin_child("params", 0.0, 62, True)
-                imgui.push_item_width(cw - 58)
-                _, self.trainset_boxsize = imgui.slider_int("boxes", self.trainset_boxsize, 8, 128, format=f"{self.trainset_boxsize} pixel")
+                imgui.begin_child("params", 0.0, 84, True)
+                cw = imgui.get_content_region_available_width()
+
+                imgui.push_item_width(cw)
+                _, self.trainset_boxsize = imgui.slider_int("##box size", self.trainset_boxsize, 8, 256, format=f"box size: {int(self.trainset_boxsize)} pixel")
+                self.trainset_boxsize = np.round(self.trainset_boxsize / 32) * 32
+                _, self.trainset_boxdepth = imgui.slider_int("##box depth", self.trainset_boxdepth, 1, 32, format=f"box depth: {int(self.trainset_boxdepth)} slice"+("s" if self.trainset_boxdepth>1 else ""))
                 #_, SegmentationEditor.trainset_apix = imgui.slider_float("A/pix", SegmentationEditor.trainset_apix, 1.0, 20.0, format=f"{SegmentationEditor.trainset_apix:.2f}")
                 imgui.pop_item_width()
                 calculate_number_of_boxes()
@@ -2028,6 +2036,7 @@ class SegmentationEditor:
                                 d = filedialog.askdirectory()
                                 if isinstance(d, str) and d != "":
                                     cfg.settings["SEARCH_DIRECTORIES"].append(d)
+                                    cfg.edit_setting("SEARCH_DIRECTORIES", cfg.settings["SEARCH_DIRECTORIES"])
                             imgui.end_menu()
                         imgui.end_menu()
 
@@ -2093,6 +2102,14 @@ class SegmentationEditor:
                     if imgui.begin_menu("Developer"):
                         if imgui.menu_item("Show ImGui debug window", None, SegmentationEditor.SHOW_IMGUI_DEBUG)[0]:
                             SegmentationEditor.SHOW_IMGUI_DEBUG = not SegmentationEditor.SHOW_IMGUI_DEBUG
+                        if imgui.menu_item("(debug) se_model bin2", selected=cfg.settings["DEBUG_PREPROC_BIN_2"])[0]:
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_2", not cfg.settings["DEBUG_PREPROC_BIN_2"])
+                            if cfg.settings["DEBUG_PREPROC_BIN_2"]:
+                                cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
+                        if imgui.menu_item("(debug) se_model bin3", selected=cfg.settings["DEBUG_PREPROC_BIN_3"])[0]:
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_3", not cfg.settings["DEBUG_PREPROC_BIN_3"])
+                            if cfg.settings["DEBUG_PREPROC_BIN_3"]:
+                                cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
                         imgui.end_menu()
 
                     imgui.end_menu()
@@ -2274,11 +2291,10 @@ class SegmentationEditor:
                 SegmentationEditor.SHOW_IMGUI_DEBUG = imgui.show_demo_window(closable=True)
 
             if SegmentationEditor.FEATURE_LIB_OPEN:
-                window_width = 800
-                window_max_height = 940
+                window_width = 950
                 panel_height = 104
-                imgui.set_next_window_position(cfg.window_width //2 - window_width // 2, 60, imgui.APPEARING)
-                imgui.set_next_window_size_constraints((window_width, 250), (window_width, window_max_height))
+                imgui.set_next_window_position(cfg.window_width // 2 - window_width // 2, 60, imgui.APPEARING)
+                imgui.set_next_window_size_constraints((800, 250), (1960, 1960))
                 imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
                 imgui.push_style_color(imgui.COLOR_RESIZE_GRIP, *cfg.COLOUR_WINDOW_BACKGROUND)
                 _, SegmentationEditor.FEATURE_LIB_OPEN = imgui.begin("Predefined features library", True, imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_COLLAPSE)
@@ -2297,11 +2313,12 @@ class SegmentationEditor:
                     imgui.push_style_color(imgui.COLOR_TABLE_BORDER_LIGHT, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
 
                 j = 0
+                _table_n_columns = imgui.get_window_width() // 220
                 visible_features = cfg.feature_library if not SegmentationEditor.FEATURE_LIB_HIDE_DEACTIVATED_FEATURES else [f for f in cfg.feature_library if f.use]
-                with imgui.begin_table("flib_table", 3, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = 580):
+                with imgui.begin_table("flib_table", _table_n_columns, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = imgui.get_window_height() - 100):
 
                     for j, feature in enumerate(visible_features):
-                        if j % 3 == 0:
+                        if j % _table_n_columns == 0:
                             imgui.table_next_row()
                         imgui.table_next_column()
                         if feature.use:
@@ -2310,6 +2327,9 @@ class SegmentationEditor:
                         else:
                             imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, 0.0, 0.0, 0.0, 0.037)
                             imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT_DISABLED)
+                        if SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT != '' and SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT in feature.title:
+                            imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, *cfg.COLOUR_FLIB_HIGHLIGHT)
+
                         with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), panel_height, border=True):
 
                             imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
@@ -2318,6 +2338,8 @@ class SegmentationEditor:
                             imgui.same_line()
                             imgui.set_next_item_width(imgui.get_content_region_available_width())
                             _, feature.title = imgui.input_text("##titleftrlib", feature.title, 128)
+                            if _:
+                                SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT = ''
 
 
 
@@ -2358,11 +2380,13 @@ class SegmentationEditor:
                             imgui.pop_style_var(5)
                             imgui.pop_style_color(1)
                         imgui.pop_style_color(2)
+                        if SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT != '' and SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT in feature.title:
+                            imgui.pop_style_color(1)
                         imgui.spacing()
 
                     j+=1
 
-                    if j % 3 == 0:
+                    if j % _table_n_columns == 0:
                         imgui.table_next_row()
                     imgui.table_next_column()
                     imgui.push_style_color(imgui.COLOR_BORDER, 0.0, 0.0, 0.0, 0.1)
@@ -2379,7 +2403,7 @@ class SegmentationEditor:
 
                     if SegmentationEditor.FEATURE_LIB_OPEN_INCLUDE_SESSION:
                         for j, feature in enumerate(cfg.feature_library_session.values(), start=j+1):
-                            if j % 3 == 0:
+                            if j % _table_n_columns == 0:
                                 imgui.table_next_row()
                             imgui.table_next_column()
 
@@ -2388,6 +2412,8 @@ class SegmentationEditor:
 
                             imgui.push_style_color(imgui.COLOR_BORDER, *cfg.COLOUR_SESSION_FEATURE_BORDER)
                             imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, *cfg.COLOUR_FRAME_BACKGROUND_LIGHT)
+                            if SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT != '' and SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT in feature.title:
+                                imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, *cfg.COLOUR_FLIB_HIGHLIGHT)
                             with imgui.begin_child(f"flib_element{j}", imgui.get_column_width(), panel_height, border=True):
 
                                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
@@ -2432,6 +2458,8 @@ class SegmentationEditor:
                                 imgui.pop_style_var(5)
                                 imgui.pop_style_color(1)
                             imgui.pop_style_color(4)
+                            if SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT != '' and SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT in feature.title:
+                                imgui.pop_style_color(1)
                             imgui.spacing()
 
                 imgui.pop_style_color(2)
@@ -2470,10 +2498,12 @@ class SegmentationEditor:
                     SegmentationEditor.FEATURE_LIB_ANNOTATION = not SegmentationEditor.FEATURE_LIB_ANNOTATION
                 imgui.pop_style_var(1)
 
-                imgui.new_line()
+                imgui.align_text_to_frame_padding()
+                imgui.text('Search:')
+                imgui.set_next_item_width(180)
+                imgui.same_line()
+                _, SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT = imgui.input_text('##highlight', SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT, 128)
                 imgui.same_line(position=imgui.get_content_region_available_width() - 175)
-
-
 
                 if imgui.button("reset", 55, 25):
                     cfg.feature_library = cfg.parse_feature_library()
@@ -3140,8 +3170,8 @@ class SegmentationEditor:
 
     def camera_control(self):
         if imgui.get_io().want_capture_mouse or imgui.get_io().want_capture_keyboard:
-            return None
-        if self.active_tab != "Render":
+            pass
+        elif self.active_tab != "Render":
             if self.window.get_mouse_button(glfw.MOUSE_BUTTON_MIDDLE):
                 delta_cursor = self.window.cursor_delta
                 self.camera.position[0] += delta_cursor[0] / self.camera.zoom
@@ -3161,6 +3191,15 @@ class SegmentationEditor:
                 if self.window.scroll_delta[1] != 0:
                     SegmentationEditor.VIEW_REQUIRES_UPDATE = True
                 self.camera3d.distance = max(10.0, self.camera3d.distance)
+            elif SegmentationEditor.is_ctrl_down():
+                if imgui.is_key_pressed(glfw.KEY_LEFT, True):
+                    self.camera3d.yaw -= 5
+                elif imgui.is_key_pressed(glfw.KEY_RIGHT, True):
+                    self.camera3d.yaw += 5
+                if imgui.is_key_pressed(glfw.KEY_UP, True):
+                    self.camera3d.pitch -= 5
+                elif imgui.is_key_pressed(glfw.KEY_DOWN, True):
+                    self.camera3d.pitch += 5
             elif self.window.get_mouse_button(glfw.MOUSE_BUTTON_MIDDLE):
                 dx = -self.window.cursor_delta[0]
                 dy = -self.window.cursor_delta[1]
@@ -4294,8 +4333,8 @@ class QueuedExtract:
 
     def do_export(self, process):
         try:
-            out_path = os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0]+"_coords.tsv")
-            pick_particles(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, out_path=out_path, process=self.process, binning=self.binning, output_star=self.star_format)
+            out_path = os.path.join(self.dir, os.path.splitext(os.path.basename(self.path))[0]+"_coords.star")
+            pick_particles(mrcpath=self.path, threshold=self.threshold, min_spacing=self.min_spacing, min_size=self.min_size, out_path=out_path, process=self.process, binning=self.binning)
             for s in cfg.se_surface_models:
                 if s.path == self.path:
                     s.find_coordinates()

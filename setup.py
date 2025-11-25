@@ -7,7 +7,7 @@ import shutil
 # python setup.py sdist
 # twine upload dist/*
 
-VERSION = '1.0.46'
+VERSION = '1.0.47'
 
 with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
@@ -39,8 +39,7 @@ setup(
         "tifffile>=2022.8.12",
         "dill>=0.3.5.1",
         "pyperclip>=1.8.2",
-        "scikit-image",
-        "Pommie"
+        "scikit-image"
     ]
 )
 

@@ -57,7 +57,7 @@ def main():
     segment_parser.add_argument('-bin', required=False, type=int, default=1, help="Binning factor to apply before processing. Default is 1 (no binning)")
 
     pick_parser = subparsers.add_parser('pick', help='Pick particles using segmented volumes.')
-    pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input .mrc's.")
+    pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input segmentation .mrc's (e.g. /segmented/).")
     pick_parser.add_argument('-t', '--target', required=True, type=str, help="Feature to pick. For example, if segmented volumes are named '<tomogram_name>__Ribosome.mrc', '-t Ribosome' will select these.")
     pick_parser.add_argument('-ou', '--output_directory', required=False, type=str, default=None, help="Directory to save output coordinate files to. If left empty, will save to the input data directory.")
     pick_parser.add_argument('-m', '--margin', required=False, type=int, default=16, help="Margin (in pixels) to avoid picking particles close to tomogram edges.")
@@ -67,7 +67,11 @@ def main():
     pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
     pick_parser.add_argument('-size', required=False, type=float, default=10.0, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in cubic voxel units instead.")
     pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
+    pick_parser.add_argument('-min-particles', required=False, type=int, default=0, help="Minimum number of particles that must be found in a tomogram for the output .star file to be saved. Default 0 (always save).")
     pick_parser.add_argument('-filament', required=False, action='store_true', help="If set, pick in filament mode rather than blob mode.")
+    pick_parser.add_argument('-centroid', required=False, action='store_true', help="If set, if picking in blob mode, place coordinates at the centroid of each connected component rather than the deepest point. Only use when you are sure that particles are well separated!")
+    pick_parser.add_argument('-length', required=False, type=float, default=500.0, help="Minimum filament length to place coordinates along (in Angstrom). Only used if -filament flag is set. Use ``-length-px`` to specify the length in pixels instead.")
+    pick_parser.add_argument('-length-px', required=False, type=float, default=None, help="Minimum filament length to place coordinates along (in pixels). Only used if -filament flag is set.")
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
     pick_parser.add_argument('-v', '--verbose', required=False, type=int, default=0, help="Verbose (1 or 0)")
     pick_parser.add_argument('-capp', '--pom-capp-config', required=False, type=str, default="", help="A Pom context-aware particle picking configuration file (optional).")
@@ -86,6 +90,12 @@ def main():
     train_parser.add_argument('-r', '--rate', required=False, type=float, default=1e-3,help="Learning rate (default 1e-3)")
     train_parser.add_argument('-name', '--model_name', required=False, type=str, default="Unnamed model", help="Model name. File will be saved as output_directory/{name}.scnm")
     train_parser.add_argument('-models', '--model_architectures', required=False, action='store_true', help='List available model architectures.')
+
+    # extract_parsers = subparsers.add_parser('extract', help='Extract training data from annotated tomograms.')
+    # extract_parsers.add_argument('-d', '--data_directory', required=True, type=str, help="Directory containing annotated tomograms (.scns files).")
+    # extract_parsers.add_argument('-f', "--features", nargs="+", required=True, help="List of features to extract, e.g. 'Membrane Ribosome Microtubule'. A separate output file is created for each feature.")
+    # extract_parsers.add_argument('-b', "--box-size", required=False, default=None, help="Box size (in pixels) to extract. When not specified, box size is taken from the annotations.")
+    # extract_parsers.add_argument('')
 
     args, unknown = parser.parse_known_args()
     if args.command is None:
@@ -118,7 +128,10 @@ def main():
                                           size_px=args.size_px,
                                           verbose=args.verbose==1,
                                           pom_capp_config=args.pom_capp_config,
-                                          filament=args.filament)
+                                          filament=args.filament,
+                                          filament_length=args.length,
+                                          centroid=args.centroid,
+                                          min_particles=args.min_particles)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()
