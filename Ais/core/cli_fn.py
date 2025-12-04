@@ -325,7 +325,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
 
 def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0):
     # find right values for spacing and size.
-    voxel_size = mrcfile.open(tomo_path, header_only=True).voxel_size.x
+    voxel_size = mrcfile.open(tomo_path, permissive=True, header_only=True).voxel_size.x
     if voxel_size == 0.0:
         print(f"warning: {tomo_path} has voxel size 0.0")
         voxel_size = 10.0
