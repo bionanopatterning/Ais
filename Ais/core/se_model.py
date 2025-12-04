@@ -2,6 +2,7 @@ from tensorflow.keras.callbacks import Callback
 from tensorflow.keras.models import load_model, clone_model, Model
 from tensorflow.keras.layers import Input
 from tensorflow.keras.backend import clear_session
+import tensorflow as tf
 import tifffile
 import numpy as np
 from itertools import count
@@ -20,9 +21,124 @@ import time
 import tarfile
 import tempfile
 
-# Note 230522: getting tensorflow to use the GPU is a pain. Eventually it worked with:
-# Python 3.9, CUDA D11.8, cuDNN 8.6, tensorflow 2.8.0, protobuf 3.20.0, and adding
-# LIBRARY_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\lib\x64 to the PyCharm run configuration environment variables.
+
+
+class SEModelDataLoader:
+    AUG_ROT90_XY = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
+    AUG_FLIP_XY = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]
+    AUG_FLIP_Z = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+
+    def __init__(self, training_dataset_path, batch_size, validation_split):
+        self.path = training_dataset_path
+        self.batch_size = batch_size
+        self.validation_split = validation_split
+        self.apix = -1.0
+
+        self.x = None
+        self.y = None
+        self.box_shape = None
+        self.box_depth = None
+
+        self.n_samples = 0
+        self.idx_training_positive = []
+        self.idx_training_all = []
+        self.idx_validation_all = []
+
+        self.load_data()
+
+    def __len__(self):
+        return self.n_samples
+
+    def load_data(self):
+        with tifffile.TiffFile(self.path) as tf:
+            desc = tf.pages[0].description or ""
+            try:
+                self.apix = float(desc.split("apix=")[1].split()[0])
+            except:
+                self.apix = -1.0
+            data = tf.asarray()
+
+        x = data[:, :-1, :, :]
+        x = np.transpose(x, (0, 2, 3, 1))
+        y = data[:, -1, :, :, None]
+
+        self.x = x
+        self.y = y
+        self.n_samples, self.box_shape, _, self.box_depth = x.shape
+
+        idx_positive = [i for i in range(self.n_samples) if np.any(self.y[i])]
+        if len(idx_positive) == 0:
+            print(f'Training dataset at {self.path} contains no positive samples.')
+        else:
+            print(f'Loaded {self.n_samples} {self.box_shape}x{self.box_shape}x{self.box_depth} samples: {len(idx_positive)} positive, {self.n_samples - len(idx_positive)} negative.')
+
+        idx = np.arange(self.n_samples)
+        np.random.shuffle(idx)
+        n_validation = int(self.validation_split * self.n_samples)
+        self.idx_training_all = idx[n_validation:]
+        self.idx_validation_all = idx[:n_validation]
+        self.idx_training_positive = [i for i in idx_positive if i in self.idx_training_all]
+
+    def get_sample(self, index):
+        x = np.array(self.x[index], dtype=np.float32, copy=True)
+        y = np.array(self.y[index], dtype=np.float32, copy=True)
+        return x, y
+
+    def augment(self, x, y):
+        _ = np.random.randint(16 if self.box_depth > 1 else 8)
+        x = np.rot90(x, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
+        y = np.rot90(y, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
+        if SEModelDataLoader.AUG_FLIP_XY[_]:
+            x = np.flip(x, axis=0)
+            y = np.flip(y, axis=0)
+        if SEModelDataLoader.AUG_FLIP_Z[_] and self.box_depth > 1:
+            x = np.flip(x, axis=-1)
+            y = np.flip(y, axis=-1)
+
+        # OPTIONAL: other augmentations here
+        return x, y
+
+    def preprocess(self, x, y):
+        x -= np.mean(x)
+        x /= np.std(x) + 1e-7
+        return x, y
+
+    def training_generator(self):
+        while True:
+            np.random.shuffle(self.idx_training_all)
+            np.random.shuffle(self.idx_training_positive)
+            for j in range(len(self.idx_training_all)):
+                if j % self.batch_size == 0:  # at least one labelled sample per batch
+                    index = self.idx_training_positive[(j // self.batch_size) % len(self.idx_training_positive)]
+                else:
+                    index = self.idx_training_all[j]
+
+                x, y = self.get_sample(index)
+                x, y = self.augment(x, y)
+                x, y = self.preprocess(x, y)
+                yield x, y
+
+    def validation_generator(self):
+        while True:
+            for index in self.idx_validation_all:
+                x, y = self.get_sample(index)
+                x, y = self.preprocess(x, y)
+                yield x, y
+
+    def as_generator(self, validation=False):
+        if validation:
+            while self.batch_size > len(self.idx_validation_all):
+                self.batch_size = self.batch_size // 2
+            n_steps = len(self.idx_validation_all) // self.batch_size
+            dataset = tf.data.Dataset.from_generator(self.validation_generator, output_signature=(tf.TensorSpec(shape=(self.box_shape, self.box_shape, self.box_depth), dtype=tf.float32), tf.TensorSpec(shape=(self.box_shape, self.box_shape, 1), dtype=tf.float32))).batch(batch_size=self.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
+        else:
+            while self.batch_size > len(self.idx_training_all):
+                self.batch_size = self.batch_size // 2
+
+            n_steps = len(self.idx_training_all) // self.batch_size
+            dataset = tf.data.Dataset.from_generator(self.training_generator, output_signature=(tf.TensorSpec(shape=(self.box_shape, self.box_shape, self.box_depth), dtype=tf.float32), tf.TensorSpec(shape=(self.box_shape, self.box_shape, 1), dtype=tf.float32))).batch(batch_size=self.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
+
+        return dataset, n_steps
 
 
 class SEModel:
@@ -54,7 +170,7 @@ class SEModel:
         self.compilation_mode = None
         self.inference_model = None
         self.box_size = -1
-        self.box_depth = 1
+        self.model_depth = 1
         self.model = None
         self.model_enum = SEModel.DEFAULT_MODEL_ENUM
         self.epochs = 50
@@ -114,7 +230,7 @@ class SEModel:
                 'apix': self.apix,
                 'compiled': self.compiled,
                 'box_size': self.box_size,
-                'box_depth': self.box_depth,
+                'model_depth': self.model_depth,
                 'model_enum': self.model_enum,
                 'epochs': self.epochs,
                 'batch_size': self.batch_size,
@@ -184,7 +300,7 @@ class SEModel:
                 self.apix = metadata['apix']
                 self.compiled = metadata['compiled']
                 self.box_size = metadata['box_size']
-                self.box_depth = metadata.get('box_depth', 1)
+                self.model_depth = metadata.get('model_depth', 1)
                 self.model_enum = metadata['model_enum']
                 self.epochs = metadata['epochs']
                 self.batch_size = metadata['batch_size']
@@ -216,117 +332,34 @@ class SEModel:
             self.inference_model = None
             process.start()
 
-    def load_training_data(self):
-        with tifffile.TiffFile(self.train_data_path) as train_data:
-            try:
-                train_data_apix = float(train_data.pages[0].description.split("=")[1])
-            except ValueError as e:
-                train_data_apix = 1.0
-            if self.apix == -1.0:
-                self.apix = train_data_apix
-            elif self.apix != train_data_apix:
-                print(f"Note: the selected training data has a different pixel size {train_data_apix:.3f} than what the model was previously trained with ({self.apix:.3f}).")
-        train_data = tifffile.imread(self.train_data_path)
-        train_x = train_data[:, 0, :, :, None]
-        train_y = train_data[:, 1, :, :, None]
-        n_samples = train_x.shape[0]
-
-        # split up the positive and negative indices
-        positive_indices = list()
-        negative_indices = list()
-        for i in range(n_samples):
-            if np.any(train_y[i]):
-                positive_indices.append(i)
-            else:
-                negative_indices.append(i)
-
-        n_pos = len(positive_indices)
-        n_neg = len(negative_indices)
-        print(f'Original images: {n_pos} positive, {n_neg} negative.')
-        positive_x = list()
-        positive_y = list()
-
-        print(f'Loading training data and generating {self.n_copies} copies')
-        for i in positive_indices:
-            for _ in range(self.n_copies):
-                if self.n_copies == 1:
-                    norm_train_x = train_x[i] - np.mean(train_x[i])
-                    denom = np.std(norm_train_x)
-                    if denom != 0.0:
-                        norm_train_x /= denom
-                    positive_x.append(norm_train_x)
-                    positive_y.append(train_y[i])
-                else:
-                    flip = [0, 0, 0, 0, 1, 1, 1, 1][_] if _ < 8 else np.random.randint(0, 2, 1)[0]
-                    angle = [0, 90, 180, 270, 0, 90, 180, 270][_] if _ < 8 else np.random.uniform(0, 360)
-                    x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
-                    y_rotated = rotate(train_y[i], angle, reshape=False, cval=0.0)
-                    y_rotated = np.clip(y_rotated, 0, 1)
-                    x_rotated = x_rotated - np.mean(x_rotated)
-                    denom = np.std(x_rotated)
-                    if denom != 0.0:
-                        x_rotated /= np.std(x_rotated)
-                    if flip:
-                        positive_x.append(np.flip(x_rotated, axis=0))
-                        positive_y.append(np.flip(y_rotated, axis=0))
-                    else:
-                        positive_x.append(x_rotated)
-                        positive_y.append(y_rotated)
-        if n_neg == 0:
-            return np.array(positive_x), np.array(positive_y)
-
-        if self.excess_negative != -100:
-            extra_negative_factor = 1 + self.excess_negative / 100.0
-            negative_sample_indices = negative_indices * int(extra_negative_factor * self.n_copies * n_pos // n_neg) + negative_indices[:int(extra_negative_factor * self.n_copies * n_pos) % n_neg]
-        else:
-            negative_sample_indices = negative_indices * self.n_copies
-
-        negative_x = list()
-        negative_y = list()
-        n_neg_copied = 0
-        for i in negative_sample_indices:
-            _ = (n_neg_copied // n_neg)
-            flip = [0, 0, 0, 0, 1, 1, 1, 1][_] if _ < 8 else np.random.randint(0, 2, 1)[0]
-            angle = [0, 90, 180, 270, 0, 90, 180, 270][_] if _ < 8 else np.random.uniform(0, 360)
-
-            x_rotated = rotate(train_x[i], angle, reshape=False, cval=np.mean(train_x[i]))
-            x_rotated = (x_rotated - np.mean(x_rotated))
-            denom = np.std(x_rotated)
-            if denom != 0.0:
-                x_rotated /= denom
-            if flip:
-                negative_x.append(np.flip(x_rotated, axis=0))
-                negative_y.append(train_y[i])
-            else:
-                negative_x.append(x_rotated)
-                negative_y.append(train_y[i])
-            n_neg_copied += 1
-        print(f"Loaded a training dataset with {len(positive_x)} positive and {len(negative_x)} negative samples.")
-        return np.array(positive_x + negative_x), np.array(positive_y + negative_y)
-
     def _train(self, rate=None, external_callbacks=None, process=None):
         try:
             start_time = time.time()
-            train_x, train_y = self.load_training_data()
-            n_samples = train_x.shape[0]
-            box_size = train_x.shape[1]
-            # compile, if not compiled yet
-            if not self.compiled:
-                self.compile(box_size)
-            # if training data box size is not compatible with the compiled model, abort.
-            if box_size != self.box_size:
-                self.train_data_path = f"DATA HAS WRONG BOX SIZE ({box_size[0]} x {box_size[1]})"  # TODO: make this not an issue - since we're now recompiling before each training call, just recompile with the new box size.
-                process.set_progress(1.0)
-                return
-
-            # train
             validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
+
+            loader = SEModelDataLoader(self.train_data_path, self.batch_size, validation_split)
+            self.model_depth = loader.box_depth
+            self.apix = loader.apix
+
+            if not self.compiled:
+                self.compile(loader.box_shape, loader.box_depth)
+
             learning_rate = rate if rate is not None else cfg.settings["LEARNING_RATE"]
             self.model.optimizer.learning_rate.assign(learning_rate)
-            callbacks = [TrainingProgressCallback(process, n_samples, self.batch_size, self), StopTrainingCallback(process.stop_request)]
+
+            training_generator, training_steps = loader.as_generator(validation=False)
+            validation_generator, validation_steps = None, None
+            if validation_split != 0.0:
+                validation_generator, validation_steps = loader.as_generator(validation=True)
+
+            if training_steps == 0:
+                cfg.set_error(ValueError("No training samples available. Aborting."), "Could not train model - see details below.")
+
+            callbacks = [TrainingProgressCallback(process, training_steps * self.n_copies, self.batch_size, self), StopTrainingCallback(process.stop_request)]
             if not external_callbacks is None:
                 callbacks += external_callbacks
-            self.model.fit(train_x, train_y, epochs=self.epochs, batch_size=self.batch_size, shuffle=True, validation_split=validation_split, callbacks=callbacks)
+
+            self.model.fit(training_generator, steps_per_epoch=training_steps * self.n_copies, validation_data=validation_generator, validation_steps=validation_steps, epochs=self.epochs, validation_freq=1, callbacks=callbacks)
             process.set_progress(1.0)
             print(f"{self.title} " + self.info + f" {time.time() - start_time:.1f} seconds of training.")
         except Exception as e:
@@ -336,9 +369,9 @@ class SEModel:
     def reset_textures(self):
         pass
 
-    def compile(self, box_size):
+    def compile(self, box_size, box_depth=1):
         model_module_name = SEModel.AVAILABLE_MODELS[self.model_enum]
-        self.model = SEModel.MODELS[model_module_name]((box_size, box_size, 1))
+        self.model = SEModel.MODELS[model_module_name]((box_size, box_size, box_depth))
         self.compiled = True
         self.compilation_mode = 'training'
         self.box_size = box_size
@@ -352,8 +385,13 @@ class SEModel:
         del self.model
         clear_session()
 
+        input_shape = list(config["layers"][0]["config"]["batch_input_shape"])
+        input_shape[0] = 1
+        input_shape[1] = None
+        input_shape[2] = None
+
         self.model = None
-        config["layers"][0]["config"]["batch_input_shape"] = (1, None, None, 1)
+        config["layers"][0]["config"]["batch_input_shape"] = tuple(input_shape)
         self.model = Model.from_config(config)
         self.model.set_weights(weights)
 
@@ -367,7 +405,7 @@ class SEModel:
         clear_session()
 
         self.model = None
-        self.compile(self.box_size)
+        self.compile(self.box_size, self.model_depth)
         self.model.set_weights(weights)
 
         self.update_info()
@@ -376,11 +414,11 @@ class SEModel:
     def update_info(self):
         validation_split_tag = "" if ("VALIDATION_SPLIT" not in self.bcprms or self.bcprms["VALIDATION_SPLIT"] == 0.0) else f"|{int(self.bcprms['VALIDATION_SPLIT']*100.0)}%"
         if self.compilation_mode == 'training':
-            self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
-            self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+            self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters // 1e6:.1f} Mp, {self.box_size}-{self.model_depth}, {self.apix:.1f}, {self.loss:.4f}{validation_split_tag})"
+            self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}-{self.model_depth}, {self.apix:.1f}, {self.loss:.4f}{validation_split_tag})"
         elif self.compilation_mode == 'inference':
-            self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters}, {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
-            self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}, {self.apix:.3f}, {self.loss:.4f}{validation_split_tag})"
+            self.info = SEModel.AVAILABLE_MODELS[self.model_enum] + f" ({self.n_parameters // 1e6:.1f} Mp, {self.box_size}-{self.model_depth}, {self.apix:.1f}, {self.loss:.4f}{validation_split_tag})"
+            self.info_short = "(" + SEModel.AVAILABLE_MODELS[self.model_enum] + f", {self.box_size}-x{self.model_depth}, {self.apix:.1f}, {self.loss:.4f}{validation_split_tag})"
 
     def get_model_title(self):
         return SEModel.AVAILABLE_MODELS[self.model_enum]
@@ -393,7 +431,7 @@ class SEModel:
             if not self.active:
                 return False
             rx, ry = roi
-            self.data[rx[0]:rx[1], ry[0]:ry[1]] = self.apply_to_slice(slice_data[rx[0]:rx[1], ry[0]:ry[1]], slice_pixel_size)
+            self.data[rx[0]:rx[1], ry[0]:ry[1]] = self.apply_to_slice(slice_data[:, rx[0]:rx[1], ry[0]:ry[1]], slice_pixel_size)
             return True
         except Exception as e:
             print(e)
@@ -407,23 +445,19 @@ class SEModel:
         self.texture.update(self.data)
 
     def slice_to_boxes(self, image, pixel_size, as_array=True):
-        scale_fac = pixel_size * 10.0 / self.apix
-        # if abs(scale_fac - 1.0) > 0.1:
-        #     image = zoom(image, scale_fac)
-        w, h = image.shape
+        w, h, d = image.shape
         self.overlap = min([0.9, self.overlap])
         pad_w = self.box_size - (w % self.box_size)
         pad_h = self.box_size - (h % self.box_size)
         # tile
         stride = int(self.box_size * (1.0 - self.overlap))
         boxes = list()
-        image = np.pad(image, ((0, pad_w), (0, pad_h)), mode='reflect')
+        image = np.pad(image, ((0, pad_w), (0, pad_h), (0, 0)), mode='reflect')
         for x in range(0, w + pad_w - self.box_size + 1, stride):
             for y in range(0, h + pad_h - self.box_size + 1, stride):
-                box = image[x:x + self.box_size, y:y + self.box_size]
-                mu = np.mean(box, axis=(0, 1), keepdims=True)
-                std = np.std(box, axis=(0, 1), keepdims=True)
-                std[std == 0] = 1.0
+                box = image[x:x + self.box_size, y:y + self.box_size, :]
+                mu = np.mean(box, axis=(0, 1, 2), keepdims=True)
+                std = np.std(box, axis=(0, 1, 2), keepdims=True) + 1e-7
                 box = (box - mu) / std
                 boxes.append(box)
         if as_array:
@@ -463,42 +497,70 @@ class SEModel:
         return out_image
 
     def apply_to_slice(self, image, pixel_size):
+        # as of 251125: we always expect image to be a 3D numpy array; it is Z, Y, X but the models expects Z last.
+
         if self.compilation_mode == 'training' and self.background_process_train is None and cfg.settings["TILED_MODE"]==0:
             self.toggle_inference()
 
         start_time = time.time()
 
-        _j, _k = image.shape
-        if cfg.settings["DEBUG_PREPROC_BIN_2"]:
-            image = image[:_j // 2 * 2, :_k // 2 * 2].reshape(_j // 2, 2, _k // 2, 2).mean(axis=(1, 3))
-        elif cfg.settings["DEBUG_PREPROC_BIN_3"]:
-            image = image[:_j // 3 * 3, :_k // 3 * 3].reshape(_j // 3, 3, _k // 3, 3).mean(axis=(1, 3))
-        if self.compilation_mode == 'inference' and cfg.settings["TILED_MODE"]==0:  # improved way of doing segmentation (250318)
+        if image.ndim != 3:
+            cfg.set_error(ValueError("Input image must be a 3D numpy array."), "SegmentationEditor model application error:")
 
-            j, k = image.shape
+        _j, _k = image.shape[1], image.shape[2]
+        if cfg.settings["DEBUG_PREPROC_BIN_2"]:
+            Z, J, K = image.shape
+            J2 = (J // 2) * 2
+            K2 = (K // 2) * 2
+            image = image[:, :J2, :K2].reshape(Z, J2 // 2, 2, K2 // 2, 2).mean(axis=(2, 4))
+        elif cfg.settings["DEBUG_PREPROC_BIN_3"]:
+            Z, J, K = image.shape
+            J3 = (J // 3) * 3
+            K3 = (K // 3) * 3
+            image = image[:, :J3, :K3].reshape(Z, J3 // 3, 3, K3 // 3, 3).mean(axis=(2, 4))
+        elif cfg.settings["DEBUG_PREPROC_BIN_5"]:
+            Z, J, K = image.shape
+            J3 = (J // 5) * 5
+            K3 = (K // 5) * 5
+            image = image[:, :J3, :K3].reshape(Z, J3 // 5, 5, K3 // 5, 5).mean(axis=(2, 4))
+
+
+        image = np.transpose(image, (1, 2, 0))
+        j, k, image_depth = image.shape
+        if self.compilation_mode == 'inference' and cfg.settings["TILED_MODE"]==0:
             image -= np.mean(image)
             image /= np.std(image)
 
             pad_h_min = (32 - (image.shape[0] % 32)) % 32
             pad_w_min = (32 - (image.shape[1] % 32)) % 32
-            pad_h = pad_h_min + 32
-            pad_w = pad_w_min + 32
+            pad_h = pad_h_min + 64
+            pad_w = pad_w_min + 64
 
-            image = np.pad(image, ((pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2)), mode='reflect')
+            image = np.pad(image, ((pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2), (0, 0)), mode='reflect')
+            segmentation = np.zeros(image.shape[:2], dtype=np.float32)
 
-            segmentation = np.zeros_like(image)
-            _rot = [0, 1, 2, 3, 0, 1, 2, 3]
-            _flip = [0, 0, 0, 0, 1, 1, 1, 1]
-            for i in range(cfg.settings['TEST_TIME_AUGMENTATIONS']):
+            _rot = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
+            _flip = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]
+            _flip_z = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+
+            _tta = cfg.settings['TEST_TIME_AUGMENTATIONS'] if image_depth == 2 else min(cfg.settings['TEST_TIME_AUGMENTATIONS'], 8)
+            for i in range(_tta):
+                # rotate and flip
                 tta_img = np.rot90(image, k=_rot[i], axes=(0, 1))
                 if _flip[i]:
                     tta_img = np.flip(tta_img, axis=0)
-                tta_img_segmented = np.squeeze(self.model.predict(tta_img[np.newaxis, :, :]))
+                if _flip_z[i]:
+                    tta_img = np.flip(tta_img, axis=2)
+
+                tta_img_segmented = np.squeeze(self.model.predict(tta_img[np.newaxis, ...]))
+
+                # undo rotation and flip
                 if _flip[i]:
                     tta_img_segmented = np.flip(tta_img_segmented, axis=0)
                 tta_img_segmented = np.rot90(tta_img_segmented, k=-_rot[i], axes=(0, 1))
+
                 segmentation += tta_img_segmented
-            segmentation = segmentation[pad_h//2:pad_h//2+j, pad_w//2:pad_w//2+k] / cfg.settings['TEST_TIME_AUGMENTATIONS']
+            segmentation = segmentation[pad_h//2:pad_h//2+j, pad_w//2:pad_w//2+k] / _tta
             print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice: {time.time() - start_time:.3f} s (multiplicity {cfg.settings['TEST_TIME_AUGMENTATIONS']}).")
         else:  # original Ais in-gui segmentation way
             boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
@@ -506,20 +568,16 @@ class SEModel:
             segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
             print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice ({boxes.shape[0]} boxes): {time.time()-start_time:.3f} s.")
 
+        if cfg.settings["DEBUG_PREPROC_BIN_2"] or cfg.settings["DEBUG_PREPROC_BIN_3"] or cfg.settings["DEBUG_PREPROC_BIN_5"]:
+            from scipy.ndimage import zoom
+            segmentation = zoom(segmentation, (_j / segmentation.shape[0], _k / segmentation.shape[1]), order=1)
+
         if cfg.settings["TRIM_EDGES"] == 1:
             margin = 16
             segmentation[:margin, :] = 0
             segmentation[-margin:, :] = 0
             segmentation[:, :margin] = 0
             segmentation[:, -margin:] = 0
-
-
-        if cfg.settings["DEBUG_PREPROC_BIN_2"]:
-            from scipy.ndimage import zoom
-            segmentation = zoom(segmentation, (_j / segmentation.shape[0], _k / segmentation.shape[1]), order=1)
-        elif cfg.settings["DEBUG_PREPROC_BIN_3"]:
-            from scipy.ndimage import zoom
-            segmentation = zoom(segmentation, (_j / segmentation.shape[0], _k / segmentation.shape[1]), order=1)
 
         return segmentation
 
@@ -642,19 +700,26 @@ class ModelInteraction:
 
 class TrainingProgressCallback(Callback):
     def __init__(self, process, n_samples, batch_size, model):
-        self.params = dict()
-        self.params['epochs'] = 1
         super().__init__()
         self.process = process
         self.batch_size = batch_size
-        self.n_samples = n_samples
-        self.batches_in_epoch = 0
-        self.current_epoch = 0
+        self.n_samples = n_samples  # kept for compatibility / logging if you want
         self.se_model = model
+        self.total_batches = None
+        self.seen_batches = 0
+
+    def on_train_begin(self, logs=None):
+        # Keras fills self.params before this is called
+        steps = self.params.get('steps', None)      # steps_per_epoch
+        epochs = self.params.get('epochs', 1)
+        if steps is None:
+            # fallback to old behaviour if steps missing
+            steps = max(1, self.n_samples // self.batch_size)
+        self.total_batches = steps * epochs
+        self.seen_batches = 0
 
     def on_epoch_begin(self, epoch, logs=None):
-        self.batches_in_epoch = self.n_samples // self.batch_size
-        self.current_epoch = epoch
+        pass  # nothing needed here now
 
     def on_epoch_end(self, epoch, logs=None):
         if "VALIDATION_LOSS" in self.se_model.bcprms and not self.se_model.bcprms["VALIDATION_LOSS"] == 0.0:
@@ -666,11 +731,17 @@ class TrainingProgressCallback(Callback):
                 self.se_model.update_info()
 
     def on_batch_end(self, batch, logs=None):
-        progress_in_current_epoch = (batch + 1) / self.batches_in_epoch
-        total_progress = (self.current_epoch + progress_in_current_epoch) / self.params['epochs']
-        self.process.set_progress(total_progress)
+        self.seen_batches += 1
+        if self.total_batches is None:
+            progress = 0.0
+        else:
+            progress = min(1.0, self.seen_batches / self.total_batches)
+
+        self.process.set_progress(progress)
+
         if "VALIDATION_LOSS" not in self.se_model.bcprms or self.se_model.bcprms["VALIDATION_LOSS"] == 0.0:
-            self.se_model.loss = logs['loss']
+            if logs is not None and 'loss' in logs:
+                self.se_model.loss = logs['loss']
         self.se_model.update_info()
 
 

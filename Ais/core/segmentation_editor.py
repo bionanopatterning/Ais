@@ -275,7 +275,7 @@ class SegmentationEditor:
             absorbing_models = list()
             # launch the models
             for model in cfg.se_models:
-                model.set_slice(cfg.se_active_frame.data, cfg.se_active_frame.pixel_size, cfg.se_active_frame.get_roi_indices(), cfg.se_active_frame.data.shape)
+                model.set_slice(cfg.se_active_frame.get_slice(model_depth=model.model_depth), cfg.se_active_frame.pixel_size, cfg.se_active_frame.get_roi_indices(), cfg.se_active_frame.data.shape)
                 if model.emit:
                     emissions.append(model.data)
                 if model.absorb:
@@ -1075,7 +1075,8 @@ class SegmentationEditor:
                 imgui.push_item_width(cw)
                 _, self.trainset_boxsize = imgui.slider_int("##box size", self.trainset_boxsize, 8, 256, format=f"box size: {int(self.trainset_boxsize)} pixel")
                 self.trainset_boxsize = np.round(self.trainset_boxsize / 32) * 32
-                _, self.trainset_boxdepth = imgui.slider_int("##box depth", self.trainset_boxdepth, 1, 32, format=f"box depth: {int(self.trainset_boxdepth)} slice"+("s" if self.trainset_boxdepth>1 else ""))
+                _, self.trainset_boxdepth = imgui.slider_int("##box depth", self.trainset_boxdepth, 1, 33, format=f"box depth: {int(self.trainset_boxdepth)} slice"+("s" if self.trainset_boxdepth>1 else ""))
+                self.trainset_boxdepth += 1 if self.trainset_boxdepth % 2 == 0 else 0
                 #_, SegmentationEditor.trainset_apix = imgui.slider_float("A/pix", SegmentationEditor.trainset_apix, 1.0, 20.0, format=f"{SegmentationEditor.trainset_apix:.2f}")
                 imgui.pop_item_width()
                 calculate_number_of_boxes()
@@ -1205,7 +1206,7 @@ class SegmentationEditor:
                                         if model_path != "" and type(model_path) == str:
                                             if model_path[-len(cfg.filetype_semodel):] != cfg.filetype_semodel:
                                                 model_path += cfg.filetype_semodel
-                                            m.save(model_path, None if cfg.se_active_frame is None else cfg.se_active_frame.data)
+                                            m.save(model_path, None if cfg.se_active_frame is None else cfg.se_active_frame.get_slice(model_depth=m.model_depth))
                                     except Exception as e:
                                         cfg.set_error(e, "Could not save model. See details below.")
                             if block_save_button:
@@ -2104,12 +2105,22 @@ class SegmentationEditor:
                             SegmentationEditor.SHOW_IMGUI_DEBUG = not SegmentationEditor.SHOW_IMGUI_DEBUG
                         if imgui.menu_item("(debug) se_model bin2", selected=cfg.settings["DEBUG_PREPROC_BIN_2"])[0]:
                             cfg.edit_setting("DEBUG_PREPROC_BIN_2", not cfg.settings["DEBUG_PREPROC_BIN_2"])
-                            if cfg.settings["DEBUG_PREPROC_BIN_2"]:
-                                cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_5", False)
                         if imgui.menu_item("(debug) se_model bin3", selected=cfg.settings["DEBUG_PREPROC_BIN_3"])[0]:
                             cfg.edit_setting("DEBUG_PREPROC_BIN_3", not cfg.settings["DEBUG_PREPROC_BIN_3"])
-                            if cfg.settings["DEBUG_PREPROC_BIN_3"]:
-                                cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_5", False)
+                        if imgui.menu_item("(debug) se_model bin5", selected=cfg.settings["DEBUG_PREPROC_BIN_5"])[0]:
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_5", not cfg.settings["DEBUG_PREPROC_BIN_5"])
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
+                            cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
+                        if imgui.menu_item("(debug) FLAG_A", selected=cfg.settings["DEBUG_A"])[0]:
+                            cfg.edit_setting("DEBUG_A", not cfg.settings["DEBUG_A"])
+                        if imgui.menu_item("(debug) FLAG_B", selected=cfg.settings["DEBUG_B"])[0]:
+                            cfg.edit_setting("DEBUG_B", not cfg.settings["DEBUG_B"])
+                        if imgui.menu_item("(debug) FLAG_C", selected=cfg.settings["DEBUG_C"])[0]:
+                            cfg.edit_setting("DEBUG_C", not cfg.settings["DEBUG_C"])
                         imgui.end_menu()
 
                     imgui.end_menu()
@@ -2939,13 +2950,12 @@ class SegmentationEditor:
                 negative_feature_names.append(f)
         if len(positive_feature_names) == 0:
             return
-        path = filedialog.asksaveasfilename(filetypes=[("Ais training data", cfg.filetype_traindata)], initialfile=f"{self.trainset_boxsize}_{positive_feature_names[0]}")
+
+        path = filedialog.asksaveasfilename(filetypes=[("Ais training data", cfg.filetype_traindata)], initialfile=f"{int(self.trainset_boxsize)}x{int(self.trainset_boxsize)}x{int(self.trainset_boxdepth)}_{positive_feature_names[0]}")
         if not isinstance(path, str) or path == '':
             return
         if path[-len(cfg.filetype_traindata):] != cfg.filetype_traindata:
             path += cfg.filetype_traindata
-        #
-
 
         datasets_to_sample = list()
         for dataset in cfg.se_frames:
@@ -2955,34 +2965,38 @@ class SegmentationEditor:
         n_boxes = self.trainset_num_boxes_positive + self.trainset_num_boxes_negative
         if n_boxes == 0:
             return
-        args = (path, n_boxes, positive_feature_names, negative_feature_names, datasets_to_sample, self.trainset_boxsize, SegmentationEditor.trainset_apix)
+        args = (path, n_boxes, positive_feature_names, negative_feature_names, datasets_to_sample, self.trainset_boxsize, self.trainset_boxdepth, SegmentationEditor.trainset_apix)
 
         process = BackgroundProcess(self._create_training_set, args)
         process.start()
         self.active_trainset_exports.append(process)
 
-    def _create_training_set(self, path, n_boxes, positives, negatives, datasets, boxsize, apix, process):
-        positive = list()
-        negative = list()
+    def _create_training_set(self, path, n_boxes, positives, negatives, datasets, boxsize, boxdepth, apix, process):
+        positive = []
+        negative = []
 
         n_done = 0
-        target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
+        target_type_dict = {
+            np.float32: float,
+            float: float,
+            np.dtype('int8'): np.dtype('uint8'),
+            np.dtype('int16'): np.dtype('float32')
+        }
+
         for d in datasets:
             if not os.path.exists(d.path):
                 continue
             mrcf = mrcfile.mmap(d.path, mode="r", permissive=True)
             raw_type = mrcf.data.dtype
-            out_type = float
-            if raw_type in target_type_dict:
-                out_type = target_type_dict[raw_type]
+            out_type = float if raw_type not in target_type_dict else target_type_dict[raw_type]
 
+            n_slices = mrcf.data.shape[0]
             w = d.width
             h = d.height
-            # crop_px = int(np.ceil((boxsize * apix) / (d.pixel_size * 10.0)))  # size to crop so that the crop contains at least a boxsize*apix sized region
-            # nm = int(np.floor(crop_px / 2))
-            # pm = int(np.ceil(crop_px / 2))
+
             nm = int(np.floor(boxsize / 2))
             pm = int(np.ceil(boxsize / 2))
+
             # find all boxes
             for f in d.features:
                 if f.title in positives:
@@ -2992,32 +3006,52 @@ class SegmentationEditor:
                 else:
                     continue
 
-                # find boxes
                 for z in f.boxes.keys():
-                    if f.boxes[z] is not None:
-                        for (x, y) in f.boxes[z]:
-                            x_min = (x-nm)
-                            x_max = (x+pm)
-                            y_min = (y-nm)
-                            y_max = (y+pm)
-                            if x_min > 0 and y_min > 0 and x_max < w and y_max < h:
-                                image = np.flipud(mrcf.data[z, y_min:y_max, x_min:x_max])
-                                image = np.array(image.astype(out_type, copy=False), dtype=float)
-                                if z in f.slices and f.slices[z] is not None and is_positive:
-                                    segmentation = np.flipud(f.slices[z][y_min:y_max, x_min:x_max])
-                                else:
-                                    segmentation = np.zeros_like(image)
-                                if is_positive:
-                                    positive.append([image, segmentation])
-                                else:
-                                    negative.append([image, segmentation])
+                    if f.boxes[z] is None:
+                        continue
+                    for (x, y) in f.boxes[z]:
+                        x_min = x - nm
+                        x_max = x + pm
+                        y_min = y - nm
+                        y_max = y + pm
+                        if x_min <= 0 or y_min <= 0 or x_max >= w or y_max >= h:
                             n_done += 1
                             process.set_progress(n_done / n_boxes)
+                            continue
 
-        if not negative:
-            all_imgs = np.array(positive)
+                        # Z-stack indices, clamped to valid range
+                        z_indices = np.clip(np.arange(z - boxdepth // 2, z + boxdepth // 2 + 1), 0, n_slices - 1)
+
+                        # volume: (D, B, B)
+                        volume = mrcf.data[z_indices, y_min:y_max, x_min:x_max]
+                        volume = np.array(volume.astype(out_type, copy=False), dtype=float)
+
+                        # flip in Y (like old np.flipud) → axis=1 because volume is (Z,Y,X)
+                        volume = np.flip(volume, axis=1)
+
+                        # annotation is only on slice z
+                        if z in f.slices and f.slices[z] is not None and is_positive:
+                            seg2d = f.slices[z][y_min:y_max, x_min:x_max]
+                            seg2d = np.flipud(seg2d)
+                        else:
+                            seg2d = np.zeros_like(volume[0], dtype=float)
+
+                        # stack: (D+1, B, B) with annotation last
+                        box_stack = np.concatenate([volume, seg2d[None, :, :]], axis=0)
+
+                        if is_positive:
+                            positive.append(box_stack)
+                        else:
+                            negative.append(box_stack)
+
+                        n_done += 1
+                        process.set_progress(n_done / n_boxes)
+
+        if negative:
+            all_imgs = np.array(positive + negative, dtype=np.float32)
         else:
-            all_imgs = np.array(positive + negative)
+            all_imgs = np.array(positive, dtype=np.float32)
+
         tifffile.imwrite(path, all_imgs, description=f"apix={apix:.2f}")
         process.set_progress(1.0)
         
@@ -4187,7 +4221,8 @@ class QueuedExport:
                 self.colour = m.colour
                 for j in range(self.dataset.export_bottom, self.dataset.export_top):
                     self.check_stop_request()
-                    segmented_slice = m.apply_to_slice(mrcd[j, rx[0]:rx[1], ry[0]:ry[1]], self.dataset.pixel_size) * 255
+                    j_indices = np.clip(np.arange(j - m.model_depth // 2, j + m.model_depth // 2 + 1), 0, n_slices - 1)
+                    segmented_slice = m.apply_to_slice(mrcd[j_indices, rx[0]:rx[1], ry[0]:ry[1]], self.dataset.pixel_size) * 255
                     segmentations[m_idx, j, rx[0]:rx[1], ry[0]:ry[1]] = segmented_slice
                     n_slices_complete += 1
                     self.process.set_progress(min([0.999, n_slices_complete / n_slices_total]))

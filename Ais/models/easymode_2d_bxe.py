@@ -4,7 +4,7 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
 from tensorflow.keras.optimizers import Adam
 
 
-title = "ezm-2d"
+title = "ezm-2d-bxe"
 include = True
 
 
@@ -48,7 +48,7 @@ def combined_loss(y_true, y_pred, border=16, ignore_label=2.0, epsilon=1e-6):
 
     dice = dice_loss(y_true, y_pred, ignore_label=ignore_label, epsilon=epsilon)
 
-    return 0.3 * bce + 0.7 * dice
+    return bce
 
 
 def create(input_shape, output_dimensionality=1):

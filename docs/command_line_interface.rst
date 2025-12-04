@@ -64,7 +64,7 @@ Options:
     Path to the segmentation model file (required).
 
   ``-d``:
-    Directory containing the input data (required).
+    Data to segment: can a directory, a list of directories, a glob pattern (e.g. volumes/TS_001*.mrc), or a list of glob patterns.
 
   ``-ou``:
     Directory to save the output results (required).

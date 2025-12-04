@@ -17,4 +17,9 @@
   "SEARCH_DIRECTORIES": [],
   "DEBUG_PREPROC_BIN_2": false,
   "DEBUG_PREPROC_BIN_3": false,
+  "DEBUG_PREPROC_BIN_5": false,
+  "DEBUG_A": false,
+  "DEBUG_B": false,
+  "DEBUG_C": false
+
 }

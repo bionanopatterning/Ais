@@ -150,7 +150,7 @@ class SEFrame:
         if update_texture:
             self.update_image_texture()
 
-    def get_slice(self, requested_slice=None, as_float=True):
+    def get_slice(self, requested_slice=None, as_float=True, model_depth=None):
         if requested_slice is None:
             requested_slice = self.current_slice
         requested_slice = min([max([requested_slice, 0]), self.n_slices - 1])
@@ -161,7 +161,11 @@ class SEFrame:
         self.n_slices = mrc.data.shape[0]
         if self.export_top is None:
             self.export_top = self.n_slices
-        out_data = mrc.data[requested_slice, :, :]
+        if model_depth is None:
+            out_data = mrc.data[requested_slice, :, :]
+        else:
+            stack_indices = np.clip(np.arange(requested_slice - model_depth // 2, requested_slice + model_depth // 2 + 1), 0, self.n_slices - 1)
+            out_data = mrc.data[stack_indices, :, :]
         if as_float:
             target_type_dict = {np.float32: float, float: float, np.dtype('int8'): np.dtype('uint8'), np.dtype('int16'): np.dtype('float32')}
             if out_data.dtype not in target_type_dict:

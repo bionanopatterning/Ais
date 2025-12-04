@@ -14,6 +14,7 @@ timer = 0.0
 
 
 def generate_thumbnail(data, overlay, colour):
+    data = np.squeeze(data)
     s = min(data.shape)
     sqdata = data[:s, :s].astype(np.float32)
     overlay = overlay[:s, :s]
