@@ -39,4 +39,4 @@ __________
 Help
 ----------------
 
-Need help? `Ask here <https://github.com/bionanopatterning/Ais/issues>`_ or reach out to m.g.f.last@lumc.nl
+Need help? `Please post here <https://github.com/bionanopatterning/Ais/issues>`_.

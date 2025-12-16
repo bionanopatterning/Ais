@@ -15,7 +15,7 @@ import threading
 import json
 from Ais.core.opengl_classes import Texture
 from Ais.core.util import generate_thumbnail
-from scipy.ndimage import rotate, zoom, binary_dilation
+from scipy.ndimage import binary_dilation, gaussian_filter, zoom
 import datetime
 import time
 import tarfile
@@ -27,11 +27,18 @@ class SEModelDataLoader:
     AUG_ROT90_XY = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
     AUG_FLIP_XY = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]
     AUG_FLIP_Z = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
+    P_AUG_BRIGHTNESS = 0.33
+    P_AUG_CONTRAST = 0.33
+    P_AUG_NOISE = 0.33
+    P_AUG_SCALE = 0.33
+    P_AUG_BLUR = 0.33
+    P_AUG_GAMMA = 0.33
 
-    def __init__(self, training_dataset_path, batch_size, validation_split):
+    def __init__(self, training_dataset_path, batch_size, validation_split, extra_augmentations=False):
         self.path = training_dataset_path
         self.batch_size = batch_size
         self.validation_split = validation_split
+        self.extra_augmentations = extra_augmentations
         self.apix = -1.0
 
         self.x = None
@@ -84,18 +91,96 @@ class SEModelDataLoader:
         y = np.array(self.y[index], dtype=np.float32, copy=True)
         return x, y
 
-    def augment(self, x, y):
-        _ = np.random.randint(16 if self.box_depth > 1 else 8)
-        x = np.rot90(x, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
-        y = np.rot90(y, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
-        if SEModelDataLoader.AUG_FLIP_XY[_]:
-            x = np.flip(x, axis=0)
-            y = np.flip(y, axis=0)
-        if SEModelDataLoader.AUG_FLIP_Z[_] and self.box_depth > 1:
-            x = np.flip(x, axis=-1)
-            y = np.flip(y, axis=-1)
+    @staticmethod
+    def _augment_brightness(x, y):
+        x += np.random.uniform(-0.3, 0.3)
+        return x, y
 
-        # OPTIONAL: other augmentations here
+    @staticmethod
+    def _augment_contrast(x, y):
+        x *= np.random.uniform(0.7, 1.3)
+        return x, y
+
+    @staticmethod
+    def _augment_gaussian_noise( x, y):
+        noise = np.random.normal(0, 0.3, size=x.shape)
+        x += noise
+        return x, y
+
+    @staticmethod
+    def _augment_scale(x, y):
+        factor = np.random.uniform(0.9, 1.1)
+        if np.isclose(factor, 1.0):
+            return x, y
+
+        H, W, D = x.shape
+
+        zoom_factors = (factor, factor, 1.0)
+        zoomed_img = zoom(x, zoom_factors, order=1)
+        zoomed_label = zoom(y, zoom_factors, order=0)
+
+        zh, zw, _ = zoomed_img.shape
+
+        if factor < 1.0:
+            pad_h = H - zh
+            pad_w = W - zw
+
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
+
+            x = np.pad(zoomed_img, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), mode='reflect')
+            y = np.pad(zoomed_label, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), mode='reflect')
+        else:
+            start_h = (zh - H) // 2
+            start_w = (zw - W) // 2
+            x = zoomed_img[start_h:start_h + H, start_w:start_w + W, :]
+            y = zoomed_label[start_h:start_h + H, start_w:start_w + W, :]
+
+        return x, y
+
+    @staticmethod
+    def _augment_blur(x, y):
+        sigma = np.random.uniform(0.1, 1.1)
+        x = gaussian_filter(x, sigma)
+        return x, y
+
+    @staticmethod
+    def _augment_gamma(x, y):
+        gamma = np.random.uniform(0.8, 1.2)
+        x = np.sign(x) * (np.abs(x) ** gamma)
+        return x, y
+
+    @staticmethod
+    def _extra_augmentations(x, y):
+        if np.random.uniform() < SEModelDataLoader.P_AUG_BRIGHTNESS:
+            x, y = SEModelDataLoader._augment_brightness(x, y)
+        if np.random.uniform() < SEModelDataLoader.P_AUG_CONTRAST:
+            x, y = SEModelDataLoader._augment_contrast(x, y)
+        if np.random.uniform() < SEModelDataLoader.P_AUG_NOISE:
+            x, y = SEModelDataLoader._augment_gaussian_noise(x, y)
+        if np.random.uniform() < SEModelDataLoader.P_AUG_SCALE:
+            x, y = SEModelDataLoader._augment_scale(x, y)
+        if np.random.uniform() < SEModelDataLoader.P_AUG_BLUR:
+            x, y = SEModelDataLoader._augment_blur(x, y)
+        if np.random.uniform() < SEModelDataLoader.P_AUG_GAMMA:
+            x, y = SEModelDataLoader._augment_gamma(x, y)
+        return x, y
+
+    def augment(self, x, y):
+        # _ = np.random.randint(16 if self.box_depth > 1 else 8)
+        # x = np.rot90(x, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
+        # y = np.rot90(y, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
+        # if SEModelDataLoader.AUG_FLIP_XY[_]:
+        #     x = np.flip(x, axis=0)
+        #     y = np.flip(y, axis=0)
+        # if SEModelDataLoader.AUG_FLIP_Z[_] and self.box_depth > 1:
+        #     x = np.flip(x, axis=-1)
+        #     y = np.flip(y, axis=-1)
+
+        if self.extra_augmentations:
+            x, y = SEModelDataLoader._extra_augmentations(x, y)
         return x, y
 
     def preprocess(self, x, y):
@@ -114,8 +199,9 @@ class SEModelDataLoader:
                     index = self.idx_training_all[j]
 
                 x, y = self.get_sample(index)
-                x, y = self.augment(x, y)
                 x, y = self.preprocess(x, y)
+                x, y = self.augment(x, y)
+
                 yield x, y
 
     def validation_generator(self):
@@ -323,21 +409,21 @@ class SEModel:
         except Exception as e:
             print("Error loading model - see details below\n", e)
 
-    def train(self, rate=None, external_callbacks=None):
+    def train(self, rate=None, external_callbacks=None, extra_augmentations=False):
         if self.train_data_path:
             if self.compilation_mode == 'inference':
                 self.toggle_training()
-            process = BackgroundProcess(self._train, (rate, external_callbacks), name=f"{self.title} training")
+            process = BackgroundProcess(self._train, (rate, external_callbacks, extra_augmentations), name=f"{self.title} training")
             self.background_process_train = process
             self.inference_model = None
             process.start()
 
-    def _train(self, rate=None, external_callbacks=None, process=None):
+    def _train(self, rate=None, external_callbacks=None, extra_augmentations=False, process=None):
         try:
             start_time = time.time()
             validation_split = 0.0 if "VALIDATION_SPLIT" not in self.bcprms else self.bcprms["VALIDATION_SPLIT"]
 
-            loader = SEModelDataLoader(self.train_data_path, self.batch_size, validation_split)
+            loader = SEModelDataLoader(self.train_data_path, self.batch_size, validation_split, extra_augmentations=extra_augmentations)
             self.model_depth = loader.box_depth
             self.apix = loader.apix
 
@@ -507,29 +593,22 @@ class SEModel:
         if image.ndim != 3:
             cfg.set_error(ValueError("Input image must be a 3D numpy array."), "SegmentationEditor model application error:")
 
-        _j, _k = image.shape[1], image.shape[2]
-        if cfg.settings["DEBUG_PREPROC_BIN_2"]:
-            Z, J, K = image.shape
-            J2 = (J // 2) * 2
-            K2 = (K // 2) * 2
-            image = image[:, :J2, :K2].reshape(Z, J2 // 2, 2, K2 // 2, 2).mean(axis=(2, 4))
-        elif cfg.settings["DEBUG_PREPROC_BIN_3"]:
-            Z, J, K = image.shape
-            J3 = (J // 3) * 3
-            K3 = (K // 3) * 3
-            image = image[:, :J3, :K3].reshape(Z, J3 // 3, 3, K3 // 3, 3).mean(axis=(2, 4))
-        elif cfg.settings["DEBUG_PREPROC_BIN_5"]:
-            Z, J, K = image.shape
-            J3 = (J // 5) * 5
-            K3 = (K // 5) * 5
-            image = image[:, :J3, :K3].reshape(Z, J3 // 5, 5, K3 // 5, 5).mean(axis=(2, 4))
-
+        # TODO: replace scipy.ndimage.zoom with fourier cropping
+        orig_y, orig_x = image.shape[1], image.shape[2]
+        tomo_rescaled = False
+        tomo_rescale_factor = 1.0
+        if cfg.settings["INFERENCE_ALLOW_RESCALING"] and pixel_size != -1 and self.apix != -1:
+            tomo_rescale_factor = 10.0 * pixel_size / self.apix  # pixel_size is in nm...
+            print(f'Scaling tomogram by a factor {tomo_rescale_factor}')
+            if abs(tomo_rescale_factor - 1.0) > 1e-3:
+                image = zoom(image, (1.0, tomo_rescale_factor, tomo_rescale_factor), order=1)  # note: we're scaling Y and X only, because when extracting training data, we extract 2D images first and bin second! I.e. XY and Z are treated a bit differently in the training data as well.
+                tomo_rescaled = True
 
         image = np.transpose(image, (1, 2, 0))
         j, k, image_depth = image.shape
         if self.compilation_mode == 'inference' and cfg.settings["TILED_MODE"]==0:
             image -= np.mean(image)
-            image /= np.std(image)
+            image /= np.std(image) + 1e-7
 
             pad_h_min = (32 - (image.shape[0] % 32)) % 32
             pad_w_min = (32 - (image.shape[1] % 32)) % 32
@@ -543,7 +622,7 @@ class SEModel:
             _flip = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]
             _flip_z = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
 
-            _tta = cfg.settings['TEST_TIME_AUGMENTATIONS'] if image_depth == 2 else min(cfg.settings['TEST_TIME_AUGMENTATIONS'], 8)
+            _tta = cfg.settings['TEST_TIME_AUGMENTATIONS'] if image_depth > 1 else min(cfg.settings['TEST_TIME_AUGMENTATIONS'], 8)
             for i in range(_tta):
                 # rotate and flip
                 tta_img = np.rot90(image, k=_rot[i], axes=(0, 1))
@@ -568,9 +647,30 @@ class SEModel:
             segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
             print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice ({boxes.shape[0]} boxes): {time.time()-start_time:.3f} s.")
 
-        if cfg.settings["DEBUG_PREPROC_BIN_2"] or cfg.settings["DEBUG_PREPROC_BIN_3"] or cfg.settings["DEBUG_PREPROC_BIN_5"]:
-            from scipy.ndimage import zoom
-            segmentation = zoom(segmentation, (_j / segmentation.shape[0], _k / segmentation.shape[1]), order=1)
+        if cfg.settings["INFERENCE_ALLOW_RESCALING"] and tomo_rescaled:
+            inv_scale = 1.0 / tomo_rescale_factor
+            seg_rescaled = zoom(segmentation, inv_scale, order=1)
+
+            # Make sure the size matches exactly the original in-plane size
+            sy, sx = seg_rescaled.shape
+
+            # Crop or pad in Y
+            if sy > orig_y:
+                seg_rescaled = seg_rescaled[:orig_y, :]
+            elif sy < orig_y:
+                pad_y = orig_y - sy
+                seg_rescaled = np.pad(seg_rescaled, ((0, pad_y), (0, 0)), mode="edge")
+
+            # Crop or pad in X
+            sy, sx = seg_rescaled.shape
+            if sx > orig_x:
+                seg_rescaled = seg_rescaled[:, :orig_x]
+            elif sx < orig_x:
+                pad_x = orig_x - sx
+                seg_rescaled = np.pad(seg_rescaled, ((0, 0), (0, pad_x)), mode="edge")
+
+            segmentation = seg_rescaled
+
 
         if cfg.settings["TRIM_EDGES"] == 1:
             margin = 16
@@ -789,3 +889,4 @@ class BackgroundProcess:
 
     def __str__(self):
         return f"BackgroundProcess {self.uid} with function {self.function} and args {self.args}"
+

@@ -12,7 +12,6 @@ import starfile
 import pandas as pd
 timer = 0.0
 
-
 def generate_thumbnail(data, overlay, colour):
     data = np.squeeze(data)
     s = min(data.shape)

@@ -1914,6 +1914,7 @@ class SegmentationEditor:
                                     cfg.edit_setting("LEARNING_RATE", custom_rate)
                                 imgui.end_menu()
                             imgui.end_menu()
+
                         if imgui.begin_menu("Processing strategy"):
                             if imgui.menu_item("full image", None, cfg.settings["TILED_MODE"] == 0)[0]:
                                 cfg.edit_setting("TILED_MODE", 0)
@@ -1950,6 +1951,13 @@ class SegmentationEditor:
                         self.tooltip("When active, the margins of output segmentations are forced to zero.\n"
                                      "The size of the margin equals half the model's box size.")
 
+                        if imgui.menu_item("Rescale for inference", selected=cfg.settings["INFERENCE_ALLOW_RESCALING"])[0]:
+                            cfg.edit_setting("INFERENCE_ALLOW_RESCALING", not cfg.settings["INFERENCE_ALLOW_RESCALING"])
+                        self.tooltip("When True, input data is rescaled to match the model's pixel size during inference. ")
+
+                        if imgui.menu_item("use Ais v2.0 augmentations", None, cfg.settings["EXTRA_AUGMENTATIONS"])[0]:
+                            cfg.edit_setting("EXTRA_AUGMENTATIONS", not cfg.settings["EXTRA_AUGMENTATIONS"])
+                        self.tooltip("Use scaling, blurring, noise, and contrast augmentations in training.")
                         imgui.end_menu()
 
                     if imgui.begin_menu("3rd party applications"):
@@ -2103,18 +2111,18 @@ class SegmentationEditor:
                     if imgui.begin_menu("Developer"):
                         if imgui.menu_item("Show ImGui debug window", None, SegmentationEditor.SHOW_IMGUI_DEBUG)[0]:
                             SegmentationEditor.SHOW_IMGUI_DEBUG = not SegmentationEditor.SHOW_IMGUI_DEBUG
-                        if imgui.menu_item("(debug) se_model bin2", selected=cfg.settings["DEBUG_PREPROC_BIN_2"])[0]:
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_2", not cfg.settings["DEBUG_PREPROC_BIN_2"])
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_5", False)
-                        if imgui.menu_item("(debug) se_model bin3", selected=cfg.settings["DEBUG_PREPROC_BIN_3"])[0]:
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_3", not cfg.settings["DEBUG_PREPROC_BIN_3"])
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_5", False)
-                        if imgui.menu_item("(debug) se_model bin5", selected=cfg.settings["DEBUG_PREPROC_BIN_5"])[0]:
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_5", not cfg.settings["DEBUG_PREPROC_BIN_5"])
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
-                            cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
+                        # if imgui.menu_item("(debug) se_model bin2", selected=cfg.settings["DEBUG_PREPROC_BIN_2"])[0]:
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_2", not cfg.settings["DEBUG_PREPROC_BIN_2"])
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_5", False)
+                        # if imgui.menu_item("(debug) se_model bin3", selected=cfg.settings["DEBUG_PREPROC_BIN_3"])[0]:
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_3", not cfg.settings["DEBUG_PREPROC_BIN_3"])
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_5", False)
+                        # if imgui.menu_item("(debug) se_model bin5", selected=cfg.settings["DEBUG_PREPROC_BIN_5"])[0]:
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_5", not cfg.settings["DEBUG_PREPROC_BIN_5"])
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_2", False)
+                        #     cfg.edit_setting("DEBUG_PREPROC_BIN_3", False)
                         if imgui.menu_item("(debug) FLAG_A", selected=cfg.settings["DEBUG_A"])[0]:
                             cfg.edit_setting("DEBUG_A", not cfg.settings["DEBUG_A"])
                         if imgui.menu_item("(debug) FLAG_B", selected=cfg.settings["DEBUG_B"])[0]:

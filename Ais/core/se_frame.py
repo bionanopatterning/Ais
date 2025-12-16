@@ -232,6 +232,17 @@ class SEFrame:
         self.hist_bins = self.hist_bins.astype('float32')
         self.hist_vals = np.log(self.hist_vals + 1)
 
+    @staticmethod
+    def load(path):
+        import pickle
+        try:
+            with open(path, 'rb') as pf:
+                se_frame = pickle.load(pf)
+                se_frame.on_load()
+            return se_frame
+        except Exception as e:
+            print(f'Error loading SEFrame from {path}: {e}')
+
     def on_load(self):
         uid_counter = next(SEFrame.idgen)
         self.uid = int(datetime.datetime.now().strftime('%Y%m%d%H%M%S%f') + "000") + uid_counter

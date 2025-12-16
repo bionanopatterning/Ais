@@ -1,9 +1,29 @@
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
 from tensorflow.keras.optimizers import Adam
+import tensorflow as tf
 
 title = "VGGNet M"
 include = True
+
+def masked_bxe(y_true, y_pred, border=16, ignore_label=2.0, epsilon=1e-6):
+    if border > 0:
+        y_true = y_true[:, border:-border, border:-border, ...]
+        y_pred = y_pred[:, border:-border, border:-border, ...]
+
+    y_true = tf.cast(y_true, tf.float32)
+    y_pred = tf.cast(y_pred, tf.float32)
+
+    mask = tf.cast(tf.not_equal(y_true, ignore_label), tf.float32)
+    y_true_clean = tf.where(tf.equal(y_true, ignore_label), 0.0, y_true)
+
+    bce = tf.keras.losses.binary_crossentropy(y_true_clean, y_pred)  # shape [B,H,W]
+    if tf.rank(mask) == 4: mask_bce = tf.squeeze(mask, axis=-1)
+    else: mask_bce = mask
+
+    bce = tf.reduce_sum(bce * mask_bce) / (tf.reduce_sum(mask_bce) + epsilon)
+
+    return bce
 
 def create(input_shape):
     inputs = Input(input_shape)
@@ -35,6 +55,6 @@ def create(input_shape):
 
     # create the model
     model = Model(inputs=[inputs], outputs=[output])
-    model.compile(optimizer=Adam(), loss='binary_crossentropy')
+    model.compile(optimizer=Adam(), loss=masked_bxe)
 
     return model

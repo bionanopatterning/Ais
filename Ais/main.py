@@ -93,6 +93,7 @@ def main():
     train_parser.add_argument('-n', '--negatives', required=False, type=float, default=0.0, help="If 0.0 (default), all images in the input training data are weighted identically. If argument supplied, the value determines the ratio of negative to positive samples to use. For example: if the training data contains 50 positive samples and 50 negatives, and the negative to positive ratio is 1.5, a number of negatives will be sampled twice in order to reach this ratio.") # TODO: maybe remove this altogether
     train_parser.add_argument('-c', '--copies', required=False, type=int, default=8, help="Number of augmented versions of the input images to include in the training data (all samples in different orientations). Default 8 (which would be the eight permutations of 90 degree rotations + horizontal flips; An argument >8 would include randomly rotated versions of the input images). If training data is 2.5D, augmentations 8 - 16 also include a flip in Z.")
     train_parser.add_argument('-r', '--rate', required=False, type=float, default=1e-3,help="Learning rate (default 1e-3)")
+    train_parser.add_argument('-augment', required=False, action='store_true', help="If set, use extra scale, contrast, noise, and blurring augmentations.")
     train_parser.add_argument('-name', '--model_name', required=False, type=str, default="Unnamed model", help="Model name. File will be saved as output_directory/{name}.scnm")
     train_parser.add_argument('-models', '--model_architectures', required=False, action='store_true', help='List available model architectures.')
 
@@ -159,7 +160,8 @@ def main():
                                    gpus=args.gpus,
                                    parallel=args.parallel,
                                    rate=args.rate,
-                                   name=args.model_name)
+                                   name=args.model_name,
+                                   extra_augmentations=args.augment)
         elif args.command == 'extract':
             aiscli.extract_training_data(features=args.features,
                                          data_directory=args.data_directory,

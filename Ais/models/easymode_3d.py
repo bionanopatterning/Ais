@@ -53,7 +53,6 @@ def combined_loss(y_true, y_pred, border=16, ignore_label=2.0, epsilon=1e-6):
 
 def create(input_shape, output_dimensionality=1):
     input_shape = (*input_shape, 1)
-    print(f'create easymode-3d-center input_shape: {input_shape}')
     drop_rate_bottleneck = 0.25
     inputs = Input(input_shape)
 

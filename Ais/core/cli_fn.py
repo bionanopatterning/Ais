@@ -6,8 +6,6 @@ import tensorflow as tf
 import os, time, multiprocessing, glob, itertools, glfw, mrcfile, json
 import numpy as np
 
-# TODO when ais segment ... -bin, bin in XY only and unbin the output!
-
 
 def glfw_init():
     if not glfw.init():
@@ -36,6 +34,7 @@ def _remove_padding(volume, padding):
     pt, pb, pl, pr = padding
     return volume[:, pt:None if pb == 0 else -pb, pl:None if pr == 0 else -pr]
 
+
 def scale_volume_xy(volume, scale_factor):
     from scipy.ndimage import zoom
     if np.isclose(scale_factor, 1.0):
@@ -50,7 +49,23 @@ def scale_volume_xy(volume, scale_factor):
         volume = zoom(volume, (1.0, residual_scale_factor, residual_scale_factor), order = 1)
         return volume
 
-def _segment_tomo(tomo_path, model, tta=1, model_apix=None):
+
+def _segment_tomo(tomo_path, model, tta=1, model_apix=None, model_depth=1, model_dimensionality=2):
+    def parse_input_for_slice(input_volume, j, model_depth, model_dimensionality):
+        n_slices, _, _ = input_volume.shape
+
+        if model_dimensionality == 2 or model_depth <= 1:
+            sl = input_volume[np.clip(j, 0, n_slices - 1)]
+            return sl[..., np.newaxis]
+
+        half = model_depth // 2
+        idx = np.clip(np.arange(j - half, j + half + 1), 0, n_slices - 1)
+        slab = input_volume[idx, :, :]
+        if model_dimensionality == 3:
+            return np.transpose(slab, (1, 2, 0))[..., np.newaxis]
+        else:
+            return np.transpose(slab, (1, 2, 0))
+
     with mrcfile.open(tomo_path) as m:
         volume = m.data.astype(np.float32)
         volume_apix = float(m.voxel_size.x)
@@ -80,10 +95,11 @@ def _segment_tomo(tomo_path, model, tta=1, model_apix=None):
         segmented_instance = np.zeros_like(volume_instance, dtype=np.float32)
 
         for j in range(volume_instance.shape[0]):
-            inp = volume_instance[j][np.newaxis, :, :]
-            segmented_instance[j] = np.squeeze(model.predict(inp))
+            model_input = parse_input_for_slice(volume_instance, j, model_depth, model_dimensionality)[np.newaxis, ...]
+            segmented_instance[j] = np.squeeze(model.predict(model_input))
 
-        if f[k]: segmented_instance = np.flip(segmented_instance, axis=2)
+        if f[k]:
+            segmented_instance = np.flip(segmented_instance, axis=2)
         segmented_instance = np.rot90(segmented_instance, k=-r[k], axes=(1, 2))
         segmented_volume += segmented_instance
 
@@ -131,15 +147,27 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id
 
-
     se_model = SEModel(no_glfw=True)
     se_model.load(model_path, compile=False)
+    model_depth = se_model.model_depth
+    model_dimensionality = 2.5 if model_depth > 1 else 2    # or it can be 3, see elif rank == 5 below
     model = se_model.model
-    new_input = Input(shape=(None, None, 1))
+
+    input_shape = model.input_shape
+    rank = len(input_shape)
+
+    if rank == 4:
+        new_input = Input(shape=(None, None, model_depth))
+    elif rank == 5:
+        model_dimensionality = 3
+        new_input = Input(shape=(None, None, model_depth, 1))
+    else:
+        raise ValueError(f"Unsupported model input rank: {input_shape}")
+
     new_model = clone_model(model, input_tensors=new_input)
     new_model.set_weights(model.get_weights())
 
-
+    print(f"GPU {gpu_id} - starting inference with {model_dimensionality}D model '{se_model.title}'")
     for j, p in enumerate(data_paths):
         try:
             tomo_name = os.path.basename(os.path.splitext(p)[0])
@@ -152,7 +180,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
                 mrc.voxel_size = 1.0
 
             in_voxel_size = mrcfile.open(p, header_only=True).voxel_size
-            segmented_volume = _segment_tomo(p, new_model, tta=test_time_augmentation, model_apix=model_apix)
+            segmented_volume = _segment_tomo(p, new_model, tta=test_time_augmentation, model_apix=model_apix, model_depth=model_depth, model_dimensionality=model_dimensionality)
             segmented_volume = (segmented_volume * 255).astype(np.uint8)
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(segmented_volume)
@@ -161,16 +189,8 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
         except Exception as e:
             print(f"Error segmenting {p}:\n{e}")
 
-def dispatch_parallel_segment(model_path,
-                              data_patterns,
-                              output_directory,
-                              gpus,
-                              test_time_augmentation=1,
-                              parallel=1,
-                              overwrite=0,
-                              processing_apix=1):
 
-    # Make model path absolute
+def dispatch_parallel_segment(model_path, data_patterns, output_directory, gpus, test_time_augmentation=1, parallel=1, overwrite=0, processing_apix=1):
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -261,9 +281,9 @@ def print_available_model_architectures():
         print(f"{first_col[j]:<{col_width}}architecture name: {key}")
 
 
-def train_model(training_data, output_directory, architecture=None, epochs=50, batch_size=32, negatives=0.0, copies=4, model_path='', gpus="0", parallel=1, rate=1e-3, name="Unnamed model"):
+def train_model(training_data, output_directory, architecture=None, epochs=50, batch_size=32, negatives=0.0, copies=4, model_path='', gpus="0", parallel=1, rate=1e-3, name="Unnamed model", extra_augmentations=False):
     import keras.callbacks
-    ## TODO: -m input currently ignorned it seems.
+    ## TODO: -m input currently ignored it seems.
     class CheckpointCallback(keras.callbacks.Callback):
         def __init__(self, se_model, path):
             super().__init__()
@@ -309,9 +329,9 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     if parallel:
         strategy = tf.distribute.MirroredStrategy()
         with strategy.scope():
-            model.train(rate=rate, external_callbacks=[checkpoint_callback])
+            model.train(rate=rate, external_callbacks=[checkpoint_callback], extra_augmentations=extra_augmentations)
     else:
-        model.train(rate=rate, external_callbacks=[checkpoint_callback])
+        model.train(rate=rate, external_callbacks=[checkpoint_callback], extra_augmentations=extra_augmentations)
 
     while model.background_process_train.progress < 1.0:
         time.sleep(0.2)
@@ -434,6 +454,7 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
 
 def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, margin=0):
     import pickle, tifffile
+    # TODO: replace scipy.ndimage.zoom with fourier cropping!
 
     def _get_box(j, k, l, path, tomo_n_slices):
         j_indices = np.clip(np.arange(j - box_depth // 2, j + box_depth // 2 + 1), 0, tomo_n_slices - 1)
