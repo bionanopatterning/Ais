@@ -152,7 +152,8 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
     model_depth = se_model.model_depth
     model_dimensionality = 2.5 if model_depth > 1 else 2    # or it can be 3, see elif rank == 5 below
     model = se_model.model
-
+    if model_apix is None:
+        model_apix = se_model.apix
     input_shape = model.input_shape
     rank = len(input_shape)
 
@@ -167,13 +168,13 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
     new_model = clone_model(model, input_tensors=new_input)
     new_model.set_weights(model.get_weights())
 
-    print(f"GPU {gpu_id} - starting inference with {model_dimensionality}D model '{se_model.title}'")
+    print(f"GPU {gpu_id} - starting inference with {model_dimensionality}D model '{se_model.title}' at {model_apix} A/px.")
     for j, p in enumerate(data_paths):
         try:
             tomo_name = os.path.basename(os.path.splitext(p)[0])
             out_path = os.path.join(output_dir, tomo_name+"__"+se_model.title+".mrc")
             if os.path.exists(out_path) and not overwrite:
-                print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {os.path.basename(model_path)} - {p}")
+                print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {os.path.basename(model_path)} - {os.path.basename(p)}")
                 continue
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(np.zeros((10, 10, 10), dtype=np.float32))
@@ -185,7 +186,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             with mrcfile.new(out_path, overwrite=True) as mrc:
                 mrc.set_data(segmented_volume)
                 mrc.voxel_size = in_voxel_size
-            print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {os.path.basename(model_path)} - {p}")
+            print(f"{j + 1}/{len(data_paths)} (GPU {gpu_id}) - {os.path.basename(model_path)} - {os.path.basename(p)}")
         except Exception as e:
             print(f"Error segmenting {p}:\n{e}")
 
@@ -343,7 +344,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     print(f"\nDone training {os.path.join(output_directory, f'{model.title}{cfg.filetype_semodel}')}")
 
 
-def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0):
+def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0, twist_per_sample=0.0):
     # find right values for spacing and size.
     voxel_size = mrcfile.open(tomo_path, permissive=True, header_only=True).voxel_size.x
     if voxel_size == 0.0:
@@ -366,7 +367,7 @@ def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size
 
     if filament:
         from Ais.core.filaments import pick_filament
-        return pick_filament(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, spacing_nm=min_spacing, size_nm=min_size, pixel_size=voxel_size / 10.0, min_length=filament_length)
+        return pick_filament(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, spacing_nm=min_spacing, size_nm=min_size, pixel_size=voxel_size / 10.0, min_length=filament_length, twist_per_sample=twist_per_sample)
     else:
         from Ais.core.util import pick_particles
         return pick_particles(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, verbose=verbose, centroid=centroid, min_particles=min_particles)
@@ -383,11 +384,11 @@ def _clr_print(txt, clr):
     print(f"{colors[clr]}{txt}\033[0m")
 
 
-def _picking_thread(data_paths, output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, process_id, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0):
+def _picking_thread(data_paths, output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, process_id, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0, twist_per_sample=0.0):
     try:
         for j, p in enumerate(data_paths):
             out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.star")
-            n_particles, n_filaments = _pick_tomo(p, out_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament, filament_length, filament_length_px, centroid, min_particles)
+            n_particles, n_filaments = _pick_tomo(p, out_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament, filament_length, filament_length_px, centroid, min_particles, twist_per_sample)
 
             if n_particles < min_particles:
                 _clr_print(
@@ -406,7 +407,7 @@ def _picking_thread(data_paths, output_directory, margin, threshold, binning, sp
         pass
 
 
-def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config="", filament=False, filament_length=500.0, centroid=False, min_particles=0):
+def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config="", filament=False, filament_length=500.0, centroid=False, min_particles=0, twist_per_sample=0.0):
     data_directory = os.path.abspath(data_directory)
     output_directory = os.path.abspath(output_directory)
 
@@ -439,7 +440,7 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
     try:
         for p_id in data_div:
             p = multiprocessing.Process(target=_picking_thread,
-                                        args=(data_div[p_id], output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, p_id, verbose, filament, filament_length, None, centroid, min_particles))
+                                        args=(data_div[p_id], output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, p_id, verbose, filament, filament_length, None, centroid, min_particles, twist_per_sample))
             processes.append(p)
             p.start()
 
@@ -452,14 +453,14 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
                 p.join(timeout=1)
 
 
-def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, margin=0):
-    import pickle, tifffile
+def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, margin=0, exclude=None):
+    import pickle, tifffile, fnmatch
     # TODO: replace scipy.ndimage.zoom with fourier cropping!
 
     def _get_box(j, k, l, path, tomo_n_slices):
         j_indices = np.clip(np.arange(j - box_depth // 2, j + box_depth // 2 + 1), 0, tomo_n_slices - 1)
 
-        vol = mrcfile.mmap(path).data  # shape: (Z, Y, X)
+        vol = mrcfile.mmap(path).data
         zdim, ydim, xdim = vol.shape
 
         depth = len(j_indices)
@@ -474,8 +475,11 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
         ix0, ix1 = max(x0, 0), min(x1, xdim)
 
         if iy0 < iy1 and ix0 < ix1:
+            pad_y = (iy0 - y0, y1 - iy1)
+            pad_x = (ix0 - x0, x1 - ix1)
             for zi, z in enumerate(j_indices):
-                box[zi, iy0 - y0:iy1 - y0, ix0 - x0:ix1 - x0] = vol[z, iy0:iy1, ix0:ix1]
+                slc = vol[z, iy0:iy1, ix0:ix1]
+                box[zi] = np.pad(slc, (pad_y, pad_x), mode='reflect')
             validity[iy0 - y0:iy1 - y0, ix0 - x0:ix1 - x0] = 1
 
         return box, validity
@@ -509,6 +513,15 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
 
     annotated_tomograms = glob.glob(os.path.join(data_directory, "*.scns"))
 
+    exclude_patterns = []
+    if exclude is not None:
+        for e in exclude:
+            if e.endswith('.txt'):
+                with open(e) as f:
+                    exclude_patterns.extend([line.strip() for line in f if line.strip()])
+            else:
+                exclude_patterns.append(e)
+
     print(f'scanning {len(annotated_tomograms)} annotated tomograms for {len(features)} features...')
 
     training_boxes = dict()
@@ -517,6 +530,11 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
 
     apix = -1.0
     for j, annotation in enumerate(annotated_tomograms, start=1):
+        stem = os.path.splitext(os.path.basename(annotation))[0]
+        if any(fnmatch.fnmatch(stem, p) for p in exclude_patterns):
+            print('\033[90m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)} - excluded' + '\033[0m')
+            continue
+
         print('\033[93m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)}' + '\033[0m')
 
         try:
@@ -529,6 +547,11 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
         tomo = se_frame.path
         if not os.path.exists(tomo):
             tomo = os.path.join(os.path.dirname(annotation), os.path.basename(se_frame.path.replace('\\','/')))
+
+        tomo_stem = os.path.splitext(os.path.basename(tomo))[0]
+        if any(fnmatch.fnmatch(tomo_stem, p) for p in exclude_patterns):
+            print('\033[90m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(tomo)} - excluded' + '\033[0m')
+            continue
 
         if j == 1:
             apix = mrcfile.open(tomo, header_only=True).voxel_size.x

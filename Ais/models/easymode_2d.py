@@ -4,7 +4,7 @@ from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose
 from tensorflow.keras.optimizers import Adam
 
 
-title = "ezm-2d"
+title = "ezm-2d-0.3-0.7"
 include = True
 
 
@@ -15,19 +15,16 @@ def dice_loss(y_true, y_pred, ignore_label=2.0, epsilon=1e-6):
     y_pred = tf.cast(y_pred, tf.float32)
 
     mask = tf.cast(tf.not_equal(y_true, ignore_label), tf.float32)
-    y_true_clean = tf.where(tf.equal(y_true, ignore_label), 0.0, y_true)
+    y_true_clean = y_true * mask
 
-    y_true_f = tf.reshape(y_true_clean * mask, [-1])
+    y_true_f = tf.reshape(y_true_clean, [-1])
     y_pred_f = tf.reshape(y_pred * mask, [-1])
-    mask_f = tf.reshape(mask, [-1])
 
-    numerator = 2.0 * tf.reduce_sum(y_true_f * y_pred_f)
-    denominator = tf.reduce_sum(y_true_f + y_pred_f)
-    valid = tf.reduce_sum(mask_f)
+    intersection = tf.reduce_sum(y_true_f * y_pred_f)
+    denominator = tf.reduce_sum(y_true_f) + tf.reduce_sum(y_pred_f)
 
-    dice_coeff = tf.where(tf.equal(valid, 0.0), 1.0, (numerator + epsilon) / (denominator + epsilon))
+    dice_coeff = (2.0 * intersection) / (denominator + epsilon)
     return 1.0 - dice_coeff
-
 
 def combined_loss(y_true, y_pred, border=16, ignore_label=2.0, epsilon=1e-6):
     if border > 0:

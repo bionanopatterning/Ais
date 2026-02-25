@@ -74,6 +74,7 @@ def main():
     pick_parser.add_argument('-size-px', required=False, type=float, default=None, help="Minimum particle size in number of voxels.")
     pick_parser.add_argument('-min-particles', required=False, type=int, default=0, help="Minimum number of particles that must be found in a tomogram for the output .star file to be saved. Default 0 (always save).")
     pick_parser.add_argument('-filament', required=False, action='store_true', help="If set, pick in filament mode rather than blob mode.")
+    pick_parser.add_argument('--twist', required=False, type=float, default=0.0, help="If picking in filament mode, increment rlnAngleRot by this amount for every particle picked along a filament.")
     pick_parser.add_argument('-centroid', required=False, action='store_true', help="If set, if picking in blob mode, place coordinates at the centroid of each connected component rather than the deepest point. Only use when you are sure that particles are well separated!")
     pick_parser.add_argument('-length', required=False, type=float, default=500.0, help="Minimum filament length to place coordinates along (in Angstrom). Only used if -filament flag is set. Use ``-length-px`` to specify the length in pixels instead.")
     pick_parser.add_argument('-length-px', required=False, type=float, default=None, help="Minimum filament length to place coordinates along (in pixels). Only used if -filament flag is set.")
@@ -105,6 +106,7 @@ def main():
     extract_parsers.add_argument('-depth', "--box-depth", required=False, type=int, default=1, help="Box depth (in Z) to extract. Default 1 (2D). Must be odd - if not odd we add 1.")
     extract_parsers.add_argument('-bin', "--binning", required=False, type=int, default=1, help="Binning factor to apply (in XY). Output box size will be --box-size / --binning.")
     extract_parsers.add_argument('-m', "--margin", required=False, type=int, default=0, help="Ignore labels will be written in a margin of -m <int> pixels (before binning!).")
+    extract_parsers.add_argument('-e', "--exclude", required=False, type=str, nargs='+', default=None, help="Glob pattern or path to .txt file listing volumes to exclude from the extracted training data set..")
 
     args, unknown = parser.parse_known_args()
     if args.command is None:
@@ -141,6 +143,7 @@ def main():
                                           verbose=args.verbose==1,
                                           pom_capp_config=args.pom_capp_config,
                                           filament=args.filament,
+                                          twist_per_sample=args.twist,
                                           filament_length=args.length,
                                           centroid=args.centroid,
                                           min_particles=args.min_particles)
@@ -169,7 +172,8 @@ def main():
                                          box_size=args.box_size,
                                          box_depth=args.box_depth,
                                          binning=args.binning,
-                                         margin=args.margin)
+                                         margin=args.margin,
+                                         exclude=args.exclude)
 
 if __name__ == "__main__":
     main()

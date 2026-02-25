@@ -487,6 +487,8 @@ class SegmentationEditor:
             filename = (filename, )
         if not isinstance(filename, tuple):
             return
+        if not os.path.exists(filename[0]):
+            print(f'Could not find file {filename[0]}')
         for f in filename:
             try:
                 _, ext = os.path.splitext(f)
@@ -1098,6 +1100,8 @@ class SegmentationEditor:
                 self.show_trainset_boxes = False
             if imgui.collapsing_header("Models", None, imgui.TREE_NODE_DEFAULT_OPEN)[0]:
                 for m in cfg.se_models:
+
+                    # SET PANEL ID AND HEIGHT
                     imgui.push_id(f"SEModel_{m.uid}_main")
                     panel_height = 0
                     if m.active_tab == 0:
@@ -1124,6 +1128,17 @@ class SegmentationEditor:
 
                     imgui.pop_style_var(1)
 
+                    # WINDOW SHARED CONTENT: CLOSE, COLOUR PICKER, TITLE, INFO STRING / ARCHITECTURE SELECTION, AND CONTEXT MENU
+                    if imgui.begin_popup_context_window():
+                        if imgui.begin_menu("override inference pixel size"):
+                            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (2, 0))
+                            imgui.set_next_item_width(100)
+                            _, m.apix = imgui.input_float("##pxs", m.apix, 0.0, 0.0, '%.2f A/px')
+                            if _:
+                                m.update_info()
+                            imgui.pop_style_var()
+                            imgui.end_menu()
+                        imgui.end_popup()
                     imgui.same_line()
                     _, m.colour = imgui.color_edit3(m.title, *m.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                     # Title
@@ -1144,6 +1159,8 @@ class SegmentationEditor:
                         _, m.model_enum = imgui.combo("##model_type", m.model_enum, SEModel.AVAILABLE_MODELS)
                     imgui.pop_style_var()
 
+
+                    # TAB CONTENT: TRAINING / PREDICTION / INTERACTIONS
                     if imgui.begin_tab_bar("##tabs"):
                         if imgui.begin_tab_item(" Training ")[0]:
                             m.active_tab = 0

@@ -73,7 +73,7 @@ class SEModelDataLoader:
         self.y = y
         self.n_samples, self.box_shape, _, self.box_depth = x.shape
 
-        idx_positive = [i for i in range(self.n_samples) if np.any(self.y[i])]
+        idx_positive = [i for i in range(self.n_samples) if np.any(self.y[i] == 1)]
         if len(idx_positive) == 0:
             print(f'Training dataset at {self.path} contains no positive samples.')
         else:
@@ -93,17 +93,17 @@ class SEModelDataLoader:
 
     @staticmethod
     def _augment_brightness(x, y):
-        x += np.random.uniform(-0.3, 0.3)
+        x += np.random.uniform(-0.1, 0.1)
         return x, y
 
     @staticmethod
     def _augment_contrast(x, y):
-        x *= np.random.uniform(0.7, 1.3)
+        x *= np.random.uniform(0.9, 1.1)
         return x, y
 
     @staticmethod
     def _augment_gaussian_noise( x, y):
-        noise = np.random.normal(0, 0.3, size=x.shape)
+        noise = np.random.normal(0, 0.2, size=x.shape)
         x += noise
         return x, y
 
@@ -131,7 +131,7 @@ class SEModelDataLoader:
             pad_right = pad_w - pad_left
 
             x = np.pad(zoomed_img, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), mode='reflect')
-            y = np.pad(zoomed_label, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), mode='reflect')
+            y = np.pad(zoomed_label, ((pad_top, pad_bottom), (pad_left, pad_right), (0, 0)), mode='constant', constant_values=2)
         else:
             start_h = (zh - H) // 2
             start_w = (zw - W) // 2
@@ -169,15 +169,15 @@ class SEModelDataLoader:
         return x, y
 
     def augment(self, x, y):
-        # _ = np.random.randint(16 if self.box_depth > 1 else 8)
-        # x = np.rot90(x, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
-        # y = np.rot90(y, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
-        # if SEModelDataLoader.AUG_FLIP_XY[_]:
-        #     x = np.flip(x, axis=0)
-        #     y = np.flip(y, axis=0)
-        # if SEModelDataLoader.AUG_FLIP_Z[_] and self.box_depth > 1:
-        #     x = np.flip(x, axis=-1)
-        #     y = np.flip(y, axis=-1)
+        _ = np.random.randint(16 if self.box_depth > 1 else 8)  # is self.box_depth > 1, we're training a 2.5 or 3D Net, with shape (x, y, z).
+        x = np.rot90(x, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
+        y = np.rot90(y, k=SEModelDataLoader.AUG_ROT90_XY[_], axes=(0, 1))
+        if SEModelDataLoader.AUG_FLIP_XY[_]:
+            x = np.flip(x, axis=0)
+            y = np.flip(y, axis=0)
+        if SEModelDataLoader.AUG_FLIP_Z[_] and self.box_depth > 1:
+            x = np.flip(x, axis=-1)
+            y = np.flip(y, axis=-1)
 
         if self.extra_augmentations:
             x, y = SEModelDataLoader._extra_augmentations(x, y)

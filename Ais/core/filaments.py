@@ -265,7 +265,7 @@ class Filament:
         filament_coords = np.array(splev(np.linspace(0, 1, 100), self.tck))
         plt.plot(filament_coords[2], filament_coords[1], linewidth=10, alpha=0.2)
 
-    def sample_coordinates(self, spacing, offset=0, curvature_ruler_vox=None):
+    def sample_coordinates(self, spacing, offset=0, twist_per_sample=0.0):
         if self.length is None or self.length == 0.0:
             return np.array([])
 
@@ -280,6 +280,8 @@ class Filament:
         tangents_xyz - tangents_xyz / (np.linalg.norm(tangents_xyz, axis=1, keepdims=True) + 1e-12)
         tangents_xyz = enforce_tangent_consistency(tangents_xyz)
         euler_angles = tangent_to_euler_zyz(tangents_xyz)
+        twist_angles = (np.arange(len(coords)) * twist_per_sample) % 360.0
+        euler_angles[:, 0] = (euler_angles[:, 0] + twist_angles) % 360.0
 
         drdx = np.array(splev(x, self.tck, der=1)).T
         ddrddx = np.array(splev(x, self.tck, der=2)).T
@@ -296,7 +298,7 @@ def bin_volume(vol, b):
     return vol
 
 
-def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, margin, pixel_size=1.0, min_length=50.0):
+def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, margin, pixel_size=1.0, min_length=50.0, twist_per_sample=0.0):
     """
     volume_path: path to a semantic segmentation volume.
     threshold: threshold to binarize the volume (0-255)
@@ -328,7 +330,7 @@ def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, ma
 
     df = pd.DataFrame(columns=['rlnCoordinateZ', 'rlnCoordinateY', 'rlnCoordinateX', 'rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi', 'aisRadiusOfCurvature', 'aisLog10RadiusOfCurvature', 'aisFilamentID'])
     for j, f in enumerate(filaments):
-        c = f.sample_coordinates(spacing=spacing_nm / pixel_size, offset=spacing_nm / pixel_size / 2.0)
+        c = f.sample_coordinates(spacing=spacing_nm / pixel_size, offset=spacing_nm / pixel_size / 2.0, twist_per_sample=twist_per_sample)
         for z, y, x, rot, tilt, psi, roc in c:
             _roc = roc * pixel_size * 10.0
             df.loc[len(df)] = [z, y, x, rot, tilt, psi, _roc, np.log10(_roc), int(j)]
