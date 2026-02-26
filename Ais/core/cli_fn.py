@@ -453,8 +453,8 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
                 p.join(timeout=1)
 
 
-def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, margin=0, exclude=None):
-    import pickle, tifffile, fnmatch
+def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, margin=0, exclude=None, merge=False):
+    import pickle, tifffile
     # TODO: replace scipy.ndimage.zoom with fourier cropping!
 
     def _get_box(j, k, l, path, tomo_n_slices):
@@ -513,26 +513,31 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
 
     annotated_tomograms = glob.glob(os.path.join(data_directory, "*.scns"))
 
-    exclude_patterns = []
+    excluded_files = []
     if exclude is not None:
         for e in exclude:
             if e.endswith('.txt'):
                 with open(e) as f:
-                    exclude_patterns.extend([line.strip() for line in f if line.strip()])
+                    excluded_files.extend([line.strip() for line in f if line.strip()])
+            elif '*' in e:
+                excluded_files.extend(glob.glob(e))
             else:
-                exclude_patterns.append(e)
+                excluded_files.append(e)
+    excluded_files = [os.path.basename(os.path.splitext(f)[0]) for f in excluded_files]
 
     print(f'scanning {len(annotated_tomograms)} annotated tomograms for {len(features)} features...')
 
     training_boxes = dict()
+    training_sources = dict()
     for f in features:
         training_boxes[f] = []
+        training_sources[f] = []
 
     apix = -1.0
     for j, annotation in enumerate(annotated_tomograms, start=1):
         stem = os.path.splitext(os.path.basename(annotation))[0]
-        if any(fnmatch.fnmatch(stem, p) for p in exclude_patterns):
-            print('\033[90m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)} - excluded' + '\033[0m')
+        if stem in excluded_files:
+            print('\033[38;5;208m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)} - excluded' + '\033[0m')
             continue
 
         print('\033[93m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)}' + '\033[0m')
@@ -549,17 +554,16 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
             tomo = os.path.join(os.path.dirname(annotation), os.path.basename(se_frame.path.replace('\\','/')))
 
         tomo_stem = os.path.splitext(os.path.basename(tomo))[0]
-        if any(fnmatch.fnmatch(tomo_stem, p) for p in exclude_patterns):
-            print('\033[90m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(tomo)} - excluded' + '\033[0m')
+        if tomo_stem in excluded_files:
+            print('\033[38;5;208m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)} - excluded' + '\033[0m')
             continue
 
-        if j == 1:
+        if apix == -1.0:
             apix = mrcfile.open(tomo, header_only=True).voxel_size.x
             print(f'Pixel size for the first tomogram is {apix} Å - writing this value to the training data metadata.')
 
         for f in se_frame.features:
             if f.title not in features:
-                print(f"\tskipping feature '{f.title}'")
                 continue
 
             box_coordinates = [(z, box[0], box[1]) for z in f.boxes for box in f.boxes[z]]
@@ -574,29 +578,58 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
                 box_label = _bin(box_label[None, :, :])
                 box_data = np.concatenate([box_pixel_data, box_label], axis=0)
                 training_boxes[f.title].append(box_data)
+            training_sources[f.title].append(f'{tomo}\n')
 
 
     os.makedirs(output_directory, exist_ok=True)
 
-    for f in features:
-        data = np.array(training_boxes[f], dtype=np.float32)
-        _m = margin // binning
-        if _m > 0:
-            data[:, -1, :_m, :] = 2
-            data[:, -1, -_m:, :] = 2
-            data[:, -1, :, :_m] = 2
-            data[:, -1, :, -_m:] = 2
-
-        _binning_tag = "" if binning == 1 else f"_bin{binning}"
-        out_path = f"{box_size}x{box_size}x{box_depth}"+_binning_tag+ f"_{f}.scnt"
-
-        if len(training_boxes[f]) == 0:
-            print('\033[96m' + f'{f}: 0 training boxes. Skipping export.' + '\033[0m')
+    if merge:
+        all_boxes = []
+        all_sources = []
+        names = []
+        for f in features:
+            if len(training_boxes[f]) > 0:
+                names.append(f)
+                all_boxes.extend(training_boxes[f])
+                all_sources.extend(training_sources[f])
+        if len(all_boxes) == 0:
+            print('\033[96mNo training boxes for any feature. Skipping export.\033[0m')
         else:
-            print('\033[96m' + f'{f}: {len(training_boxes[f])} training boxes. Saving as {out_path}' + '\033[0m')
+            data = np.array(all_boxes, dtype=np.float32)
+            _m = margin // binning
+            if _m > 0:
+                data[:, -1, :_m, :] = 2
+                data[:, -1, -_m:, :] = 2
+                data[:, -1, :, :_m] = 2
+                data[:, -1, :, -_m:] = 2
+            _binning_tag = "" if binning == 1 else f"_bin{binning}"
+            merged_name = "_".join(names)
+            out_path = f"{box_size}x{box_size}x{box_depth}{_binning_tag}_{merged_name}.scnt"
+            print('\033[96m' + f'Merged: {len(all_boxes)} training boxes. Saving as {out_path}' + '\033[0m')
+            tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix * binning}")
 
-        tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix*binning}")
+            with open(out_path.replace('.scnt', '_sources.txt'), 'w') as _:
+                _.writelines(all_sources)
+    else:
+        for f in features:
+            data = np.array(training_boxes[f], dtype=np.float32)
+            _m = margin // binning
+            if _m > 0:
+                data[:, -1, :_m, :] = 2
+                data[:, -1, -_m:, :] = 2
+                data[:, -1, :, :_m] = 2
+                data[:, -1, :, -_m:] = 2
 
+            _binning_tag = "" if binning == 1 else f"_bin{binning}"
+            out_path = f"{box_size}x{box_size}x{box_depth}"+_binning_tag+ f"_{f}.scnt"
+
+            if len(training_boxes[f]) == 0:
+                print('\033[96m' + f'{f}: 0 training boxes. Skipping export.' + '\033[0m')
+            else:
+                print('\033[96m' + f'{f}: {len(training_boxes[f])} training boxes. Saving as {out_path}' + '\033[0m')
+                tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix*binning}")
+                with open(out_path.replace('.scnt', '_sources.txt'), 'w') as _:
+                    _.writelines(training_sources[f])
 
 
 

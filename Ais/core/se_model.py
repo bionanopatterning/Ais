@@ -481,7 +481,6 @@ class SEModel:
         self.model = Model.from_config(config)
         self.model.set_weights(weights)
 
-        self.update_info()
         self.compilation_mode = 'inference'
 
     def toggle_training(self):
@@ -494,7 +493,6 @@ class SEModel:
         self.compile(self.box_size, self.model_depth)
         self.model.set_weights(weights)
 
-        self.update_info()
         self.compilation_mode = 'training'
 
     def update_info(self):
@@ -601,7 +599,7 @@ class SEModel:
             tomo_rescale_factor = 10.0 * pixel_size / self.apix  # pixel_size is in nm...
             print(f'Scaling tomogram by a factor {tomo_rescale_factor}')
             if abs(tomo_rescale_factor - 1.0) > 1e-3:
-                image = zoom(image, (1.0, tomo_rescale_factor, tomo_rescale_factor), order=1)  # note: we're scaling Y and X only, because when extracting training data, we extract 2D images first and bin second! I.e. XY and Z are treated a bit differently in the training data as well.
+                image = zoom(image, (1.0, tomo_rescale_factor, tomo_rescale_factor), order=1)  # note: we're scaling Y and X only, because when extracting training data, we extract 2D images first and bin second. I.e. XY and Z are treated a bit differently in the training data as well.
                 tomo_rescaled = True
 
         image = np.transpose(image, (1, 2, 0))

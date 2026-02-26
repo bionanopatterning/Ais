@@ -107,6 +107,7 @@ def main():
     extract_parsers.add_argument('-bin', "--binning", required=False, type=int, default=1, help="Binning factor to apply (in XY). Output box size will be --box-size / --binning.")
     extract_parsers.add_argument('-m', "--margin", required=False, type=int, default=0, help="Ignore labels will be written in a margin of -m <int> pixels (before binning!).")
     extract_parsers.add_argument('-e', "--exclude", required=False, type=str, nargs='+', default=None, help="Glob pattern or path to .txt file listing volumes to exclude from the extracted training data set..")
+    extract_parsers.add_argument('--merge', required=False, action='store_true', help="Combine all extracted training data into a single output file per feature, rather than one file per input volume.")
 
     args, unknown = parser.parse_known_args()
     if args.command is None:
@@ -173,7 +174,8 @@ def main():
                                          box_depth=args.box_depth,
                                          binning=args.binning,
                                          margin=args.margin,
-                                         exclude=args.exclude)
+                                         exclude=args.exclude,
+                                         merge=args.merge)
 
 if __name__ == "__main__":
     main()
