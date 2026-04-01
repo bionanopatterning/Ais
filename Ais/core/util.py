@@ -52,12 +52,14 @@ def coords_from_star(coords_path):
     try:
         coords = list()
         df = starfile.read(coords_path)
-        # next we iterate over rows in df:
+        if 'rlnCoordinateX' in df.columns:
+            xk, yk, zk = 'rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ'
+            scale = 1.0
+        else:
+            xk, yk, zk = 'wrpCoordinateX1', 'wrpCoordinateY1', 'wrpCoordinateZ1'
+            scale = 0.1
         for _, row in df.iterrows():
-            x = int(row['rlnCoordinateX'])
-            y = int(row['rlnCoordinateY'])
-            z = int(row['rlnCoordinateZ'])
-            coords.append((x, y, z))
+            coords.append((int(row[xk] * scale), int(row[yk] * scale), int(row[zk] * scale)))
         return coords
     except Exception as e:
         cfg.set_error(e, f"Could not parse coordinates from star file {coords_path}")
@@ -120,8 +122,9 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
         threshold /= 255
     if data.dtype == np.int8:
         threshold /= 2
-
     data = data.astype(np.float32)
+    if "0580" in mrcpath:
+        print(np.min(data), np.max(data))
     if binning > 1:
         z, y, x = data.shape
         b = int(binning)
@@ -130,8 +133,6 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
         data = data.reshape((z // b, b, y // b, b, x // b, b)).mean(5, dtype=_type).mean(3, dtype=_type).mean(1, dtype=_type)
         pixel_size *= b
         margin = margin // b
-
-
     min_distance = max(3, int(min_spacing / pixel_size))
     min_size = min_size / pixel_size ** 3
 
@@ -170,13 +171,14 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
             coords = np.argwhere(mask)
             if len(coords) > 0:
                 coordinates.append(coords.mean(axis=0))
-                scores.append(np.sum(mask))
+                scores.append(np.sum(mask) * (10.0 * pixel_size)**3)
         coordinates = np.array(coordinates) if coordinates else np.empty((0, 3))
         for c, s in zip(coordinates, scores):
             particles.append(Particle(c, s))
 
     particles.sort(key=lambda x: x.score, reverse=True)
     coordinates = [p.coordinate for p in particles]
+    scores = [p.score for p in particles]
 
     if len(coordinates) < min_particles:
         return len(coordinates), 0
@@ -188,10 +190,10 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
         if out_path is None:
             out_path = os.path.splitext(mrcpath)[0] + "_coords.star"
 
-        df = pd.DataFrame(columns=['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ', 'rlnMicrographName'])
+        df = pd.DataFrame(columns=['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ', 'rlnMicrographName', 'aisParticleSize'])
         micrograph_name = os.path.basename(mrcpath).split("__")[0]
         for i in range(len(coordinates)):
-            df.loc[len(df)] = [coordinates[i][2] * binning, coordinates[i][1] * binning, coordinates[i][0] * binning, micrograph_name]
+            df.loc[len(df)] = [coordinates[i][2] * binning, coordinates[i][1] * binning, coordinates[i][0] * binning, micrograph_name, scores[i]]
         starfile.write({'particles': df}, out_path, overwrite=True)
         if process:
             process.set_progress(0.99)

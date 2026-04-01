@@ -59,7 +59,10 @@ def main():
     segment_parser.add_argument('-tta', '--test-time-augmentation', required=False, type=int, default=1, help="Integer between 1 and 8. If 1, no test time augmentation applied. If 2 - 8, differently oriented copies of the input tomogram are also segmented and the results averaged; orientations are [0, 90, 180, 270, 0*, 90*, 180*, 270*] (*=horizontal flip); e.g., when -tta 4, four samples of each tomogram are segmented, sampled with 0, 90, 180, and 270 deg. rotations relative to the original.")
     segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
     segment_parser.add_argument('-overwrite', '--overwrite', required=False, type=int, default=0, help="If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).")
-    segment_parser.add_argument('-apix', '--process-at-apix', type=float, default=None, help="When set, tomograms are rescaled to this pixel size for processing.")
+    segment_parser.add_argument('-apix', '--processing_apix', required=False, default=None, type=float, help="If set, override the model's trained scale (A/px) and process at specified value.")
+    segment_parser.add_argument('-sigma', '--postprocessing-blur-sigma', required=False, type=float, nargs='+', default=(0.0, 0.0, 0.0), help="Gaussian filter sigma for postprocessing (in Angstrom). Either a single value (isotropic) or three separate values for the z, y, x dims. Default is no blur.")
+    segment_parser.add_argument('--batch', required=False, type=int, default=16, help="Number of slices to batch together per inference call (default 16). Reduce if you run out of GPU memory.")
+    segment_parser.add_argument('--workers', required=False, type=int, default=None, help="Number of CPU worker threads per GPU for preprocessing and postprocessing (default: cpu_count / n_gpus). Threads are shared dynamically between the two stages.")
 
     pick_parser = subparsers.add_parser('pick', help='Pick particles using segmented volumes.')
     pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input segmentation .mrc's (e.g. /segmented/).")
@@ -94,20 +97,21 @@ def main():
     train_parser.add_argument('-n', '--negatives', required=False, type=float, default=0.0, help="If 0.0 (default), all images in the input training data are weighted identically. If argument supplied, the value determines the ratio of negative to positive samples to use. For example: if the training data contains 50 positive samples and 50 negatives, and the negative to positive ratio is 1.5, a number of negatives will be sampled twice in order to reach this ratio.") # TODO: maybe remove this altogether
     train_parser.add_argument('-c', '--copies', required=False, type=int, default=8, help="Number of augmented versions of the input images to include in the training data (all samples in different orientations). Default 8 (which would be the eight permutations of 90 degree rotations + horizontal flips; An argument >8 would include randomly rotated versions of the input images). If training data is 2.5D, augmentations 8 - 16 also include a flip in Z.")
     train_parser.add_argument('-r', '--rate', required=False, type=float, default=1e-3,help="Learning rate (default 1e-3)")
-    train_parser.add_argument('-augment', required=False, action='store_true', help="If set, use extra scale, contrast, noise, and blurring augmentations.")
+    train_parser.add_argument('-augment', required=False, action='store_true', help="If set, use extra scaling, contrast, brightness, and blurring augmentations.")
     train_parser.add_argument('-name', '--model_name', required=False, type=str, default="Unnamed model", help="Model name. File will be saved as output_directory/{name}.scnm")
     train_parser.add_argument('-models', '--model_architectures', required=False, action='store_true', help='List available model architectures.')
 
     extract_parsers = subparsers.add_parser('extract', help='Extract training data from annotated tomograms.')
     extract_parsers.add_argument('-d', '--data_directory', required=True, type=str, help="Directory containing annotated tomograms (.scns files).")
-    extract_parsers.add_argument('-ou', '--output_directory', required=True, type=str, help="Directory to save the extracted training data (.scnt files).")
+    extract_parsers.add_argument('-ou', '--output_directory', required=False, type=str, default='.', help="Directory to save the extracted training data (.scnt files).")
     extract_parsers.add_argument('-f', "--features", nargs="+", required=True, help="List of features to extract, e.g. 'Membrane Ribosome Microtubule'. A separate output file is created for each feature.")
-    extract_parsers.add_argument('-size', "--box-size", required=True, type=int, default=None, help="Box size (in pixels) to extract. When not specified, box size is taken from the annotations.")
+    extract_parsers.add_argument('-size', "--box-size", required=False, type=int, default=128, help="Box size (in pixels) to extract. When not specified, box size is taken from the annotations.")
     extract_parsers.add_argument('-depth', "--box-depth", required=False, type=int, default=1, help="Box depth (in Z) to extract. Default 1 (2D). Must be odd - if not odd we add 1.")
     extract_parsers.add_argument('-bin', "--binning", required=False, type=int, default=1, help="Binning factor to apply (in XY). Output box size will be --box-size / --binning.")
     extract_parsers.add_argument('-m', "--margin", required=False, type=int, default=0, help="Ignore labels will be written in a margin of -m <int> pixels (before binning!).")
     extract_parsers.add_argument('-e', "--exclude", required=False, type=str, nargs='+', default=None, help="Glob pattern or path to .txt file listing volumes to exclude from the extracted training data set..")
     extract_parsers.add_argument('--merge', required=False, action='store_true', help="Combine all extracted training data into a single output file per feature, rather than one file per input volume.")
+    extract_parsers.add_argument('--coordinates', required=False, action='store_true', help="Instead of exporting annotated training images, export just the box coordinates as a .star file.")
 
     args, unknown = parser.parse_known_args()
     if args.command is None:
@@ -117,15 +121,20 @@ def main():
 
         if args.command == 'segment':
             gpus = [int(g) for g in args.gpus.split(',')]
+            postprocessing_sigma = tuple(args.postprocessing_blur_sigma) if len(args.postprocessing_blur_sigma) == 3 else (args.postprocessing_blur_sigma[0],) * 3
+            tta = args.test_time_augmentation
             aiscli.dispatch_parallel_segment(
                 model_path=args.model_path,
-                data_patterns=args.data,  # <- list of dirs/files/patterns
+                data_patterns=args.data,  # list of files (.mrc) and/or patterns (*) and/or dirs (remainder)
                 output_directory=args.output_directory,
                 gpus=gpus,
-                test_time_augmentation=args.test_time_augmentation,
+                test_time_augmentation=tta,
                 parallel=args.parallel,
                 overwrite=args.overwrite,
-                processing_apix=args.process_at_apix
+                processing_apix=args.processing_apix,
+                postprocessing_sigma=postprocessing_sigma,
+                batch_size=args.batch,
+                n_workers=args.workers
             )
 
         elif args.command == 'pick':
@@ -175,7 +184,8 @@ def main():
                                          binning=args.binning,
                                          margin=args.margin,
                                          exclude=args.exclude,
-                                         merge=args.merge)
+                                         merge=args.merge,
+                                         coordinates=args.coordinates)
 
 if __name__ == "__main__":
     main()

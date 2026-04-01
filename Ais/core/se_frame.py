@@ -500,7 +500,6 @@ class Segmentation:
                 self.texture.update(self.data, self.width, self.height)
                 self.edited_slices.append(self.current_slice)
         else:
-            print('DEBUG adding new slice to self slices')
             self.slices[self.current_slice] = np.zeros((self.height, self.width), dtype=np.uint8)
             self.data = self.slices[self.current_slice]
             self.texture.update(self.data, self.width, self.height)
@@ -543,6 +542,13 @@ class Segmentation:
             print(f"Volume saved to: {fpath}")
         except Exception as e:
             print(e)
+
+    def set_slice_ndarray(self, pxd, slice_number):
+        self.set_slice(slice_number)
+        self.edited_slices.append(slice_number)
+        self.slices[slice_number] = (pxd > 0).astype(np.uint8)
+        self.data = self.slices[slice_number]
+        self.texture.update(self.data, self.width, self.height)
 
     def import_slice(self, path, threshold=128):
         data = mrcfile.mmap(path).data[self.current_slice, :, :]
@@ -681,11 +687,17 @@ class SurfaceModel:
         for d in cfg.settings["SEARCH_DIRECTORIES"] + [os.path.dirname(self.path)]:
             coordinate_file = os.path.join(d, star_file)
             if os.path.exists(coordinate_file):
-                coordinates = coords_from_star(coordinate_file)
-                if isinstance(coordinates, list):
-                    self.particles = coordinates
-                    print(f"\t\tloading coordinates for SurfaceModel object with path {self.path}")
-                    return
+                self.load_coordinates(coordinate_file)
+
+
+    def load_coordinates(self, coordinate_file):
+        try:
+            coordinates = coords_from_star(coordinate_file)
+            if isinstance(coordinates, list):
+                self.particles = coordinates
+                print(f"\t\tloading coordinates for SurfaceModel object with path {self.path}")
+        except Exception as e:
+            cfg.set_error(e, f'Could not load coordinates from {coordinate_file}')
 
     def set_colour(self):
         for feature in cfg.feature_library:

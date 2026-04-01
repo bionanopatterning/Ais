@@ -795,6 +795,9 @@ class SegmentationEditor:
                             SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         imgui.same_line()
                         _, ftr.enabled = imgui.checkbox("##enabled", ftr.enabled)
+                        if imgui.is_key_pressed(glfw.KEY_Z):
+                            ftr.enabled = not ftr.enabled
+                            SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         if _:
                             SegmentationEditor.FRAME_TEXTURE_REQUIRES_UPDATE |= True
                         # Delete button
@@ -1137,6 +1140,20 @@ class SegmentationEditor:
                             if _:
                                 m.update_info()
                             imgui.pop_style_var()
+                            imgui.end_menu()
+                        if imgui.begin_menu("copy output to annotation"):
+                            imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
+                            for feature in cfg.se_active_frame.features:
+                                rgb = self.feature_colour_dict[feature.title]
+                                imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 7)
+                                imgui.color_button(f"##clrbutton{feature.title}", rgb[0], rgb[1], rgb[2], 1.0, 0, 14, 14)
+                                imgui.pop_style_var(1)
+                                imgui.same_line(spacing=5)
+                                if imgui.selectable(feature.title)[1]:
+                                    slice_data = (m.data > m.threshold) * 255
+                                    feature.set_slice_ndarray(slice_data, cfg.se_active_frame.current_slice)
+                                    SegmentationEditor.FORCE_SELECT_TAB = 0
+                            imgui.pop_style_var(1)
                             imgui.end_menu()
                         imgui.end_popup()
                     imgui.same_line()
@@ -1670,6 +1687,10 @@ class SegmentationEditor:
                                     s.paint_particles(filepath)
                                 except Exception as e:
                                     cfg.set_error(e, "Could not paint particles - see error:\n")
+                        if imgui.menu_item("Load particles")[0]:
+                            filepath = filedialog.askopenfilename(filetypes=[("Particle star file", ".star")])
+                            if os.path.exists(filepath):
+                                s.load_coordinates(filepath)
                         if imgui.begin_menu("Override voxel size"):
                             imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (2, 0))
                             imgui.set_next_item_width(100)
@@ -2692,9 +2713,10 @@ class SegmentationEditor:
                 self.active_tab = "Render"
                 picking_tab()
                 imgui.end_tab_item()
+
+            SegmentationEditor.FORCE_SELECT_TAB = None
             imgui.end_tab_bar()
 
-        SegmentationEditor.FORCE_SELECT_TAB = None
         imgui.end()
 
         slicer_window()
@@ -3079,7 +3101,7 @@ class SegmentationEditor:
 
         tifffile.imwrite(path, all_imgs, description=f"apix={apix:.2f}")
         process.set_progress(1.0)
-        
+
     @staticmethod
     def seframe_from_clemframe(clemframe):
         if not os.path.exists(clemframe.path):

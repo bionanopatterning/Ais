@@ -15,7 +15,8 @@ import threading
 import json
 from Ais.core.opengl_classes import Texture
 from Ais.core.util import generate_thumbnail
-from scipy.ndimage import binary_dilation, gaussian_filter, zoom
+from scipy.ndimage import binary_dilation, gaussian_filter
+from skimage.transform import resize
 import datetime
 import time
 import tarfile
@@ -27,12 +28,12 @@ class SEModelDataLoader:
     AUG_ROT90_XY = [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3]
     AUG_FLIP_XY = [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1]
     AUG_FLIP_Z = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1]
-    P_AUG_BRIGHTNESS = 0.33
-    P_AUG_CONTRAST = 0.33
-    P_AUG_NOISE = 0.33
-    P_AUG_SCALE = 0.33
-    P_AUG_BLUR = 0.33
-    P_AUG_GAMMA = 0.33
+    P_AUG_BRIGHTNESS = 0.1
+    P_AUG_CONTRAST = 0.1
+    P_AUG_NOISE = 0.1
+    P_AUG_SCALE = 0.0
+    P_AUG_BLUR = 0.1
+    P_AUG_GAMMA = 0.0
 
     def __init__(self, training_dataset_path, batch_size, validation_split, extra_augmentations=False):
         self.path = training_dataset_path
@@ -115,9 +116,9 @@ class SEModelDataLoader:
 
         H, W, D = x.shape
 
-        zoom_factors = (factor, factor, 1.0)
-        zoomed_img = zoom(x, zoom_factors, order=1)
-        zoomed_label = zoom(y, zoom_factors, order=0)
+        new_shape = np.round((x.shape[0] * factor, x.shape[1] * factor, x.shape[2])).astype(int)
+        zoomed_img = resize(x, new_shape, order=1, anti_aliasing=True)
+        zoomed_label = (resize(y, new_shape, order=0, anti_aliasing=False) > 0).astype(np.float32)
 
         zh, zw, _ = zoomed_img.shape
 
@@ -581,7 +582,7 @@ class SEModel:
         return out_image
 
     def apply_to_slice(self, image, pixel_size):
-        # as of 251125: we always expect image to be a 3D numpy array; it is Z, Y, X but the models expects Z last.
+        # as of 251125: we always expect image to be a 3D numpy array; it is Z, Y, X when coming in to this function, but note that the models expects Z last.
 
         if self.compilation_mode == 'training' and self.background_process_train is None and cfg.settings["TILED_MODE"]==0:
             self.toggle_inference()
@@ -591,15 +592,15 @@ class SEModel:
         if image.ndim != 3:
             cfg.set_error(ValueError("Input image must be a 3D numpy array."), "SegmentationEditor model application error:")
 
-        # TODO: replace scipy.ndimage.zoom with fourier cropping
         orig_y, orig_x = image.shape[1], image.shape[2]
         tomo_rescaled = False
         tomo_rescale_factor = 1.0
         if cfg.settings["INFERENCE_ALLOW_RESCALING"] and pixel_size != -1 and self.apix != -1:
             tomo_rescale_factor = 10.0 * pixel_size / self.apix  # pixel_size is in nm...
-            print(f'Scaling tomogram by a factor {tomo_rescale_factor}')
-            if abs(tomo_rescale_factor - 1.0) > 1e-3:
-                image = zoom(image, (1.0, tomo_rescale_factor, tomo_rescale_factor), order=1)  # note: we're scaling Y and X only, because when extracting training data, we extract 2D images first and bin second. I.e. XY and Z are treated a bit differently in the training data as well.
+            if abs(tomo_rescale_factor - 1.0) > 0.05:
+                print(f'Scaling tomogram by a factor {tomo_rescale_factor}')
+                new_shape = np.round([image.shape[0], orig_y * tomo_rescale_factor, orig_x * tomo_rescale_factor]).astype(int)
+                image = resize(image, new_shape, order=1, anti_aliasing=True)
                 tomo_rescaled = True
 
         image = np.transpose(image, (1, 2, 0))
@@ -629,7 +630,7 @@ class SEModel:
                 if _flip_z[i]:
                     tta_img = np.flip(tta_img, axis=2)
 
-                tta_img_segmented = np.squeeze(self.model.predict(tta_img[np.newaxis, ...]))
+                tta_img_segmented = np.squeeze(self.model.predict(tta_img[np.newaxis, ...], verbose=0))
 
                 # undo rotation and flip
                 if _flip[i]:
@@ -641,13 +642,12 @@ class SEModel:
             print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice: {time.time() - start_time:.3f} s (multiplicity {cfg.settings['TEST_TIME_AUGMENTATIONS']}).")
         else:  # original Ais in-gui segmentation way
             boxes, image_size, padding, stride = self.slice_to_boxes(image, pixel_size)
-            seg_boxes = np.squeeze(self.model.predict(boxes))
+            seg_boxes = np.squeeze(self.model.predict(boxes, verbose=0))
             segmentation = self.boxes_to_slice(seg_boxes, image_size, pixel_size, padding, stride)
             print(self.info + f" cost for {segmentation.shape[0]}x{segmentation.shape[1]} slice ({boxes.shape[0]} boxes): {time.time()-start_time:.3f} s.")
 
         if cfg.settings["INFERENCE_ALLOW_RESCALING"] and tomo_rescaled:
-            inv_scale = 1.0 / tomo_rescale_factor
-            seg_rescaled = zoom(segmentation, inv_scale, order=1)
+            seg_rescaled = resize(segmentation, [orig_y, orig_x], order=1, anti_aliasing=True)
 
             # Make sure the size matches exactly the original in-plane size
             sy, sx = seg_rescaled.shape

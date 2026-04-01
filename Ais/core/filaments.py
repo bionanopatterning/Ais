@@ -7,7 +7,6 @@ from scipy.interpolate import splprep, splev
 from skimage.morphology import skeletonize
 from collections import deque
 import pandas as pd
-from scipy.spatial.transform import Rotation as R
 import json
 import starfile
 
@@ -51,7 +50,6 @@ def prune_skeleton(skel, min_branch_length=5):
                     break
                 current = neighbors[0]
                 path.append(current)
-                # Stop if we hit a branch point or another endpoint
                 active_neighbors = [n for n in adjacency[current] if n in keep]
                 if len(active_neighbors) != 2:
                     break
@@ -116,9 +114,22 @@ def prune_skeleton(skel, min_branch_length=5):
         for idx in path_indices:
             z, y, x = coords[idx]
             out_vol[z, y, x] = True
-        results.append(out_vol)
 
-    return results if results else [np.zeros_like(skel, dtype=bool)]
+        # Classify endpoints: check if they were branch points in the full skeleton
+        # 0 = end (true terminal), 1 = junction (was a branch point neighbor)
+        def endpoint_type(idx):
+            # Check if any neighbor in the full skeleton (not just this component) is a branch point
+            for nbr in adjacency[idx]:
+                if nbr in branch_points:
+                    return 2  # junction
+            return 1  # true end
+
+        start_type = endpoint_type(path_indices[0])
+        end_type = endpoint_type(path_indices[-1])
+
+        results.append((out_vol, start_type, end_type))
+
+    return results if results else [(np.zeros_like(skel, dtype=bool), 1, 1)]
 
 
 def parameterize_instances(labels, min_branch_length_px=5):
@@ -129,12 +140,12 @@ def parameterize_instances(labels, min_branch_length_px=5):
             continue
 
         skel = skeletonize(mask)
-        pruned_skels = prune_skeleton(skel, min_branch_length_px)
+        pruned_results = prune_skeleton(skel, min_branch_length_px)
 
-        for pruned_skel in pruned_skels:
+        for pruned_skel, start_type, end_type in pruned_results:
             coords = np.column_stack(np.where(pruned_skel))
             if len(coords) > 0:
-                filaments.append(Filament(coords))
+                filaments.append(Filament(coords, start_type=start_type, end_type=end_type))
 
     return filaments
 
@@ -169,11 +180,13 @@ class Filament:
     ]
     SMOOTHING = 500.0
 
-    def __init__(self, skeleton_coordinates):
+    def __init__(self, skeleton_coordinates, start_type=1, end_type=1):
         self.coords = skeleton_coordinates
         self.valid = False
         self.tck = None
         self.length = None
+        self.start_type = start_type  # 1 = true end, 2 = junction
+        self.end_type = end_type
         self.gen_spline()
         self.linearize_spline()
 
@@ -237,7 +250,11 @@ class Filament:
         return self
 
     def to_dict(self):
-        return {"skeleton_coordinates": self.coords.tolist()}
+        return {
+            "skeleton_coordinates": self.coords.tolist(),
+            "start_type": self.start_type,
+            "end_type": self.end_type,
+        }
 
     @staticmethod
     def read(p):
@@ -247,7 +264,10 @@ class Filament:
     @staticmethod
     def from_dict(d):
         skeleton_coordinates = d['skeleton_coordinates']
-        return Filament(skeleton_coordinates)
+        f = Filament(skeleton_coordinates)
+        f.start_type = d.get('start_type', 1)
+        f.end_type = d.get('end_type', 1)
+        return f
 
     @classmethod
     def from_path(cls, path):
@@ -288,7 +308,12 @@ class Filament:
         radius_of_curvature = (np.linalg.norm(drdx, axis=1)**3 / np.linalg.norm(np.cross(drdx, ddrddx), axis=1))
         radius_of_curvature = radius_of_curvature[:, None]
 
-        return np.hstack([coords, euler_angles, radius_of_curvature])
+        # Connectivity: 0 = middle, start_type/end_type for first/last
+        connectivity = np.zeros(len(coords), dtype=int)
+        connectivity[0] = self.start_type
+        connectivity[-1] = self.end_type
+
+        return np.hstack([coords, euler_angles, radius_of_curvature, connectivity[:, None]])
 
 
 def bin_volume(vol, b):
@@ -328,12 +353,12 @@ def pick_filament(mrcpath, out_path, threshold, spacing_nm, size_nm, binning, ma
 
     filaments = parameterize_instances(labels, int(min_length // pixel_size))
 
-    df = pd.DataFrame(columns=['rlnCoordinateZ', 'rlnCoordinateY', 'rlnCoordinateX', 'rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi', 'aisRadiusOfCurvature', 'aisLog10RadiusOfCurvature', 'aisFilamentID'])
+    df = pd.DataFrame(columns=['rlnCoordinateZ', 'rlnCoordinateY', 'rlnCoordinateX', 'rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi', 'aisRadiusOfCurvature', 'aisLog10RadiusOfCurvature', 'aisFilamentID', 'aisFilamentConnectivity'])
     for j, f in enumerate(filaments):
-        c = f.sample_coordinates(spacing=spacing_nm / pixel_size, offset=spacing_nm / pixel_size / 2.0, twist_per_sample=twist_per_sample)
-        for z, y, x, rot, tilt, psi, roc in c:
+        c = f.sample_coordinates(spacing=spacing_nm / pixel_size, offset=0.0, twist_per_sample=twist_per_sample)
+        for z, y, x, rot, tilt, psi, roc, conn in c:
             _roc = roc * pixel_size * 10.0
-            df.loc[len(df)] = [z, y, x, rot, tilt, psi, _roc, np.log10(_roc), int(j)]
+            df.loc[len(df)] = [z, y, x, rot, tilt, psi, _roc, np.log10(_roc), int(j), int(conn)]
 
     j, k, l = volume.shape
     df = df[(df['rlnCoordinateZ'] > margin) & (df['rlnCoordinateZ'] < j - margin) &
