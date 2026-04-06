@@ -55,14 +55,15 @@ def main():
     segment_parser.add_argument('-m', '--model_path', required=True, type=str, help="Path to the model file")
     segment_parser.add_argument('-d', '--data', required=True, type=str, nargs='+', help="One or more directories, file paths, or glob patterns for .mrc files. Examples: '/data/volumes', 'volumes/035*.mrc volumes/036*.mrc', or explicit files 'volumes/035_001.mrc volumes/035_002.mrc'.")
     segment_parser.add_argument('-ou', '--output_directory', required=True, type=str, help="Directory to save the output")
-    segment_parser.add_argument('-gpu', '--gpus', required=True, type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")#
+    segment_parser.add_argument('-gpu', '--gpus', required=True, type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,3,4)")
     segment_parser.add_argument('-tta', '--test-time-augmentation', required=False, type=int, default=1, help="Integer between 1 and 8. If 1, no test time augmentation applied. If 2 - 8, differently oriented copies of the input tomogram are also segmented and the results averaged; orientations are [0, 90, 180, 270, 0*, 90*, 180*, 270*] (*=horizontal flip); e.g., when -tta 4, four samples of each tomogram are segmented, sampled with 0, 90, 180, and 270 deg. rotations relative to the original.")
     segment_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to launch multiple parallel processes using one GPU each, or a single process using all GPUs.")
     segment_parser.add_argument('-overwrite', '--overwrite', required=False, type=int, default=0, help="If set to 1, tomograms for which a corresponding segmentation in the output_directory already exists are skipped (default 0).")
     segment_parser.add_argument('-apix', '--processing_apix', required=False, default=None, type=float, help="If set, override the model's trained scale (A/px) and process at specified value.")
     segment_parser.add_argument('-sigma', '--postprocessing-blur-sigma', required=False, type=float, nargs='+', default=(0.0, 0.0, 0.0), help="Gaussian filter sigma for postprocessing (in Angstrom). Either a single value (isotropic) or three separate values for the z, y, x dims. Default is no blur.")
-    segment_parser.add_argument('--batch', required=False, type=int, default=16, help="Number of slices to batch together per inference call (default 16). Reduce if you run out of GPU memory.")
+    segment_parser.add_argument('--batch', required=False, type=int, default=1, help="Number of slices to batch together per inference call (default 1). Increase for faster inference if GPU memory allows.")
     segment_parser.add_argument('--workers', required=False, type=int, default=None, help="Number of CPU worker threads per GPU for preprocessing and postprocessing (default: cpu_count / n_gpus). Threads are shared dynamically between the two stages.")
+    segment_parser.add_argument('--center', required=False, type=float, default=100.0, help="Percentage of the volume depth (Z) to segment, centered on the middle. E.g. --center 50 segments only the central 50%%. Default 100 (full volume).")
 
     pick_parser = subparsers.add_parser('pick', help='Pick particles using segmented volumes.')
     pick_parser.add_argument('-d', '--data_directory', required=True, type=str, help="Path to directory containing input segmentation .mrc's (e.g. /segmented/).")
@@ -70,7 +71,7 @@ def main():
     pick_parser.add_argument('-ou', '--output_directory', required=False, type=str, default=None, help="Directory to save output coordinate files to. If left empty, will save to the input data directory.")
     pick_parser.add_argument('-m', '--margin', required=False, type=int, default=16, help="Margin (in pixels) to avoid picking particles close to tomogram edges.")
     pick_parser.add_argument('-threshold', required=False, type=float, default=128, help="Threshold to apply to volumes prior to finding local maxima (default 128).")
-    pick_parser.add_argument('-b', '--binning', required=False, type=int, default=1, help="Bining factor to apply before processing (faster, possibly less accurate). Default is 1 (no binning)")
+    pick_parser.add_argument('-b', '--binning', required=False, type=int, default=1, help="Binning factor to apply before processing (faster, possibly less accurate). Default is 1 (no binning)")
     pick_parser.add_argument('-spacing', required=False, type=float, default=10.0, help="Minimum distance between particles in Angstrom. Use ``-spacing-px`` to specify the minimum distance in voxel units instead.")
     pick_parser.add_argument('-spacing-px', required=False, type=float, default=None, help="Minimum distance between particles in px.")
     pick_parser.add_argument('-size', required=False, type=float, default=10.0, help="Minimum particle size in cubic Angstrom. Use ``-size-px`` to specify the minimum size in cubic voxel units instead.")
@@ -84,6 +85,7 @@ def main():
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
     pick_parser.add_argument('-v', '--verbose', required=False, type=int, default=0, help="Verbose (1 or 0)")
     pick_parser.add_argument('-capp', '--pom-capp-config', required=False, type=str, default="", help="A Pom context-aware particle picking configuration file (optional).")
+    pick_parser.add_argument('--subset', required=False, type=str, default=None, help="Path to a .txt file listing tomogram names or paths (one per line), e.g. a Pom subset file. Only segmented volumes matching these tomograms will be picked.")
 
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
@@ -108,10 +110,19 @@ def main():
     extract_parsers.add_argument('-size', "--box-size", required=False, type=int, default=128, help="Box size (in pixels) to extract. When not specified, box size is taken from the annotations.")
     extract_parsers.add_argument('-depth', "--box-depth", required=False, type=int, default=1, help="Box depth (in Z) to extract. Default 1 (2D). Must be odd - if not odd we add 1.")
     extract_parsers.add_argument('-bin', "--binning", required=False, type=int, default=1, help="Binning factor to apply (in XY). Output box size will be --box-size / --binning.")
-    extract_parsers.add_argument('-m', "--margin", required=False, type=int, default=0, help="Ignore labels will be written in a margin of -m <int> pixels (before binning!).")
+    # margin is now computed automatically from the difference between --box-size and the annotation box size
     extract_parsers.add_argument('-e', "--exclude", required=False, type=str, nargs='+', default=None, help="Glob pattern or path to .txt file listing volumes to exclude from the extracted training data set..")
     extract_parsers.add_argument('--merge', required=False, action='store_true', help="Combine all extracted training data into a single output file per feature, rather than one file per input volume.")
     extract_parsers.add_argument('--coordinates', required=False, action='store_true', help="Instead of exporting annotated training images, export just the box coordinates as a .star file.")
+
+    if os.path.isdir('/cephfs/mlast'):
+        audit_parser = subparsers.add_parser('audit', help='Audit training data against a trained model.')
+        audit_parser.add_argument('-m', '--model', required=True, type=str, help="Path to model file (.scnm)")
+        audit_parser.add_argument('-d', '--data', required=True, type=str, help="Path to training data file (.scnt)")
+        audit_parser.add_argument('-gpu', '--gpu', required=False, type=int, default=0, help="GPU ID to use (default 0)")
+        audit_parser.add_argument('-o', '--out', required=False, type=str, default='audit_output', help="Output directory (default: audit_output)")
+        audit_parser.add_argument('-s', '--sources', required=False, type=str, default=None, help="Path to _sources.star from ais extract (for per-sample tomogram info)")
+        audit_parser.add_argument('--skip', action='store_true', help="Skip processing, reuse existing results, just launch the app")
 
     args, unknown = parser.parse_known_args()
     if args.command is None:
@@ -134,7 +145,8 @@ def main():
                 processing_apix=args.processing_apix,
                 postprocessing_sigma=postprocessing_sigma,
                 batch_size=args.batch,
-                n_workers=args.workers
+                n_workers=args.workers,
+                center=args.center
             )
 
         elif args.command == 'pick':
@@ -156,7 +168,8 @@ def main():
                                           twist_per_sample=args.twist,
                                           filament_length=args.length,
                                           centroid=args.centroid,
-                                          min_particles=args.min_particles)
+                                          min_particles=args.min_particles,
+                                          subset=args.subset)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()
@@ -182,10 +195,12 @@ def main():
                                          box_size=args.box_size,
                                          box_depth=args.box_depth,
                                          binning=args.binning,
-                                         margin=args.margin,
                                          exclude=args.exclude,
                                          merge=args.merge,
                                          coordinates=args.coordinates)
+        elif args.command == 'audit':
+            from Ais.core.audit import run_audit
+            run_audit(args.model, args.data, args.gpu, args.out, args.skip, args.sources)
 
 if __name__ == "__main__":
     main()

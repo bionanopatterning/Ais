@@ -545,7 +545,8 @@ class Segmentation:
 
     def set_slice_ndarray(self, pxd, slice_number):
         self.set_slice(slice_number)
-        self.edited_slices.append(slice_number)
+        if slice_number not in self.edited_slices:
+            self.edited_slices.append(slice_number)
         self.slices[slice_number] = (pxd > 0).astype(np.uint8)
         self.data = self.slices[slice_number]
         self.texture.update(self.data, self.width, self.height)

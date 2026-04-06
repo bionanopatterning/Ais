@@ -45,7 +45,7 @@ def combined_loss(y_true, y_pred, border=16, ignore_label=2.0, epsilon=1e-6):
 
     dice = dice_loss(y_true, y_pred, ignore_label=ignore_label, epsilon=epsilon)
 
-    return 0.0 * bce + 1.0 * dice
+    return 0.1 * bce + 1.0 * dice
 
 
 def create(input_shape, output_dimensionality=1):

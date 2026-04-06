@@ -29,7 +29,7 @@ setup(
     install_requires=[
         "imgui>=2.0.0",
         "tensorflow>=2.8.0,<=2.11.0",
-        "protobuf>=3.19.0,<3.20",
+        "protobuf>=3.20.0,<=3.20.3",
         "glfw>=2.5.5",
         "PyOpenGL>=3.1.6",
         "numpy>=1.23.2,<2.0",

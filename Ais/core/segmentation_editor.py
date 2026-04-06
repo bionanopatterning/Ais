@@ -122,6 +122,7 @@ class SegmentationEditor:
     FEATURE_LIB_ANNOTATION = True
     FEATURE_LIB_HIDE_DEACTIVATED_FEATURES = False
     FEATURE_LIB_HIGHLIGHT_TEXT = ''
+    FEATURE_LIB_SORT_MODE = 0  # 0 = Alphabetically, 1 = By Hue
 
     POM_SYNCHRONIZE_INTERVAL = 0.5  # seconds
     POM_SYNCHRONIZE_TIMER = 0
@@ -873,11 +874,19 @@ class SegmentationEditor:
                             self.parse_available_features()
                         # Title
                         imgui.same_line()
-                        imgui.set_next_item_width(cw - 26)
+                        imgui.set_next_item_width(cw - 45)
                         _, f.title = imgui.input_text("##title", f.title, 256, imgui.INPUT_TEXT_NO_HORIZONTAL_SCROLL | imgui.INPUT_TEXT_AUTO_SELECT_ALL)
                         if _:
                             self.parse_available_features()
-                        self._gui_feature_title_context_menu(f)
+                        imgui.same_line(spacing=0)
+                        imgui.push_style_color(imgui.COLOR_BUTTON, *cfg.COLOUR_FRAME_BACKGROUND)
+                        imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 1, 1, 1, 0.1)
+                        imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 1, 1, 1, 0.2)
+                        imgui.push_style_color(imgui.COLOR_TEXT, 0.45, 0.45, 0.42, 1.0)
+                        if imgui.arrow_button("##feature_dropdown", imgui.DIRECTION_DOWN):
+                            imgui.open_popup("##feature_ctx")
+                        imgui.pop_style_color(4)
+                        self._gui_feature_title_context_menu(f, "##feature_ctx")
 
                         # Alpha slider and brush size
                         imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
@@ -1144,7 +1153,7 @@ class SegmentationEditor:
                         if imgui.begin_menu("copy output to annotation"):
                             imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                             for feature in cfg.se_active_frame.features:
-                                rgb = self.feature_colour_dict[feature.title]
+                                rgb = feature.colour
                                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 7)
                                 imgui.color_button(f"##clrbutton{feature.title}", rgb[0], rgb[1], rgb[2], 1.0, 0, 14, 14)
                                 imgui.pop_style_var(1)
@@ -1160,9 +1169,17 @@ class SegmentationEditor:
                     _, m.colour = imgui.color_edit3(m.title, *m.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
                     # Title
                     imgui.same_line()
-                    imgui.set_next_item_width(cw - 55)
+                    imgui.set_next_item_width(cw - 74)
                     _, m.title = imgui.input_text("##title", m.title, 256, imgui.INPUT_TEXT_NO_HORIZONTAL_SCROLL | imgui.INPUT_TEXT_AUTO_SELECT_ALL)
-                    self._gui_feature_title_context_menu(m)
+                    imgui.same_line(spacing=0)
+                    imgui.push_style_color(imgui.COLOR_BUTTON, *cfg.COLOUR_FRAME_BACKGROUND)
+                    imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, 1, 1, 1, 0.1)
+                    imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, 1, 1, 1, 0.2)
+                    imgui.push_style_color(imgui.COLOR_TEXT, 0.45, 0.45, 0.42, 1.0)
+                    if imgui.arrow_button("##model_dropdown", imgui.DIRECTION_DOWN):
+                        imgui.open_popup("##model_ctx")
+                    imgui.pop_style_color(4)
+                    self._gui_feature_title_context_menu(m, "##model_ctx")
                     # Model selection
                     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (5, 2))
                     imgui.align_text_to_frame_padding()
@@ -2372,6 +2389,7 @@ class SegmentationEditor:
                 j = 0
                 _table_n_columns = imgui.get_window_width() // 220
                 visible_features = cfg.feature_library if not SegmentationEditor.FEATURE_LIB_HIDE_DEACTIVATED_FEATURES else [f for f in cfg.feature_library if f.use]
+                visible_features = [f for f in visible_features if SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT in f.title]
                 with imgui.begin_table("flib_table", _table_n_columns, imgui.TABLE_COLUMN_NO_SORT | imgui.TABLE_SCROLL_Y | imgui.TABLE_NO_BORDERS_IN_BODY | imgui.TABLE_BORDERS_OUTER, outer_size_height = imgui.get_window_height() - 100):
 
                     for j, feature in enumerate(visible_features):
@@ -2560,6 +2578,17 @@ class SegmentationEditor:
                 imgui.set_next_item_width(180)
                 imgui.same_line()
                 _, SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT = imgui.input_text('##highlight', SegmentationEditor.FEATURE_LIB_HIGHLIGHT_TEXT, 128)
+                imgui.same_line()
+                imgui.text('Sort:')
+                imgui.same_line()
+                imgui.set_next_item_width(180)
+                sort_changed, SegmentationEditor.FEATURE_LIB_SORT_MODE = imgui.combo('##sort_mode', SegmentationEditor.FEATURE_LIB_SORT_MODE, ['Alphabetically', 'By Hue'])
+                if sort_changed:
+                    if SegmentationEditor.FEATURE_LIB_SORT_MODE == 0:
+                        cfg.feature_library.sort(key=lambda f: f.title.lower())
+                    elif SegmentationEditor.FEATURE_LIB_SORT_MODE == 1:
+                        import colorsys
+                        cfg.feature_library.sort(key=lambda f: colorsys.rgb_to_hsv(*f.colour)[0])
                 imgui.same_line(position=imgui.get_content_region_available_width() - 175)
 
                 if imgui.button("reset", 55, 25):
@@ -2836,11 +2865,26 @@ class SegmentationEditor:
             retval = imgui.image_button(self.icon_close.renderer_id, SegmentationEditor.PROGRESS_BAR_HEIGHT, SegmentationEditor.PROGRESS_BAR_HEIGHT)
         return retval
 
-    def _gui_feature_title_context_menu(self, feature_or_model):
-        if imgui.begin_popup_context_item():
+    def _gui_feature_title_context_menu(self, feature_or_model, popup_id=None):
+        items = list(self.feature_colour_dict.items())
+        max_rows = 16
+        n_cols = max(1, (len(items) + max_rows - 1) // max_rows)
+        col_width = 200
+        if n_cols > 1:
+            imgui.set_next_window_content_size(col_width * n_cols, 0)
+        if popup_id is not None:
+            opened = imgui.begin_popup(popup_id)
+        else:
+            opened = imgui.begin_popup_context_item()
+        if opened:
             imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
-            for t in self.feature_colour_dict:
-                rgb = self.feature_colour_dict[t]
+            if n_cols > 1:
+                imgui.columns(n_cols, "##feature_ctx_cols", border=False)
+                for c in range(n_cols):
+                    imgui.set_column_width(c, col_width)
+            for i, (t, rgb) in enumerate(items):
+                if n_cols > 1 and i > 0 and i % max_rows == 0:
+                    imgui.next_column()
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 7)
                 imgui.color_button(f"##clrbutton{t}", rgb[0], rgb[1], rgb[2], 1.0, 0, 14, 14)
                 imgui.pop_style_var(1)
@@ -2849,7 +2893,6 @@ class SegmentationEditor:
                 if imgui.is_item_hovered():
                     feature_or_model.title = t
                     feature_or_model.colour = self.feature_colour_dict[t]
-                    # check if a feature with this title is in feature library
                     if isinstance(feature_or_model, Segmentation):
                         flib_titles = [f.title for f in cfg.feature_library]
                         if t in flib_titles:
@@ -2858,6 +2901,14 @@ class SegmentationEditor:
                             feature_or_model.set_box_size(library_feature.box_size)
                             feature_or_model.alpha = library_feature.alpha
                 imgui.spacing()
+            if n_cols > 1:
+                # Jump to last column for the Feature library menu
+                last_col = n_cols - 1
+                current_col = min(len(items) - 1, len(items)) // max_rows
+                while current_col < last_col:
+                    imgui.next_column()
+                    current_col += 1
+
             if imgui.begin_menu("Feature library"):
                 if imgui.menu_item("disable saved features")[0]:
                     for feature in cfg.feature_library:
@@ -2866,6 +2917,8 @@ class SegmentationEditor:
                 if imgui.menu_item("open feature library")[0]:
                     SegmentationEditor.FEATURE_LIB_OPEN = True
                 imgui.end_menu()
+            if n_cols > 1:
+                imgui.columns(1)
             imgui.pop_style_var(1)
             imgui.end_popup()
 

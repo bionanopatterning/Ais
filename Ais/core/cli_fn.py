@@ -95,7 +95,7 @@ def _bin_volume_xy(vol, b=1):
         return vol
 
 
-def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_augmentation=1, overwrite=False, model_apix=None, postprocessing_sigma=(0, 0, 0), batch_size=16, n_workers=4):
+def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_augmentation=1, overwrite=False, model_apix=None, postprocessing_sigma=(0, 0, 0), batch_size=16, n_workers=4, center=100.0):
     from keras.models import clone_model
     from keras.layers import Input
 
@@ -132,21 +132,25 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
     N = len(data_paths)
     start_time = time.time()
     completed = [0]
+    processed = [0]
+    last_completion_time = [start_time]
 
     def _eta_str():
         done = completed[0]
-        if done == 0:
-            return "--:--:-- (--:-- per tomo)"
-        elapsed = time.time() - start_time
-        avg = elapsed / done
-        remaining_secs = int(avg * (N - done))
-        avg_secs = int(avg)
-        eta = f"{remaining_secs // 3600:02d}:{(remaining_secs % 3600) // 60:02d}:{remaining_secs % 60:02d}"
-        per_tomo = f"{avg_secs // 60:02d}:{avg_secs % 60:02d}"
-        return f"{eta} ({per_tomo} per tomo)"
+        remaining = N - done
+        if processed[0] == 0:
+            eta = "--:--:--"
+        else:
+            avg = (time.time() - start_time) / processed[0]
+            remaining_secs = int(avg * remaining)
+            eta = f"{remaining_secs // 3600:02d}:{(remaining_secs % 3600) // 60:02d}:{remaining_secs % 60:02d}"
+        this_tomo_secs = int(time.time() - last_completion_time[0])
+        this_tomo = f"{this_tomo_secs // 60:02d}:{this_tomo_secs % 60:02d}"
+        return f"{eta} ({this_tomo} this tomo)"
 
-    def _print(j, p):
-        print(f"{j + 1}/{N} (GPU {gpu_id}) - {os.path.basename(model_path)} - {os.path.basename(p)} - eta {_eta_str()}")
+    def _print(j, p, skipped=False):
+        print(f"{j + 1}/{N} (GPU {gpu_id}) - {os.path.basename(model_path)} - {os.path.basename(p)}{' [skipped]' if skipped else ''} - eta {_eta_str()}")
+        last_completion_time[0] = time.time()
 
     def _postprocess(j, p, out_path, seg, prepared):
         from scipy.ndimage import gaussian_filter, zoom
@@ -165,6 +169,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
             print(f"Error postprocessing {p}:\n{e}")
             return
         completed[0] += 1
+        processed[0] += 1
         _print(j, p)
 
     # shared pool handles both preproc and postproc — threads flow naturally toward whichever has work
@@ -196,7 +201,7 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
         kind, j, p, out_path, payload = item
         if kind == 'skip':
             completed[0] += 1
-            _print(j, p)
+            _print(j, p, skipped=True)
             continue
         try:
             prepared = payload.result()  # wait for preproc to finish if not done yet
@@ -216,8 +221,12 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
                 if f[k]: vi = np.flip(vi, axis=2)
                 si = np.zeros_like(vi, dtype=np.float32)
                 n_z = vi.shape[0]
-                for bs in range(0, n_z, batch_size):
-                    bjs = list(range(bs, min(bs + batch_size, n_z)))
+                frac = np.clip(center / 100.0, 0.0, 1.0)
+                n_center = max(1, int(round(n_z * frac)))
+                z_start = (n_z - n_center) // 2
+                z_end = z_start + n_center
+                for bs in range(z_start, z_end, batch_size):
+                    bjs = list(range(bs, min(bs + batch_size, z_end)))
                     inp = np.stack([_parse_input_for_slice(vi, bj, model_depth, model_dimensionality) for bj in bjs])
                     res = new_model(inp, training=False).numpy()
                     for i, bj in enumerate(bjs):
@@ -235,9 +244,9 @@ def _segmentation_thread(model_path, data_paths, output_dir, gpu_id, test_time_a
     executor.shutdown(wait=False)
 
 
-def dispatch_parallel_segment(model_path, data_patterns, output_directory, gpus, test_time_augmentation=1, parallel=1, overwrite=0, processing_apix=None, postprocessing_sigma=(0, 0, 0), batch_size=16, n_workers=None):
+def dispatch_parallel_segment(model_path, data_patterns, output_directory, gpus, test_time_augmentation=1, parallel=1, overwrite=0, processing_apix=None, postprocessing_sigma=(0, 0, 0), batch_size=16, n_workers=None, center=100.0):
     if n_workers is None:
-        n_workers = max(1, (os.cpu_count() or 1) // len(gpus))
+        n_workers = min(16, max(1, (os.cpu_count() or 1) // len(gpus)))
     if not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
 
@@ -309,7 +318,8 @@ def dispatch_parallel_segment(model_path, data_patterns, output_directory, gpus,
                     processing_apix,
                     postprocessing_sigma,
                     batch_size,
-                    n_workers
+                    n_workers,
+                    center
                 ),
             )
             processes.append(p)
@@ -330,7 +340,8 @@ def dispatch_parallel_segment(model_path, data_patterns, output_directory, gpus,
             processing_apix,
             postprocessing_sigma,
             batch_size,
-            n_workers
+            n_workers,
+            center
         )
 
 
@@ -400,6 +411,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     while model.background_process_train.progress < 1.0:
         time.sleep(0.2)
 
+    time.sleep(10.0)
     file_path = os.path.join(output_directory, f"{model.title}{cfg.filetype_semodel}")
     model.load(os.path.join(output_directory, f"{model.title}{cfg.filetype_semodel}"))
     model.toggle_inference()
@@ -470,12 +482,34 @@ def _picking_thread(data_paths, output_directory, margin, threshold, binning, sp
         pass
 
 
-def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config="", filament=False, filament_length=500.0, centroid=False, min_particles=0, twist_per_sample=0.0):
+def _read_subset_txt(subset_path):
+    """Read a Pom-style subset .txt file and return a set of bare tomogram names."""
+    names = set()
+    with open(subset_path) as f:
+        for line in f:
+            entry = line.strip()
+            if not entry:
+                continue
+            base = entry.replace('\\', '/').rsplit('/', 1)[-1]
+            if base.endswith('.mrc'):
+                base = base[:-4]
+            names.add(base)
+    return names
+
+
+def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config="", filament=False, filament_length=500.0, centroid=False, min_particles=0, twist_per_sample=0.0, subset=None):
     data_directory = os.path.abspath(data_directory)
     output_directory = os.path.abspath(output_directory)
 
     os.makedirs(output_directory, exist_ok=True)
     all_data_paths = glob.glob(os.path.join(data_directory, f"*__{target}.mrc"))
+
+    if subset is not None:
+        subset_names = _read_subset_txt(subset)
+        n_before = len(all_data_paths)
+        all_data_paths = [p for p in all_data_paths if os.path.basename(p).split(f'__{target}')[0] in subset_names]
+        print(f'Subset {os.path.basename(subset)}: {len(all_data_paths)}/{n_before} segmented volumes matched.')
+
     pom_capp_info_str = ""
     if pom_capp_config:
         with open(pom_capp_config, 'r') as f:
@@ -516,7 +550,7 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
                 p.join(timeout=1)
 
 
-def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, margin=0, exclude=None, merge=False, coordinates=False):
+def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, exclude=None, merge=False, coordinates=False):
     import pickle, tifffile
     from skimage.transform import resize
     import starfile, pandas as pd
@@ -636,7 +670,9 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
                 continue
 
             box_coordinates = [(z, box[0], box[1]) for z in f.boxes for box in f.boxes[z]]
-            print('\033[96m' + f"\tparsing feature '{f.title}' ({len(box_coordinates)} boxes)" + '\033[0m')
+            ann_bs = getattr(f, 'box_size', box_size)
+            margin_per_side = max(0, (box_size - ann_bs) // 2)
+            print('\033[96m' + f"\tparsing feature '{f.title}' ({len(box_coordinates)} boxes, annotation_box={ann_bs}, margin={margin_per_side})" + '\033[0m')
 
             if coordinates:
                 for f in se_frame.features:
@@ -654,16 +690,34 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
                             'rlnMicrographName': tomo_mrc_name,
                         })
             else:
+                annotation_box_size = getattr(f, 'box_size', box_size)
+                margin_per_side = max(0, (box_size - annotation_box_size) // 2)
+
                 for z, k, l in box_coordinates:
                     box_pixel_data, validity = _get_box(z, k, l, tomo, se_frame.n_slices)
                     box_label = _get_annotation(z, k, l, f)
                     box_label[validity == 0] = 2
 
+                    if margin_per_side > 0:
+                        box_label[:margin_per_side, :] = 2
+                        box_label[-margin_per_side:, :] = 2
+                        box_label[:, :margin_per_side] = 2
+                        box_label[:, -margin_per_side:] = 2
+
                     box_pixel_data = _bin(box_pixel_data)
                     box_label = _bin(box_label[None, :, :], anti_aliasing=False)
                     box_data = np.concatenate([box_pixel_data, box_label], axis=0)
                     training_boxes[f.title].append(box_data)
-                training_sources[f.title].append(f'{tomo}\n')
+                    training_sources[f.title].append({
+                        'aisTomogramName': os.path.splitext(os.path.basename(tomo))[0],
+                        'aisTomogramPath': os.path.abspath(tomo),
+                        'aisBoxCoordinateZ': z,
+                        'aisBoxCoordinateY': l,
+                        'aisBoxCoordinateX': k,
+                        'aisBoxSizeAnnotate': annotation_box_size,
+                        'aisBoxSizeExtracted': box_size,
+                        'aisFeatureName': f.title,
+                    })
 
     os.makedirs(output_directory, exist_ok=True)
 
@@ -691,6 +745,10 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
         return
 
 
+    def _write_sources_star(star_path, source_records):
+        df = pd.DataFrame(source_records)
+        starfile.write({'sources': df}, star_path, overwrite=True)
+
     if merge:
         all_boxes = []
         all_sources = []
@@ -703,30 +761,18 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
         if len(all_boxes) == 0:
             print('\033[96mNo training boxes for any feature. Skipping export.\033[0m')
         else:
+            for f in names:
+                print('\033[96m' + f'{f}: {len(training_boxes[f])} training boxes.' + '\033[0m')
             data = np.array(all_boxes, dtype=np.float32)
-            _m = margin // binning
-            if _m > 0:
-                data[:, -1, :_m, :] = 2
-                data[:, -1, -_m:, :] = 2
-                data[:, -1, :, :_m] = 2
-                data[:, -1, :, -_m:] = 2
             _binning_tag = "" if binning == 1 else f"_bin{binning}"
             merged_name = "_".join(names)
             out_path = f"{box_size}x{box_size}x{box_depth}{_binning_tag}_{merged_name}.scnt"
-            print('\033[96m' + f'Merged: {len(all_boxes)} training boxes. Saving as {out_path}' + '\033[0m')
+            print('\033[96m' + f'Merged: {len(all_boxes)} total training boxes. Saving as {out_path}' + '\033[0m')
             tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix * binning}")
-
-            with open(out_path.replace('.scnt', '_sources.txt'), 'w') as _:
-                _.writelines(all_sources)
+            _write_sources_star(os.path.join(output_directory, out_path.replace('.scnt', '_sources.star')), all_sources)
     else:
         for f in features:
             data = np.array(training_boxes[f], dtype=np.float32)
-            _m = margin // binning
-            if _m > 0:
-                data[:, -1, :_m, :] = 2
-                data[:, -1, -_m:, :] = 2
-                data[:, -1, :, :_m] = 2
-                data[:, -1, :, -_m:] = 2
 
             _binning_tag = "" if binning == 1 else f"_bin{binning}"
             out_path = f"{box_size}x{box_size}x{box_depth}"+_binning_tag+ f"_{f}.scnt"
@@ -736,6 +782,5 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
             else:
                 print('\033[96m' + f'{f}: {len(training_boxes[f])} training boxes. Saving as {out_path}' + '\033[0m')
                 tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix*binning}")
-                with open(out_path.replace('.scnt', '_sources.txt'), 'w') as _:
-                    _.writelines(training_sources[f])
+                _write_sources_star(os.path.join(output_directory, out_path.replace('.scnt', '_sources.star')), training_sources[f])
 
