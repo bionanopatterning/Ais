@@ -80,6 +80,8 @@ def main():
     pick_parser.add_argument('-filament', required=False, action='store_true', help="If set, pick in filament mode rather than blob mode.")
     pick_parser.add_argument('--twist', required=False, type=float, default=0.0, help="If picking in filament mode, increment rlnAngleRot by this amount for every particle picked along a filament.")
     pick_parser.add_argument('-centroid', required=False, action='store_true', help="If set, if picking in blob mode, place coordinates at the centroid of each connected component rather than the deepest point. Only use when you are sure that particles are well separated!")
+    pick_parser.add_argument('-orient', required=False, type=str, default=None, choices=['normal', 'long-axis'], help="In centroid mode, also write Euler angles derived from each blob's shape: 'normal' uses the disk normal (smallest principal axis), 'long-axis' uses the rod axis (largest principal axis). Sets rlnAngleTilt and rlnAnglePsi; rlnAngleRot is left at 0.")
+    pick_parser.add_argument('-orient-sign', required=False, type=str, default='z', choices=['z', 'center', 'out'], help="Convention for resolving the sign ambiguity of the shape axis: 'z' forces a +z component, 'center'/'out' points the vector toward/away from the volume centre. Default: z.")
     pick_parser.add_argument('-length', required=False, type=float, default=500.0, help="Minimum filament length to place coordinates along (in Angstrom). Only used if -filament flag is set. Use ``-length-px`` to specify the length in pixels instead.")
     pick_parser.add_argument('-length-px', required=False, type=float, default=None, help="Minimum filament length to place coordinates along (in pixels). Only used if -filament flag is set.")
     pick_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Number of parallel picking processes to use (e.g. ``-p 64``, or however many threads your system can run at a time).")
@@ -169,7 +171,9 @@ def main():
                                           filament_length=args.length,
                                           centroid=args.centroid,
                                           min_particles=args.min_particles,
-                                          subset=args.subset)
+                                          subset=args.subset,
+                                          orient=args.orient,
+                                          orient_sign=args.orient_sign)
         elif args.command == 'train':
             if args.model_architectures:
                 aiscli.print_available_model_architectures()

@@ -7,7 +7,7 @@ import shutil
 # python setup.py sdist
 # twine upload dist/*
 
-VERSION = '1.0.47'
+VERSION = '1.1.0'
 
 with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
@@ -20,7 +20,7 @@ setup(
     url='https://github.com/bionanopatterning/Ais',
     license='GPL v3',
     author='mgflast',
-    author_email='m.g.f.last@lumc.nl',
+    author_email='mgflast@gmail.com',
     description='Segmentation of cryo-electron tomography data - https://ais-cryoet.readthedocs.org/ https://aiscryoet.org/',
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -28,7 +28,7 @@ setup(
     include_package_data=False,  # weirdly, the above filetypes _are_ included when this parameter is set to False.
     install_requires=[
         "imgui>=2.0.0",
-        "tensorflow>=2.8.0,<=2.11.0",
+        "tensorflow>=2.8.0,<=2.11.1",
         "protobuf>=3.20.0,<=3.20.3",
         "glfw>=2.5.5",
         "PyOpenGL>=3.1.6",

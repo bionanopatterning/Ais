@@ -7,8 +7,8 @@
   "OVERLAP_MODE": 0,
   "DEFAULT_COLOURS": {},
   "GPUS": "0,",
-  "WAIT_TO_RENDER": true,
-  "POM_SYNCHRONIZE": false,
+  "WAIT_TO_RENDER": false,
+  "POM_SYNCHRONIZE": true,
   "POM_COMMAND_DIR": "",
   "POM_TEMPLATE_PX_SIZE": 64,
   "QUICK_SAVE_DIRECTORY": "",
@@ -16,12 +16,8 @@
   "TEST_TIME_AUGMENTATIONS": 1,
   "SEARCH_DIRECTORIES": [],
   "EXTRA_AUGMENTATIONS": true,
-  "INFERENCE_ALLOW_RESCALING": false,
-  "DEBUG_PREPROC_BIN_2": false,
-  "DEBUG_PREPROC_BIN_3": false,
-  "DEBUG_PREPROC_BIN_5": false,
+  "INFERENCE_ALLOW_RESCALING": true,
   "DEBUG_A": false,
   "DEBUG_B": false,
   "DEBUG_C": false
-
 }

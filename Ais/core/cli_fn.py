@@ -419,7 +419,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     print(f"\nDone training {os.path.join(output_directory, f'{model.title}{cfg.filetype_semodel}')}")
 
 
-def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0, twist_per_sample=0.0):
+def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0, twist_per_sample=0.0, orient=None, orient_sign='z'):
     # find right values for spacing and size.
     voxel_size = mrcfile.open(tomo_path, permissive=True, header_only=True).voxel_size.x
     if voxel_size == 0.0:
@@ -445,7 +445,7 @@ def _pick_tomo(tomo_path, output_path, margin, threshold, binning, spacing, size
         return pick_filament(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, spacing_nm=min_spacing, size_nm=min_size, pixel_size=voxel_size / 10.0, min_length=filament_length, twist_per_sample=twist_per_sample)
     else:
         from Ais.core.util import pick_particles
-        return pick_particles(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, verbose=verbose, centroid=centroid, min_particles=min_particles)
+        return pick_particles(mrcpath=tomo_path, out_path=output_path, margin=margin, threshold=threshold, binning=binning, min_spacing=min_spacing, min_size=min_size, pixel_size=voxel_size / 10.0, verbose=verbose, centroid=centroid, min_particles=min_particles, orient=orient, orient_sign=orient_sign)
 
 
 def _clr_print(txt, clr):
@@ -459,11 +459,11 @@ def _clr_print(txt, clr):
     print(f"{colors[clr]}{txt}\033[0m")
 
 
-def _picking_thread(data_paths, output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, process_id, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0, twist_per_sample=0.0):
+def _picking_thread(data_paths, output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, process_id, verbose, filament=False, filament_length=500.0, filament_length_px=None, centroid=False, min_particles=0, twist_per_sample=0.0, orient=None, orient_sign='z'):
     try:
         for j, p in enumerate(data_paths):
             out_path = os.path.join(output_directory, os.path.splitext(os.path.basename(p))[0]+"_coords.star")
-            n_particles, n_filaments = _pick_tomo(p, out_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament, filament_length, filament_length_px, centroid, min_particles, twist_per_sample)
+            n_particles, n_filaments = _pick_tomo(p, out_path, margin, threshold, binning, spacing, size, spacing_px, size_px, verbose, filament, filament_length, filament_length_px, centroid, min_particles, twist_per_sample, orient, orient_sign)
 
             if n_particles < min_particles:
                 _clr_print(
@@ -497,7 +497,7 @@ def _read_subset_txt(subset_path):
     return names
 
 
-def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config="", filament=False, filament_length=500.0, centroid=False, min_particles=0, twist_per_sample=0.0, subset=None):
+def dispatch_parallel_pick(target, data_directory, output_directory, margin, threshold, binning, spacing, size, parallel=1, spacing_px=None, size_px=None, verbose=False, pom_capp_config="", filament=False, filament_length=500.0, centroid=False, min_particles=0, twist_per_sample=0.0, subset=None, orient=None, orient_sign='z'):
     data_directory = os.path.abspath(data_directory)
     output_directory = os.path.abspath(output_directory)
 
@@ -537,7 +537,7 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
     try:
         for p_id in data_div:
             p = multiprocessing.Process(target=_picking_thread,
-                                        args=(data_div[p_id], output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, p_id, verbose, filament, filament_length, None, centroid, min_particles, twist_per_sample))
+                                        args=(data_div[p_id], output_directory, margin, threshold, binning, spacing, size, spacing_px, size_px, p_id, verbose, filament, filament_length, None, centroid, min_particles, twist_per_sample, orient, orient_sign))
             processes.append(p)
             p.start()
 

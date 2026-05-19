@@ -490,6 +490,7 @@ class SegmentationEditor:
             return
         if not os.path.exists(filename[0]):
             print(f'Could not find file {filename[0]}')
+            return
         for f in filename:
             try:
                 _, ext = os.path.splitext(f)
@@ -527,6 +528,9 @@ class SegmentationEditor:
                 # only one command for now:
                 #   open <filepath> slice <n>
                 if bars[0] == "open":
+                    if os.path.exists('C:/Users/Mart Last'):  # (mart specific hack 260408)
+                        bars[1] = bars[1].replace('/cephfs/mlast', 'Z:\\')
+                        print(f"trigger: substitute '/cephfs/mlast' > 'Z:\\'")
                     filetype = os.path.splitext(bars[1])[-1]
                     if filetype in ['.mrc', cfg.filetype_segmentation]:
                         dataset_already_imported = False

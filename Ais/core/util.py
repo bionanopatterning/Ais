@@ -99,7 +99,39 @@ def extract_particles(vol_path, coords_path, boxsize, unbin=1, two_dimensional=F
     return imgs
 
 
-def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, verbose=True, centroid=False, min_particles=0):
+def _blob_orientation(coords_zyx, mode, sign, vol_shape):
+    """Euler angles (rot, tilt, psi) from a blob's principal axes.
+
+    mode 'normal'    -> disk normal (smallest principal axis)
+    mode 'long-axis' -> rod axis (largest principal axis)
+    sign 'z'         -> chosen vector forced to +z component;
+         'center'/'out' -> pointed toward/away from the volume centre.
+    Near-isotropic blobs have no defined orientation and return (0, 0, 0).
+    rot is left at 0 — a single axis fixes only tilt and psi.
+    """
+    from Ais.core.filaments import tangent_to_euler_zyz
+    c = coords_zyx - coords_zyx.mean(axis=0)
+    eigvals, eigvecs = np.linalg.eigh(c.T @ c / len(c))  # ascending
+    if mode == 'normal':
+        vec, ratio = eigvecs[:, 0], eigvals[0] / max(eigvals[1], 1e-9)
+    else:
+        vec, ratio = eigvecs[:, 2], eigvals[1] / max(eigvals[2], 1e-9)
+    if ratio > 0.7:  # too isotropic for this mode -> orientation undefined
+        return 0.0, 0.0, 0.0
+    v_xyz = vec[::-1]  # (z, y, x) -> (x, y, z)
+    if sign == 'z':
+        if v_xyz[2] < 0:
+            v_xyz = -v_xyz
+    else:
+        to_centre_xyz = (np.array(vol_shape) / 2.0 - coords_zyx.mean(axis=0))[::-1]
+        pointing_in = np.dot(v_xyz, to_centre_xyz) > 0
+        if (sign == 'center') != pointing_in:
+            v_xyz = -v_xyz
+    rot, tilt, psi = tangent_to_euler_zyz(v_xyz)[0]
+    return float(rot), float(tilt), float(psi)
+
+
+def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_size=None, save_txt=True, out_path=None, process=None, array=None, array_pixel_size=None, return_coords=False, binning=1, pixel_size=None, verbose=True, centroid=False, min_particles=0, orient=None, orient_sign='z'):
     ## TODO: clean up
     """
     Ais pick particles blob mode.
@@ -150,9 +182,10 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
 
 
     class Particle:
-        def __init__(self, coordinate, score):
+        def __init__(self, coordinate, score, orientation=None):
             self.coordinate = coordinate
             self.score = score
+            self.orientation = orientation
 
     particles = list()
 
@@ -164,6 +197,7 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
     else:               # pick by centroid of labeled regions, particle score is size of blob.
         coordinates = []
         scores = []
+        orientations = []
         for label_id in range(1, n + 1):
             if label_id in small_blobs:
                 continue
@@ -172,13 +206,18 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
             if len(coords) > 0:
                 coordinates.append(coords.mean(axis=0))
                 scores.append(np.sum(mask) * (10.0 * pixel_size)**3)
+                if orient is not None:
+                    orientations.append(_blob_orientation(coords, orient, orient_sign, binary_vol.shape))
+                else:
+                    orientations.append(None)
         coordinates = np.array(coordinates) if coordinates else np.empty((0, 3))
-        for c, s in zip(coordinates, scores):
-            particles.append(Particle(c, s))
+        for c, s, o in zip(coordinates, scores, orientations):
+            particles.append(Particle(c, s, o))
 
     particles.sort(key=lambda x: x.score, reverse=True)
     coordinates = [p.coordinate for p in particles]
     scores = [p.score for p in particles]
+    orientations = [p.orientation for p in particles]
 
     if len(coordinates) < min_particles:
         return len(coordinates), 0
@@ -190,10 +229,18 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
         if out_path is None:
             out_path = os.path.splitext(mrcpath)[0] + "_coords.star"
 
-        df = pd.DataFrame(columns=['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ', 'rlnMicrographName', 'aisParticleSize'])
+        write_angles = orient is not None and centroid
+        cols = ['rlnCoordinateX', 'rlnCoordinateY', 'rlnCoordinateZ', 'rlnMicrographName', 'aisParticleSize']
+        if write_angles:
+            cols += ['rlnAngleRot', 'rlnAngleTilt', 'rlnAnglePsi']
+        df = pd.DataFrame(columns=cols)
         micrograph_name = os.path.basename(mrcpath).split("__")[0]
         for i in range(len(coordinates)):
-            df.loc[len(df)] = [coordinates[i][2] * binning, coordinates[i][1] * binning, coordinates[i][0] * binning, micrograph_name, scores[i]]
+            row = [coordinates[i][2] * binning, coordinates[i][1] * binning, coordinates[i][0] * binning, micrograph_name, scores[i]]
+            if write_angles:
+                rot, tilt, psi = orientations[i]
+                row += [rot, tilt, psi]
+            df.loc[len(df)] = row
         starfile.write({'particles': df}, out_path, overwrite=True)
         if process:
             process.set_progress(0.99)
