@@ -9,6 +9,7 @@ from Ais.core.se_frame import *
 import Ais.core.se_scnt as se_scnt
 import Ais.core.widgets as widgets
 from Ais.core.util import clamp, bin_mrc
+from Ais.core import progression
 import pyperclip
 import os
 import subprocess
@@ -213,6 +214,22 @@ class SegmentationEditor:
             self.boot_sprite_width, self.boot_sprite_height = pxd.shape[0:2]
             self.boot_sprite_texture.set_linear_interpolation()
 
+            self.progression_icon_texture = Texture(format="rgba32f")
+            pxd = np.asarray(Image.open(os.path.join(icon_dir, "LOGO_Pom_128.png"))).astype(np.float32) / 255.0
+            self.progression_icon_texture.update(pxd)
+            self.progression_icon_texture.set_linear_interpolation()
+            progression.set_panel_icon(self.progression_icon_texture.renderer_id)
+
+            # Bake a large font for crisp level-up text; falls back to upscaling if unavailable.
+            _font_path = progression.big_font_path()
+            if _font_path is not None:
+                try:
+                    _big_font = imgui.get_io().fonts.add_font_from_file_ttf(_font_path, progression.BIG_FONT_PX)
+                    self.imgui_implementation.refresh_font_texture()
+                    progression.set_big_font(_big_font)
+                except Exception as e:
+                    cfg.set_error(e, "Could not load progression display font; using fallback.")
+
     @staticmethod
     def set_active_dataset(dataset):
         SegmentationEditor.pick_tab_index_datasets_segs = True
@@ -318,6 +335,16 @@ class SegmentationEditor:
             self.gui_main()
             SegmentationEditor.renderer.render_draw_list(self.camera)
             self.input()
+
+            _prog_hidden = cfg.settings.get("PROGRESSION_HIDE", False)
+            progression.tick_particles(self.window.delta_time)
+            if not _prog_hidden:
+                progression.render_xp_hud(self.window.width, self.window.height)
+                progression.render_level_up(self.window.width, self.window.height)
+            progression.render_profile_panel()
+            if not _prog_hidden:
+                progression.draw_particles(self.camera)
+            progression.maybe_save()
 
         imgui.render()
         self.imgui_implementation.render(imgui.get_draw_data())
@@ -426,6 +453,11 @@ class SegmentationEditor:
 
 
                 if not SegmentationEditor.is_shift_down():
+                    _cx, _cy = self.window.cursor_pos[0], self.window.cursor_pos[1]
+                    _wx, _wy = cursor_world_position[0], cursor_world_position[1]
+                    _ftr_color = tuple(active_feature.colour)
+                    _skill_lvl = progression.get_profile().skill_level(active_feature.title)
+                    _brush_radius_world = active_feature.brush_size * active_feature.parent.pixel_size
                     if imgui.is_mouse_down(0):
                         active_feature.hide = False
                         if active_feature.magic:
@@ -435,12 +467,17 @@ class SegmentationEditor:
                                 pass  # bit experimental still. TODO: fix error thrown when flood fill ROI partially falls outside image.
                         else:
                             Brush.apply_circular(active_feature, pixel_coordinate, True)
+                        progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy))
+                        progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
                 else:
                     if not SegmentationEditor.is_ctrl_down():
                         if imgui.is_mouse_clicked(0):
                             active_feature.add_box(pixel_coordinate)
+                            _skill_lvl_box = progression.get_profile().skill_level(active_feature.title)
+                            progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]))
+                            progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)
             if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
@@ -1167,6 +1204,7 @@ class SegmentationEditor:
                                     slice_data = (m.data > m.threshold) * 255
                                     feature.set_slice_ndarray(slice_data, cfg.se_active_frame.current_slice)
                                     SegmentationEditor.FORCE_SELECT_TAB = 0
+                                    progression.award(skill=feature.title, xp=15, color=tuple(feature.colour))
                             imgui.pop_style_var(1)
                             imgui.end_menu()
                         imgui.end_popup()
@@ -2189,6 +2227,13 @@ class SegmentationEditor:
                             cfg.edit_setting("DEBUG_B", not cfg.settings["DEBUG_B"])
                         if imgui.menu_item("(debug) FLAG_C", selected=cfg.settings["DEBUG_C"])[0]:
                             cfg.edit_setting("DEBUG_C", not cfg.settings["DEBUG_C"])
+                        imgui.end_menu()
+
+                    if imgui.begin_menu("Progression"):
+                        if imgui.menu_item("Show profile panel")[0]:
+                            progression.toggle_panel()
+                        if imgui.menu_item("Hide all", None, cfg.settings["PROGRESSION_HIDE"])[0]:
+                            cfg.edit_setting("PROGRESSION_HIDE", not cfg.settings["PROGRESSION_HIDE"])
                         imgui.end_menu()
 
                     imgui.end_menu()
