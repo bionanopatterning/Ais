@@ -66,6 +66,10 @@ _active_levelup: Optional[events.LevelUp] = None
 _levelup_started_at: float = 0.0
 LEVELUP_DURATION_S = 3.2
 
+# Firework pops queued at (fire_time, x, y, color, n) and drained each frame so
+# they go off in sequence rather than all at once.
+_pending_bursts: List[Tuple[float, float, float, Color, int]] = []
+
 _panel_open: bool = False
 
 
@@ -318,6 +322,11 @@ def render_level_up(window_width: int, window_height: int, hidden: bool = False)
     if hidden:
         return
     now = time.time()
+    # fire any firework pops whose scheduled time has arrived
+    if _pending_bursts:
+        for (_t, _bx, _by, _bc, _bn) in [b for b in _pending_bursts if b[0] <= now]:
+            particles.emit_burst(_bx, _by, _bc, _bn)
+        _pending_bursts[:] = [b for b in _pending_bursts if b[0] > now]
     if _active_levelup is None:
         ev = events.pop_level_up()
         if ev is None:
@@ -329,12 +338,17 @@ def render_level_up(window_width: int, window_height: int, hidden: bool = False)
             return
         _active_levelup = ev
         _levelup_started_at = now
-        # firework bursts around where the text will appear
+        # a sequence of firework pops around the text, ~140 ms apart
         if cfg.settings.get("PERK_CONFETTI", True):
             _bx, _by = window_width * 0.5, window_height * 0.5
-            particles.emit_burst(_bx, _by, ev.color, n=48)
-            particles.emit_burst(_bx - window_width * 0.11, _by, ev.color, n=30)
-            particles.emit_burst(_bx + window_width * 0.11, _by, ev.color, n=30)
+            _spread = window_width * 0.11
+            _plan = ((0.0, 0.0, 48), (-1.0, -0.02, 32), (1.0, -0.02, 32),
+                     (-0.5, 0.06, 26), (0.5, 0.06, 26))
+            for _i, (_ox, _oy, _bn) in enumerate(_plan):
+                _pending_bursts.append((now + _i * 0.14,
+                                        _bx + _spread * _ox,
+                                        _by + window_height * _oy,
+                                        ev.color, _bn))
 
     elapsed = now - _levelup_started_at
     if elapsed > LEVELUP_DURATION_S:

@@ -122,26 +122,21 @@ def emit_box_outline_burst(
     for _ in range(n * COUNT_MUL):
         side = random.randint(0, 3)
         t = random.uniform(-1.0, 1.0)
-        if side == 0:    # top
-            x = cx + t * half
-            y = cy - half
-            vx = random.uniform(-30.0, 30.0)
-            vy = random.uniform(-110.0, -40.0)
-        elif side == 1:  # right
-            x = cx + half
-            y = cy + t * half
-            vx = random.uniform(40.0, 110.0)
-            vy = random.uniform(-30.0, 30.0)
-        elif side == 2:  # bottom
-            x = cx + t * half
-            y = cy + half
-            vx = random.uniform(-30.0, 30.0)
-            vy = random.uniform(40.0, 110.0)
-        else:            # left
-            x = cx - half
-            y = cy + t * half
-            vx = random.uniform(-110.0, -40.0)
-            vy = random.uniform(-30.0, 30.0)
+        if side == 0:      # top
+            x, y = cx + t * half, cy - half
+        elif side == 1:    # right
+            x, y = cx + half, cy + t * half
+        elif side == 2:    # bottom
+            x, y = cx + t * half, cy + half
+        else:              # left
+            x, y = cx - half, cy + t * half
+        # Fly outward from the box centre (so corners spread diagonally), with a
+        # little jitter and an upward pop; gravity then arcs them back down.
+        dx, dy = x - cx, y - cy
+        d = math.hypot(dx, dy) or 1.0
+        speed = random.uniform(70.0, 180.0)
+        vx = dx / d * speed + random.uniform(-22.0, 22.0)
+        vy = dy / d * speed + random.uniform(-22.0, 22.0) - 45.0
         _particles.append(Particle(
             x=x,
             y=y,
@@ -151,8 +146,8 @@ def emit_box_outline_burst(
             lifetime=random.uniform(1.10, 2.00) * LIFETIME_MUL,
             color=_jitter_color(color, h_amp=h_amp),
             size=random.uniform(2.0, 3.4) * SIZE_MUL,
-            gravity=80.0,
-            drag=2.0,
+            gravity=110.0,
+            drag=1.6,
             kind="dot",
             world=world,
         ))
@@ -229,14 +224,13 @@ def draw(camera=None) -> None:
         return
     dl = imgui.get_foreground_draw_list()
     # World->screen affine (from the 2D camera), precomputed once for the frame.
-    m00 = m01 = m03 = m10 = m11 = m13 = hw = hh = zoom = 0.0
+    m00 = m01 = m03 = m10 = m11 = m13 = hw = hh = 0.0
     if camera is not None:
         M = camera.view_projection_matrix
         m00 = float(M[0, 0]); m01 = float(M[0, 1]); m03 = float(M[0, 3])
         m10 = float(M[1, 0]); m11 = float(M[1, 1]); m13 = float(M[1, 3])
         hw = camera.projection_width / 2.0
         hh = camera.projection_height / 2.0
-        zoom = camera.zoom
     for p in _particles:
         if p.world and camera is not None:
             wx, wy = p.x, -p.y   # undo the screen-down anchoring
@@ -244,7 +238,7 @@ def draw(camera=None) -> None:
             oy = m10 * wx + m11 * wy + m13
             px = (1.0 + ox) * hw
             py = (1.0 - oy) * hh
-            psize = p.size * zoom
+            psize = p.size   # position tracks the scene; size stays screen-constant
         else:
             px, py, psize = p.x, p.y, p.size
         u = max(0.0, 1.0 - (p.age / p.lifetime))
