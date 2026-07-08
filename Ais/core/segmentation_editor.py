@@ -547,6 +547,8 @@ class SegmentationEditor:
                             seframe.path = f[:-len(cfg.filetype_segmentation)]+".mrc"  # 'virtual' file path, pointing at the location of the .scns file but ending with .mrc s.t. model output regex doesn't get messed up
                         seframe.scns_path = f
                     self.parse_available_features()
+                if ext in (".mrc", cfg.filetype_segmentation):
+                    cfg.push_recent("RECENT_DATASETS", f)
             except Exception as e:
                 cfg.set_error(e, f"Error importing dataset {f}, see details below:")
 
@@ -1919,6 +1921,32 @@ class SegmentationEditor:
                                 SegmentationEditor.load_model_group(filename)
                         except Exception as e:
                             cfg.set_error(e, "Could not import model group, see details below.")
+                    if imgui.begin_menu("Open recent dataset"):
+                        _recents = [p for p in (cfg.settings.get("RECENT_DATASETS") or []) if os.path.exists(p)]
+                        if not _recents:
+                            imgui.menu_item("(none)", None, False, False)
+                        for _p in _recents:
+                            if imgui.menu_item(os.path.basename(_p))[0]:
+                                try:
+                                    self.import_dataset(_p)
+                                except Exception as e:
+                                    cfg.set_error(e, "Could not open recent dataset, see details below.")
+                            if imgui.is_item_hovered():
+                                imgui.set_tooltip(_p)
+                        imgui.end_menu()
+                    if imgui.begin_menu("Open recent model"):
+                        _recents = [p for p in (cfg.settings.get("RECENT_MODELS") or []) if os.path.exists(p)]
+                        if not _recents:
+                            imgui.menu_item("(none)", None, False, False)
+                        for _p in _recents:
+                            if imgui.menu_item(os.path.basename(_p))[0]:
+                                try:
+                                    SegmentationEditor.load_model(_p)
+                                except Exception as e:
+                                    cfg.set_error(e, "Could not open recent model, see details below.")
+                            if imgui.is_item_hovered():
+                                imgui.set_tooltip(_p)
+                        imgui.end_menu()
                     imgui.separator()
                     if imgui.menu_item("Save dataset")[0]:
                         SegmentationEditor.save_dataset(dialog=False)
@@ -3222,6 +3250,7 @@ class SegmentationEditor:
             model = SEModel()
             model.load(path)
             cfg.se_models.append(model)
+            cfg.push_recent("RECENT_MODELS", path)
         except Exception as e:
             cfg.set_error(e, "Error loading model, see details below.")
 

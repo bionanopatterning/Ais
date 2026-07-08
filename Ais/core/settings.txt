@@ -25,5 +25,7 @@
   "PERK_BOX_BURST": true,
   "PERK_CONFETTI": true,
   "PERK_MILESTONE": true,
-  "PERK_COLOR_ANIM": true
+  "PERK_COLOR_ANIM": true,
+  "RECENT_DATASETS": [],
+  "RECENT_MODELS": []
 }

@@ -142,6 +142,15 @@ def edit_setting(key, value):
     print(key, value)
 
 
+def push_recent(key, path, cap=12):
+    # Move `path` to the front of the recent-files list stored under `key`.
+    path = os.path.abspath(path)
+    current = settings.get(key) or []
+    updated = [p for p in current if os.path.normpath(p) != os.path.normpath(path)]
+    updated.insert(0, path)
+    edit_setting(key, updated[:cap])
+
+
 if settings["POM_COMMAND_DIR"] == "":
     edit_setting("POM_COMMAND_DIR", os.path.join(os.path.expanduser("~"), ".Ais"))
 
