@@ -19,5 +19,7 @@
   "INFERENCE_ALLOW_RESCALING": true,
   "DEBUG_A": false,
   "DEBUG_B": false,
-  "DEBUG_C": false
+  "DEBUG_C": false,
+  "RECENT_DATASETS": [],
+  "RECENT_MODELS": []
 }
