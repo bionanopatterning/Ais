@@ -67,6 +67,9 @@ def _preprocess_tomo(tomo_path, model_apix):
         original_shape = volume.shape
     if model_apix is not None and volume_apix == 1.0:
         print(f'warning: {tomo_path} header lists voxel size as 1.0 A/px, which might be incorrect.')
+    if volume_apix == 0.0:
+        print(f'warning: volume apix is 0.0 so we cannot determine the scaling factor. we will assume the real pixel size is 10.0')
+        volume_apix = 10.0
     if model_apix is not None:
         volume = scale_volume_xy(volume, volume_apix / float(model_apix))
     for k in range(volume.shape[0]):
@@ -550,65 +553,63 @@ def dispatch_parallel_pick(target, data_directory, output_directory, margin, thr
                 p.join(timeout=1)
 
 
-def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, exclude=None, merge=False, coordinates=False):
-    import pickle, tifffile
-    from skimage.transform import resize
+# [--easymode, hidden] IsoNet2 architecture tag used in the corrected-volume filenames.
+_EASYMODE_ISONET2_ARCH = "unet-medium"
+# Cache of reverse tomogram->dataset indices, keyed by dataset_contents.json path.
+_easymode_tomo_dataset_cache = {}
+
+
+def _easymode_tomo_dataset_map(map_path):
+    """this method is specific to the easymode development environment and shouldn't be called by end users"""
+    if map_path in _easymode_tomo_dataset_cache:
+        return _easymode_tomo_dataset_cache[map_path]
+    reverse = {}
+    try:
+        with open(map_path) as f:
+            dataset_tomo_map = json.load(f)
+        for dataset, tomos in dataset_tomo_map.items():
+            for tomo in tomos:
+                reverse[os.path.splitext(os.path.basename(tomo))[0]] = dataset
+    except Exception as e:
+        print(f"\teasymode: could not read dataset map {map_path} ({e})")
+    _easymode_tomo_dataset_cache[map_path] = reverse
+    return reverse
+
+
+def _find_flavours(tomo_path):
+    """this method is specific to the easymode development environment and shouldn't be called by end users"""
+    flavours = {}
+    stem = os.path.splitext(os.path.basename(tomo_path))[0]
+    # Annotated (cryocare) volumes are kept flat in <easymode>/volumes_cryocare/, so
+    # the easymode root is two levels up from the annotated tomogram.
+    base = os.path.dirname(os.path.dirname(tomo_path))   # .../easymode
+
+    # ddw: flat alongside the cryocare volumes
+    ddw = os.path.join(base, 'volumes_ddw', stem + '.mrc')
+    if os.path.exists(ddw):
+        flavours['x_ddw'] = ddw
+
+    dataset = _easymode_tomo_dataset_map(os.path.join(base, 'datasets', 'dataset_contents.json')).get(stem)
+    if dataset is not None:
+        # raw: per-dataset Warp reconstruction
+        raw = os.path.join(base, 'datasets', dataset, 'warp_tiltseries', 'reconstruction', stem + '.mrc')
+        if os.path.exists(raw):
+            flavours['x_raw'] = raw
+        # iso: IsoNet2-corrected
+        iso = os.path.join(base, 'training', 'isonet2', 'per_dataset', dataset, 'corrected',
+                           f'_isonet2-n2n_{_EASYMODE_ISONET2_ARCH}_{stem}.mrc')
+        if os.path.exists(iso):
+            flavours['x_iso'] = iso
+
+    return flavours
+
+
+def extract_training_data(features, data_directory, output_directory, box_size, box_depth, binning=1, exclude=None, merge=False, coordinates=False, apix=None, easymode=False):
+    import pickle, tempfile, shutil
     import starfile, pandas as pd
+    import Ais.core.se_scnt as se_scnt
 
-    def _get_box(j, k, l, path, tomo_n_slices):
-        j_indices = np.clip(np.arange(j - box_depth // 2, j + box_depth // 2 + 1), 0, tomo_n_slices - 1)
-
-        vol = mrcfile.mmap(path).data
-        zdim, ydim, xdim = vol.shape
-
-        depth = len(j_indices)
-        half = box_size // 2
-        y0, y1 = l - half, l + half
-        x0, x1 = k - half, k + half
-
-        box = np.zeros((depth, box_size, box_size), dtype=np.float32)
-        validity = np.zeros((box_size, box_size), dtype=np.float32)
-
-        iy0, iy1 = max(y0, 0), min(y1, ydim)
-        ix0, ix1 = max(x0, 0), min(x1, xdim)
-
-        if iy0 < iy1 and ix0 < ix1:
-            pad_y = (iy0 - y0, y1 - iy1)
-            pad_x = (ix0 - x0, x1 - ix1)
-            for zi, z in enumerate(j_indices):
-                slc = vol[z, iy0:iy1, ix0:ix1]
-                box[zi] = np.pad(slc, (pad_y, pad_x), mode='reflect')
-            validity[iy0 - y0:iy1 - y0, ix0 - x0:ix1 - x0] = 1
-
-        return box, validity
-
-    def _get_annotation(j, k, l, feature):
-        sl = feature.slices[j]
-        h, w = sl.shape
-
-        half = box_size // 2
-        y0, y1 = l - half, l + half
-        x0, x1 = k - half, k + half
-
-        labels = np.zeros((box_size, box_size), dtype=sl.dtype)
-
-        iy0, iy1 = max(y0, 0), min(y1, h)
-        ix0, ix1 = max(x0, 0), min(x1, w)
-
-        if iy0 < iy1 and ix0 < ix1:
-            labels[iy0 - y0:iy1 - y0, ix0 - x0:ix1 - x0] = sl[iy0:iy1, ix0:ix1]
-
-        return labels
-
-    def _bin(x, anti_aliasing=True):
-        if binning == 1:
-            return x
-        else:
-            j, k, l = x.shape
-            new_shape = [j, int(np.round(k/binning)), int(np.round(l/binning))]
-            x = resize(x, new_shape, anti_aliasing=anti_aliasing, preserve_range=True, order = 1 if anti_aliasing else 0)
-            return x
-
+    MERGED_GROUP = "__merged__"
     annotated_tomograms = glob.glob(os.path.join(data_directory, "*.scns"))
 
     excluded_files = []
@@ -625,16 +626,14 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
 
     print(f'scanning {len(annotated_tomograms)} annotated tomograms for {len(features)} features...')
 
-    if coordinates:
-        coord_rows = {f: [] for f in features}
+    coord_rows = {f: [] for f in features} if coordinates else None
+    tasks = []                                   # one task per box (for parallel extraction)
+    feature_box_count = {f: 0 for f in features}
 
-    training_boxes = dict()
-    training_sources = dict()
-    for f in features:
-        training_boxes[f] = []
-        training_sources[f] = []
+    if apix is not None:
+        print(f'Using user-specified pixel size of {apix} A')
 
-    apix = -1.0
+    # ---- scout: load every .scns, collect box coordinates + label patches ----
     for j, annotation in enumerate(annotated_tomograms, start=1):
         stem = os.path.splitext(os.path.basename(annotation))[0]
         if stem in excluded_files:
@@ -659,65 +658,73 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
             print('\033[38;5;208m' + f'{j}/{len(annotated_tomograms)} - {os.path.basename(annotation)} - excluded' + '\033[0m')
             continue
 
-        if apix == -1.0:
+        if not coordinates and not os.path.exists(tomo):
+            print('\033[38;5;208m' + f'\ttomogram not found at {tomo} - skipping' + '\033[0m')
+            continue
+
+        if apix is None:
             apix = mrcfile.open(tomo, header_only=True).voxel_size.x
             print(f'Pixel size for the first tomogram is {apix} Å - writing this value to the training data metadata.')
-
         tomo_mrc_name = os.path.basename(tomo).split("__")[0] + ".mrc"
+
+        if coordinates:
+            for f in se_frame.features:
+                if f.title not in features:
+                    continue
+                box_coordinates = [(z, box[0], box[1]) for z in f.boxes for box in f.boxes[z]]
+                print('\033[96m' + f"\tparsing feature '{f.title}' ({len(box_coordinates)} boxes)" + '\033[0m')
+                for z, k, l in box_coordinates:
+                    coord_rows[f.title].append({
+                        'rlnCoordinateZ': z,
+                        'rlnCoordinateY': l,
+                        'rlnCoordinateX': k,
+                        'rlnMicrographName': tomo_mrc_name,
+                    })
+            continue
+
+        # annotated flavour, plus any extra flavours found with --easymode
+        flavour_paths = {se_scnt.DEFAULT_ANNOTATED_FLAVOUR: tomo}
+        if easymode:
+            extra = _find_flavours(tomo)
+            flavour_paths.update(extra)
+            if extra:
+                print('\033[96m' + f"\teasymode: found flavours {', '.join(extra.keys())}" + '\033[0m')
 
         for f in se_frame.features:
             if f.title not in features:
                 continue
-
-            box_coordinates = [(z, box[0], box[1]) for z in f.boxes for box in f.boxes[z]]
             ann_bs = getattr(f, 'box_size', box_size)
             margin_per_side = max(0, (box_size - ann_bs) // 2)
+            box_coordinates = [(z, b[0], b[1]) for z in f.boxes if f.boxes[z] for b in f.boxes[z]]
             print('\033[96m' + f"\tparsing feature '{f.title}' ({len(box_coordinates)} boxes, annotation_box={ann_bs}, margin={margin_per_side})" + '\033[0m')
-
-            if coordinates:
-                for f in se_frame.features:
-                    if f.title not in features:
-                        continue
-
-                    box_coordinates = [(z, box[0], box[1]) for z in f.boxes for box in f.boxes[z]]
-                    print('\033[96m' + f"\tparsing feature '{f.title}' ({len(box_coordinates)} boxes)" + '\033[0m')
-
-                    for z, k, l in box_coordinates:
-                        coord_rows[f.title].append({
-                            'rlnCoordinateZ': z,
-                            'rlnCoordinateY': l,
-                            'rlnCoordinateX': k,
-                            'rlnMicrographName': tomo_mrc_name,
-                        })
-            else:
-                annotation_box_size = getattr(f, 'box_size', box_size)
-                margin_per_side = max(0, (box_size - annotation_box_size) // 2)
-
-                for z, k, l in box_coordinates:
-                    box_pixel_data, validity = _get_box(z, k, l, tomo, se_frame.n_slices)
-                    box_label = _get_annotation(z, k, l, f)
-                    box_label[validity == 0] = 2
-
-                    if margin_per_side > 0:
-                        box_label[:margin_per_side, :] = 2
-                        box_label[-margin_per_side:, :] = 2
-                        box_label[:, :margin_per_side] = 2
-                        box_label[:, -margin_per_side:] = 2
-
-                    box_pixel_data = _bin(box_pixel_data)
-                    box_label = _bin(box_label[None, :, :], anti_aliasing=False)
-                    box_data = np.concatenate([box_pixel_data, box_label], axis=0)
-                    training_boxes[f.title].append(box_data)
-                    training_sources[f.title].append({
-                        'aisTomogramName': os.path.splitext(os.path.basename(tomo))[0],
+            group = MERGED_GROUP if merge else f.title
+            for z, x, y in box_coordinates:
+                if z in f.slices and f.slices[z] is not None:
+                    label_patch = se_scnt.extract_label(f, z, y, x, box_size)
+                else:
+                    label_patch = None
+                tasks.append({
+                    'group': group,
+                    'hash': se_scnt.make_id(tomo_stem, f.title, z, y, x),
+                    'flavour_paths': dict(flavour_paths),
+                    'annotated_flavour': se_scnt.DEFAULT_ANNOTATED_FLAVOUR,
+                    'z': int(z), 'y': int(y), 'x': int(x),
+                    'box_size': int(box_size), 'box_depth': int(box_depth),
+                    'label_patch': label_patch,
+                    'is_negative': False,
+                    'margin_per_side': margin_per_side,
+                    'source': {
+                        'aisTomogramName': tomo_stem,
                         'aisTomogramPath': os.path.abspath(tomo),
-                        'aisBoxCoordinateZ': z,
-                        'aisBoxCoordinateY': l,
-                        'aisBoxCoordinateX': k,
-                        'aisBoxSizeAnnotate': annotation_box_size,
-                        'aisBoxSizeExtracted': box_size,
+                        'aisBoxCoordinateZ': int(z),
+                        'aisBoxCoordinateY': int(y),
+                        'aisBoxCoordinateX': int(x),
+                        'aisBoxSizeAnnotate': int(ann_bs),
+                        'aisBoxSizeExtracted': int(box_size),
                         'aisFeatureName': f.title,
-                    })
+                    },
+                })
+                feature_box_count[f.title] += 1
 
     os.makedirs(output_directory, exist_ok=True)
 
@@ -744,43 +751,63 @@ def extract_training_data(features, data_directory, output_directory, box_size, 
                 print(f'Wrote {len(df)} {f} coordinates to {out_path}')
         return
 
+    if not tasks:
+        print('\033[96mNo training boxes for any feature. Skipping export.\033[0m')
+        return
 
-    def _write_sources_star(star_path, source_records):
-        df = pd.DataFrame(source_records)
-        starfile.write({'sources': df}, star_path, overwrite=True)
+    _binning_tag = "" if binning == 1 else f"_bin{binning}"
+    apix_final = apix * binning
 
-    if merge:
-        all_boxes = []
-        all_sources = []
-        names = []
-        for f in features:
-            if len(training_boxes[f]) > 0:
-                names.append(f)
-                all_boxes.extend(training_boxes[f])
-                all_sources.extend(training_sources[f])
-        if len(all_boxes) == 0:
-            print('\033[96mNo training boxes for any feature. Skipping export.\033[0m')
+    # ---- dispatch: extract every box (parallel), staging per-box mrc to a temp dir ----
+    n_proc = max(1, min(16, os.cpu_count() or 1, len(tasks)))
+    staging_root = tempfile.mkdtemp(prefix='scnt_extract_')
+    ctx = {'staging_root': staging_root, 'binning': binning, 'apix': apix_final}
+    results = []
+    try:
+        print('\033[96m' + f'extracting {len(tasks)} boxes using {n_proc} process(es)...' + '\033[0m')
+        if n_proc == 1:
+            se_scnt.init_extract_worker(ctx)
+            for i, t in enumerate(tasks, start=1):
+                r = se_scnt.extract_box_task(t)
+                if r is not None:
+                    results.append(r)
+                if i % 200 == 0 or i == len(tasks):
+                    print(f'\t{i}/{len(tasks)}')
         else:
-            for f in names:
-                print('\033[96m' + f'{f}: {len(training_boxes[f])} training boxes.' + '\033[0m')
-            data = np.array(all_boxes, dtype=np.float32)
-            _binning_tag = "" if binning == 1 else f"_bin{binning}"
-            merged_name = "_".join(names)
-            out_path = f"{box_size}x{box_size}x{box_depth}{_binning_tag}_{merged_name}.scnt"
-            print('\033[96m' + f'Merged: {len(all_boxes)} total training boxes. Saving as {out_path}' + '\033[0m')
-            tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix * binning}")
-            _write_sources_star(os.path.join(output_directory, out_path.replace('.scnt', '_sources.star')), all_sources)
-    else:
-        for f in features:
-            data = np.array(training_boxes[f], dtype=np.float32)
+            with multiprocessing.Pool(processes=n_proc, initializer=se_scnt.init_extract_worker, initargs=(ctx,)) as pool:
+                done = 0
+                for r in pool.imap_unordered(se_scnt.extract_box_task, tasks, chunksize=8):
+                    done += 1
+                    if r is not None:
+                        results.append(r)
+                    if done % 200 == 0 or done == len(tasks):
+                        print(f'\t{done}/{len(tasks)}')
 
-            _binning_tag = "" if binning == 1 else f"_bin{binning}"
-            out_path = f"{box_size}x{box_size}x{box_depth}"+_binning_tag+ f"_{f}.scnt"
+        group_sources = {}
+        for group, h, source in results:
+            group_sources.setdefault(group, {})[h] = source
 
-            if len(training_boxes[f]) == 0:
-                print('\033[96m' + f'{f}: 0 training boxes. Skipping export.' + '\033[0m')
+        if merge:
+            names = [f for f in features if feature_box_count[f] > 0]
+            if MERGED_GROUP not in group_sources:
+                print('\033[96mNo training boxes extracted. Skipping export.\033[0m')
             else:
-                print('\033[96m' + f'{f}: {len(training_boxes[f])} training boxes. Saving as {out_path}' + '\033[0m')
-                tifffile.imwrite(os.path.join(output_directory, out_path), data, description=f"apix={apix*binning}")
-                _write_sources_star(os.path.join(output_directory, out_path.replace('.scnt', '_sources.star')), training_sources[f])
+                merged_name = "_".join(names)
+                out_path = f"{box_size}x{box_size}x{box_depth}{_binning_tag}_{merged_name}.scnt"
+                print('\033[96m' + f'Merged: {len(group_sources[MERGED_GROUP])} training boxes. Saving as {out_path}' + '\033[0m')
+                se_scnt.pack_staging_dir(os.path.join(staging_root, MERGED_GROUP),
+                                         os.path.join(output_directory, out_path),
+                                         apix=apix_final, features=names, sources=group_sources[MERGED_GROUP])
+        else:
+            for f in features:
+                out_path = f"{box_size}x{box_size}x{box_depth}{_binning_tag}_{f}.scnt"
+                if f not in group_sources:
+                    print('\033[96m' + f'{f}: 0 training boxes. Skipping export.' + '\033[0m')
+                    continue
+                print('\033[96m' + f'{f}: {len(group_sources[f])} training boxes. Saving as {out_path}' + '\033[0m')
+                se_scnt.pack_staging_dir(os.path.join(staging_root, f),
+                                         os.path.join(output_directory, out_path),
+                                         apix=apix_final, features=[f], sources=group_sources[f])
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)
 

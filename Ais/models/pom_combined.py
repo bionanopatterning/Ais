@@ -2,30 +2,11 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, BatchNormalization, concatenate, Dropout
 from tensorflow.keras.optimizers import Adam
+from .losses import masked_bce_dice
 
 
 title = "cryoPom-comb"
 include = True
-
-
-def dice_loss(y_true, y_pred, epsilon=1e-6):
-    # Flatten the tensors to make it easier to compute the dice score
-    y_true_f = tf.reshape(y_true, [-1])
-    y_pred_f = tf.reshape(y_pred, [-1])
-
-    # Compute the Dice coefficient
-    numerator = 2 * tf.reduce_sum(y_true_f * y_pred_f)
-    denominator = tf.reduce_sum(y_true_f + y_pred_f)
-
-    dice_coeff = (numerator + epsilon) / (denominator + epsilon)
-    dice_loss = 1 - dice_coeff
-    return dice_loss
-
-
-def combined_loss(y_true, y_pred):
-    bce = tf.keras.losses.binary_crossentropy(y_true, y_pred)
-    dice = dice_loss(y_true, y_pred)
-    return 0.3 * bce + 0.7 * dice
 
 
 def create(input_shape, output_dimensionality=1):
@@ -113,6 +94,6 @@ def create(input_shape, output_dimensionality=1):
     model = Model(inputs=[inputs], outputs=[output])
 
     # Compile the model with a suitable optimizer and loss function
-    model.compile(optimizer=Adam(learning_rate=5e-5), loss=combined_loss)
+    model.compile(optimizer=Adam(learning_rate=5e-5), loss=masked_bce_dice(bce_weight=0.3, dice_weight=0.7))
 
     return model

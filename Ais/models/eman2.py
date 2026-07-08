@@ -2,6 +2,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Concatenate, Lambda
 from tensorflow.keras.optimizers import Adam
 from tensorflow.image import resize
+from .losses import masked_bce
 
 title = "Eman2"
 include = True
@@ -17,7 +18,7 @@ def create(input_shape):
     up4 = UpSampling2D(size=(2, 2))(conv3)
 
     model = Model(inputs=[inputs], outputs=[up4])
-    model.compile(optimizer=Adam(), loss='binary_crossentropy')
+    model.compile(optimizer=Adam(), loss=masked_bce)
 
     return model
 

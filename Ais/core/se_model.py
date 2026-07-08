@@ -21,6 +21,7 @@ import datetime
 import time
 import tarfile
 import tempfile
+import Ais.core.se_scnt as se_scnt
 
 
 
@@ -42,8 +43,7 @@ class SEModelDataLoader:
         self.extra_augmentations = extra_augmentations
         self.apix = -1.0
 
-        self.x = None
-        self.y = None
+        self.dataset = None
         self.box_shape = None
         self.box_depth = None
 
@@ -58,27 +58,18 @@ class SEModelDataLoader:
         return self.n_samples
 
     def load_data(self):
-        with tifffile.TiffFile(self.path) as tf:
-            desc = tf.pages[0].description or ""
-            try:
-                self.apix = float(desc.split("apix=")[1].split()[0])
-            except:
-                self.apix = -1.0
-            data = tf.asarray()
+        self.dataset = se_scnt.open_training_set(self.path)
+        self.apix = self.dataset.apix
+        self.n_samples = self.dataset.n_samples
+        self.box_shape = self.dataset.box_shape
+        self.box_depth = self.dataset.box_depth
 
-        x = data[:, :-1, :, :]
-        x = np.transpose(x, (0, 2, 3, 1))
-        y = data[:, -1, :, :, None]
-
-        self.x = x
-        self.y = y
-        self.n_samples, self.box_shape, _, self.box_depth = x.shape
-
-        idx_positive = [i for i in range(self.n_samples) if np.any(self.y[i] == 1)]
+        idx_positive = self.dataset.positive_indices()
+        flavour_info = "" if len(self.dataset.input_flavours) <= 1 else f", flavours: {', '.join(self.dataset.input_flavours)}"
         if len(idx_positive) == 0:
             print(f'Training dataset at {self.path} contains no positive samples.')
         else:
-            print(f'Loaded {self.n_samples} {self.box_shape}x{self.box_shape}x{self.box_depth} samples: {len(idx_positive)} positive, {self.n_samples - len(idx_positive)} negative.')
+            print(f'Loaded {self.n_samples} {self.box_shape}x{self.box_shape}x{self.box_depth} samples: {len(idx_positive)} positive, {self.n_samples - len(idx_positive)} negative{flavour_info}.')
 
         idx = np.arange(self.n_samples)
         np.random.shuffle(idx)
@@ -87,10 +78,8 @@ class SEModelDataLoader:
         self.idx_validation_all = idx[:n_validation]
         self.idx_training_positive = [i for i in idx_positive if i in self.idx_training_all]
 
-    def get_sample(self, index):
-        x = np.array(self.x[index], dtype=np.float32, copy=True)
-        y = np.array(self.y[index], dtype=np.float32, copy=True)
-        return x, y
+    def get_sample(self, index, training=True):
+        return self.dataset.get_sample(index, training=training)
 
     @staticmethod
     def _augment_brightness(x, y):
@@ -199,7 +188,7 @@ class SEModelDataLoader:
                 else:
                     index = self.idx_training_all[j]
 
-                x, y = self.get_sample(index)
+                x, y = self.get_sample(index, training=True)
                 x, y = self.preprocess(x, y)
                 x, y = self.augment(x, y)
 
@@ -208,7 +197,7 @@ class SEModelDataLoader:
     def validation_generator(self):
         while True:
             for index in self.idx_validation_all:
-                x, y = self.get_sample(index)
+                x, y = self.get_sample(index, training=False)
                 x, y = self.preprocess(x, y)
                 yield x, y
 

@@ -114,8 +114,11 @@ def main():
     extract_parsers.add_argument('-bin', "--binning", required=False, type=int, default=1, help="Binning factor to apply (in XY). Output box size will be --box-size / --binning.")
     # margin is now computed automatically from the difference between --box-size and the annotation box size
     extract_parsers.add_argument('-e', "--exclude", required=False, type=str, nargs='+', default=None, help="Glob pattern or path to .txt file listing volumes to exclude from the extracted training data set..")
+    extract_parsers.add_argument('-a', "--apix", default=None, required=False, type=float, help="Override the pixel size found in the tomogram header and use this value instead.")
     extract_parsers.add_argument('--merge', required=False, action='store_true', help="Combine all extracted training data into a single output file per feature, rather than one file per input volume.")
     extract_parsers.add_argument('--coordinates', required=False, action='store_true', help="Instead of exporting annotated training images, export just the box coordinates as a .star file.")
+    extract_parsers.add_argument('--easymode', required=False, action='store_true', help=argparse.SUPPRESS)
+
 
     if os.path.isdir('/cephfs/mlast'):
         audit_parser = subparsers.add_parser('audit', help='Audit training data against a trained model.')
@@ -123,7 +126,6 @@ def main():
         audit_parser.add_argument('-d', '--data', required=True, type=str, help="Path to training data file (.scnt)")
         audit_parser.add_argument('-gpu', '--gpu', required=False, type=int, default=0, help="GPU ID to use (default 0)")
         audit_parser.add_argument('-o', '--out', required=False, type=str, default='audit_output', help="Output directory (default: audit_output)")
-        audit_parser.add_argument('-s', '--sources', required=False, type=str, default=None, help="Path to _sources.star from ais extract (for per-sample tomogram info)")
         audit_parser.add_argument('--skip', action='store_true', help="Skip processing, reuse existing results, just launch the app")
 
     args, unknown = parser.parse_known_args()
@@ -201,10 +203,12 @@ def main():
                                          binning=args.binning,
                                          exclude=args.exclude,
                                          merge=args.merge,
-                                         coordinates=args.coordinates)
+                                         coordinates=args.coordinates,
+                                         apix=args.apix,
+                                         easymode=args.easymode)
         elif args.command == 'audit':
             from Ais.core.audit import run_audit
-            run_audit(args.model, args.data, args.gpu, args.out, args.skip, args.sources)
+            run_audit(args.model, args.data, args.gpu, args.out, args.skip)
 
 if __name__ == "__main__":
     main()

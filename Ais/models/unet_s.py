@@ -1,6 +1,7 @@
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, Conv2D, MaxPooling2D, UpSampling2D, Concatenate
 from tensorflow.keras.optimizers import Adam
+from .losses import masked_bce
 
 title = "UNet S"
 include = True
@@ -28,6 +29,6 @@ def create(input_shape):
 
     # create the model
     model = Model(inputs=[inputs], outputs=[output])
-    model.compile(optimizer=Adam(), loss='binary_crossentropy')
+    model.compile(optimizer=Adam(), loss=masked_bce)
 
     return model

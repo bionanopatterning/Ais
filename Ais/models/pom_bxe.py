@@ -2,6 +2,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, BatchNormalization, concatenate, Dropout
 from tensorflow.keras.optimizers import Adam
+from .losses import masked_bce
 
 
 title = "cryoPom-bxe"
@@ -94,6 +95,6 @@ def create(input_shape, output_dimensionality=1):
     model = Model(inputs=[inputs], outputs=[output])
 
     # Compile the model with a suitable optimizer and loss function
-    model.compile(optimizer=Adam(learning_rate=5e-5), loss='binary_crossentropy')
+    model.compile(optimizer=Adam(learning_rate=5e-5), loss=masked_bce)
 
     return model

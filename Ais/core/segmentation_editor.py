@@ -6,6 +6,7 @@ from tkinter import filedialog
 import dill as pickle
 from Ais.core.se_model import *
 from Ais.core.se_frame import *
+import Ais.core.se_scnt as se_scnt
 import Ais.core.widgets as widgets
 from Ais.core.util import clamp, bin_mrc
 import pyperclip
@@ -119,7 +120,7 @@ class SegmentationEditor:
 
     FEATURE_LIB_OPEN = False
     FEATURE_LIB_OPEN_INCLUDE_SESSION = False
-    FEATURE_LIB_ANNOTATION = True
+    FEATURE_LIB_ANNOTATION = True   # whether the feature library panel shows the annotation (True) or the rendering (False) settings.
     FEATURE_LIB_HIDE_DEACTIVATED_FEATURES = False
     FEATURE_LIB_HIGHLIGHT_TEXT = ''
     FEATURE_LIB_SORT_MODE = 0  # 0 = Alphabetically, 1 = By Hue
@@ -2433,6 +2434,7 @@ class SegmentationEditor:
                                 imgui.push_item_width(imgui.get_content_region_available_width() - 38)
                                 _, feature.brush_size = imgui.slider_float("brush", feature.brush_size, 1.0, 25.0, format=f"{feature.brush_size:.1f} nm")
                                 _, feature.box_size = imgui.slider_int("boxes", feature.box_size, 32, 256, format=f"{feature.box_size} pixel")
+                                feature.box_size = int(np.round(feature.box_size / 32) * 32)
                                 _, feature.alpha = imgui.slider_float("alpha", feature.alpha, 0.0, 1.0, format="%.2f")
                                 imgui.pop_item_width()
                                 sort_requested, sort_by = imgui.checkbox("sort", cfg.FeatureLibraryFeature.SORT_TITLE == feature.title)
@@ -3076,88 +3078,50 @@ class SegmentationEditor:
         self.active_trainset_exports.append(process)
 
     def _create_training_set(self, path, n_boxes, positives, negatives, datasets, boxsize, boxdepth, apix, process):
-        positive = []
-        negative = []
+        # This routes through the same extraction/writing code as the `ais extract` CLI
+        # (Ais.core.se_scnt), so the GUI and CLI produce identical new-format .scnt files.
+        try:
+            counter = {'n': 0}
 
-        n_done = 0
-        target_type_dict = {
-            np.float32: float,
-            float: float,
-            np.dtype('int8'): np.dtype('uint8'),
-            np.dtype('int16'): np.dtype('float32')
-        }
+            def on_box():
+                counter['n'] += 1
+                if n_boxes:
+                    process.set_progress(min(0.99, counter['n'] / n_boxes))
 
-        for d in datasets:
-            if not os.path.exists(d.path):
-                continue
-            mrcf = mrcfile.mmap(d.path, mode="r", permissive=True)
-            raw_type = mrcf.data.dtype
-            out_type = float if raw_type not in target_type_dict else target_type_dict[raw_type]
-
-            n_slices = mrcf.data.shape[0]
-            w = d.width
-            h = d.height
-
-            nm = int(np.floor(boxsize / 2))
-            pm = int(np.ceil(boxsize / 2))
-
-            # find all boxes
-            for f in d.features:
-                if f.title in positives:
-                    is_positive = True
-                elif f.title in negatives:
-                    is_positive = False
-                else:
+            samples = []
+            for d in datasets:
+                if not os.path.exists(d.path):
                     continue
-
-                for z in f.boxes.keys():
-                    if f.boxes[z] is None:
-                        continue
-                    for (x, y) in f.boxes[z]:
-                        x_min = x - nm
-                        x_max = x + pm
-                        y_min = y - nm
-                        y_max = y + pm
-                        if x_min <= 0 or y_min <= 0 or x_max >= w or y_max >= h:
-                            n_done += 1
-                            process.set_progress(n_done / n_boxes)
+                tomo_stem = os.path.splitext(os.path.basename(d.path))[0]
+                mrcf = mrcfile.mmap(d.path, mode="r", permissive=True)
+                flavour_data = {se_scnt.DEFAULT_ANNOTATED_FLAVOUR: mrcf.data}
+                try:
+                    for f in d.features:
+                        if f.title in positives:
+                            is_negative = False
+                        elif f.title in negatives:
+                            is_negative = True
+                        else:
                             continue
+                        samples.extend(se_scnt.extract_feature_samples(
+                            tomo_stem, flavour_data, se_scnt.DEFAULT_ANNOTATED_FLAVOUR, f,
+                            boxsize, boxdepth, binning=1, is_negative=is_negative,
+                            tomo_path=d.path, on_box=on_box))
+                finally:
+                    try:
+                        mrcf.close()
+                    except Exception:
+                        pass
 
-                        # Z-stack indices, clamped to valid range
-                        z_indices = np.clip(np.arange(z - boxdepth // 2, z + boxdepth // 2 + 1), 0, n_slices - 1)
+            if not samples:
+                process.set_progress(1.0)
+                return
 
-                        # volume: (D, B, B)
-                        volume = mrcf.data[z_indices, y_min:y_max, x_min:x_max]
-                        volume = np.array(volume.astype(out_type, copy=False), dtype=float)
-
-                        # flip in Y (like old np.flipud) → axis=1 because volume is (Z,Y,X)
-                        volume = np.flip(volume, axis=1)
-
-                        # annotation is only on slice z
-                        if z in f.slices and f.slices[z] is not None and is_positive:
-                            seg2d = f.slices[z][y_min:y_max, x_min:x_max]
-                            seg2d = np.flipud(seg2d)
-                        else:
-                            seg2d = np.zeros_like(volume[0], dtype=float)
-
-                        # stack: (D+1, B, B) with annotation last
-                        box_stack = np.concatenate([volume, seg2d[None, :, :]], axis=0)
-
-                        if is_positive:
-                            positive.append(box_stack)
-                        else:
-                            negative.append(box_stack)
-
-                        n_done += 1
-                        process.set_progress(n_done / n_boxes)
-
-        if negative:
-            all_imgs = np.array(positive + negative, dtype=np.float32)
-        else:
-            all_imgs = np.array(positive, dtype=np.float32)
-
-        tifffile.imwrite(path, all_imgs, description=f"apix={apix:.2f}")
-        process.set_progress(1.0)
+            se_scnt.write_training_set(path, samples, apix=apix, features=list(positives))
+            process.set_progress(1.0)
+        except Exception as e:
+            cfg.set_error(e, "Could not create training set - see details below:")
+            process.set_progress(1.0)
 
     @staticmethod
     def seframe_from_clemframe(clemframe):

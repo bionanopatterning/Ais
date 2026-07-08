@@ -1,6 +1,7 @@
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, BatchNormalization, Dropout
 from tensorflow.keras.optimizers import Adam
+from .losses import masked_bce
 
 title = "VGGNet X"
 include = True
@@ -70,6 +71,6 @@ def create(input_shape):
 
     # create the model
     model = Model(inputs=[inputs], outputs=[output])
-    model.compile(optimizer=Adam(), loss='binary_crossentropy')
+    model.compile(optimizer=Adam(), loss=masked_bce)
 
     return model

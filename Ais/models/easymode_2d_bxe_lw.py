@@ -2,33 +2,11 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Conv2DTranspose, BatchNormalization, concatenate, Dropout
 from tensorflow.keras.optimizers import Adam
+from .losses import masked_bce
 
 
 title = "ezm-2d-bxe"
 include = True
-
-
-import tensorflow as tf
-
-
-def combined_loss(y_true, y_pred, border=16, ignore_label=2.0, epsilon=1e-6):
-    if border > 0:
-        y_true = y_true[:, border:-border, border:-border, ...]
-        y_pred = y_pred[:, border:-border, border:-border, ...]
-
-    y_true = tf.cast(y_true, tf.float32)
-    y_pred = tf.cast(y_pred, tf.float32)
-
-    mask = tf.cast(tf.not_equal(y_true, ignore_label), tf.float32)
-    y_true_clean = tf.where(tf.equal(y_true, ignore_label), 0.0, y_true)
-
-    bce = tf.keras.losses.binary_crossentropy(y_true_clean, y_pred)  # shape [B,H,W]
-    if tf.rank(mask) == 4: mask_bce = tf.squeeze(mask, axis=-1)
-    else: mask_bce = mask
-
-    bce = tf.reduce_sum(bce * mask_bce) / (tf.reduce_sum(mask_bce) + epsilon)
-
-    return 1.0 * bce
 
 
 def create(input_shape, output_dimensionality=1):
@@ -120,6 +98,6 @@ def create(input_shape, output_dimensionality=1):
     model = Model(inputs=[inputs], outputs=[output])
 
     # Compile the model with a suitable optimizer and loss function
-    model.compile(optimizer=Adam(learning_rate=5e-5), loss=combined_loss)
+    model.compile(optimizer=Adam(learning_rate=5e-5), loss=masked_bce)
 
     return model
