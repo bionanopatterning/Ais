@@ -3,10 +3,9 @@
 # space with a slight camera parallax. Opt-in via the Background cosmetic.
 #
 # Styles (from the equipped cosmetic's params):
-#   "blob"     - soft drifting gaussian washes (Aurora)
-#   "lava"     - few big blobs drifting slowly up/down (Lavalamp)
-#   "confetti" - sharp triangles that fade in and out roughly in place
-#   "bokeh"    - crisp discs that fade in and out roughly in place
+#   "blob"        - soft drifting gaussian washes (Aurora)
+#   "bokeh"       - crisp discs that fade in/out in place and gently avoid the cursor
+#   "brushstroke" - large blurred rotated wisps spawned along your annotations, then fade
 #
 # It starts EMPTY (like plain paper) and fills in as you annotate: a "wake"
 # counter grows with activity, revealing shapes one by one. Colour follows the
@@ -24,8 +23,9 @@ from __future__ import annotations
 import colorsys
 import math
 import random
+import time
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import Ais.core.config as cfg
 from . import cosmetics
@@ -38,7 +38,18 @@ Color = Tuple[float, float, float]
 PARALLAX = 0.15
 FILL_UP = 3.2            # how fast shapes wake with activity (scaled by energy)
 FILL_DOWN = 0.4         # how fast they recede when idle
-_SHAPE = {"blob": 0, "confetti": 1, "bokeh": 2, "lava": 3}
+_SHAPE = {"blob": 0, "brushstroke": 1, "bokeh": 2}
+
+# Bokeh cursor avoidance: a gentle push away, heavily damped so blobs drift a
+# little then quickly come to rest (peaceful & calm).
+_AVOID_R = 200.0
+_AVOID_R2 = _AVOID_R * _AVOID_R
+_AVOID_ACCEL = 350.0
+_AVOID_DAMP = 0.02       # per-second velocity retention (heavy)
+
+# Brushstroke mode: large blurred wisps spawned along the user's annotations.
+_STROKE_MIN_DT = 0.10    # throttle spawns while painting
+_STROKE_MAX = 40
 
 A_MAX = 0.70
 DRIVE_GRACE = 0.5
@@ -47,9 +58,8 @@ TAU_RISE = 1.5
 TAU_FALL = 12.0
 TAU_EVENT = 2.5
 TAU_WASH = 6.0
-TAU_COLOR = 4.0
+TAU_COLOR = 1.6         # how fast shapes migrate to a new active-feature colour
 _KICK = {"box": 0.12, "copy": 0.28, "levelup": 0.28}
-_RETARGET = {"box": 1, "copy": 2, "levelup": 2}
 
 
 @dataclass
@@ -84,6 +94,10 @@ _wash_color: Color = (1.0, 1.0, 1.0)
 _E = 0.0
 _awake = 0.0             # how many shapes have woken up (grows with activity)
 _pending: List[Tuple[str, Color]] = []
+
+_strokes: List[_Blob] = []           # brushstroke mode: event-spawned, fading wisps
+_last_stroke_pt: Optional[Tuple[float, float]] = None
+_last_stroke_t = 0.0
 
 
 def _soft(v: float) -> float:
@@ -156,16 +170,69 @@ def notify_levelup(ev) -> None:
     _pending.append(("levelup", _soft_color(ev.color)))
 
 
+def stroke(sx: float, sy: float, colour) -> None:
+    # Brushstroke mode: spawn a big blurred wisp at the annotation, oriented along
+    # the gesture but rotated a little, that grows and fades away. Throttled; a
+    # no-op unless the Brushstroke background is equipped.
+    global _last_stroke_pt, _last_stroke_t
+    prm = _params()
+    if prm.get("style") != "brushstroke" or not prm.get("enabled", False):
+        _last_stroke_pt = None
+        return
+    now = time.monotonic()
+    if now - _last_stroke_t < _STROKE_MIN_DT:
+        return
+    if _last_stroke_pt is not None and (now - _last_stroke_t) < 0.5:
+        dx, dy = sx - _last_stroke_pt[0], sy - _last_stroke_pt[1]
+        base_ang = math.atan2(dy, dx) if (dx * dx + dy * dy) > 4.0 else random.uniform(0.0, 6.28)
+    else:
+        base_ang = random.uniform(0.0, 6.28)
+    _last_stroke_pt, _last_stroke_t = (sx, sy), now
+    ang = base_ang + random.uniform(-0.5, 0.5)   # rotated relative to the gesture
+    col = _hue_jitter(_soft_color(colour))
+    r = random.uniform(prm.get("rmin", 240.0), prm.get("rmax", 520.0))
+    _strokes.append(_Blob(
+        x=float(sx), y=float(sy),
+        vx=math.cos(ang) * 6.0, vy=math.sin(ang) * 6.0,
+        r=r, color=col, color_target=col,
+        phase=0.0, breathe=0.0,
+        angle=ang, spin=random.uniform(-0.1, 0.1),
+        alpha=0.0, life_age=0.0,
+        life_span=random.uniform(2.2, 4.0),
+    ))
+    if len(_strokes) > _STROKE_MAX:
+        del _strokes[: len(_strokes) - _STROKE_MAX]
+
+
+def _tick_strokes(dt: float) -> None:
+    if dt > 0.1:
+        dt = 0.1
+    _pending.clear()   # pulses aren't used in this mode; don't let them accumulate
+    alive: List[_Blob] = []
+    for b in _strokes:
+        b.life_age += dt
+        frac = b.life_age / b.life_span
+        if frac >= 1.0:
+            continue
+        b.alpha = _life_alpha(frac)
+        b.x += b.vx * dt
+        b.y += b.vy * dt
+        b.angle += b.spin * dt
+        b.r += b.r * 0.12 * dt          # slowly grow as it dissipates
+        b.vx *= (1.0 - 0.9 * dt)        # ease the drift to a halt
+        b.vy *= (1.0 - 0.9 * dt)
+        alive.append(b)
+    _strokes[:] = alive
+
+
 def _params() -> dict:
     return cosmetics.params(cosmetics.BACKGROUND)
 
 
 def _spawn(w: int, h: int, rmin: float, rmax: float, style: str, life_mul: float = 1.0) -> _Blob:
     c = _target_color()
-    lifecycle = style in ("confetti", "bokeh")
-    if style == "lava":
-        vx, vy = random.uniform(-3, 3), random.choice((-1.0, 1.0)) * random.uniform(7, 14)
-    elif lifecycle:
+    lifecycle = style == "bokeh"
+    if lifecycle:
         vx, vy = random.uniform(-6, 6), random.uniform(-6, 6)
     else:
         vx, vy = random.uniform(-16, 16), random.uniform(-16, 16)
@@ -175,7 +242,7 @@ def _spawn(w: int, h: int, rmin: float, rmax: float, style: str, life_mul: float
         r=random.uniform(rmin, rmax),
         color=c, color_target=c,
         phase=random.uniform(0, 6.28),
-        breathe=random.uniform(0.2, 0.5) if style == "lava" else random.uniform(0.15, 0.4),
+        breathe=random.uniform(0.15, 0.4),
         angle=random.uniform(-0.6, 0.6),
         spin=random.uniform(-0.25, 0.25),
         alpha=0.0 if lifecycle else 1.0,
@@ -208,18 +275,20 @@ def _life_alpha(frac: float) -> float:
     return 1.0
 
 
-def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_mul: float) -> None:
+def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_mul: float,
+          cursor_bs: Optional[Tuple[float, float]] = None) -> None:
     global _bt, _recolor_accum, _energy, _event, _wash, _wash_color, _E, _awake
     if dt > 0.1:
         dt = 0.1
-    lifecycle = style in ("confetti", "bokeh")
+    lifecycle = style == "bokeh"
 
     while _pending:
         kind, col = _pending.pop(0)
         _event += _KICK[kind] * (1.0 - _clamp(_energy + _event, 0.0, 1.0))
-        if not lifecycle:
-            for b in random.sample(_blobs, min(_RETARGET[kind], len(_blobs))):
-                b.color_target = _hue_jitter(col)
+        # the active feature's colour is boss: on any annotation the whole field
+        # retargets to it and migrates there smoothly via the colour lerp below.
+        for b in _blobs:
+            b.color_target = _hue_jitter(col)
         if kind == "levelup":
             _wash = 1.0
             _wash_color = col
@@ -240,22 +309,37 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
 
     if lifecycle:
         rate = 1.0 + 0.5 * _E
+        damp = _AVOID_DAMP ** dt
+        kc = 1.0 - math.exp(-dt / TAU_COLOR)
         for b in _blobs:
             b.life_age += dt * rate
             if b.life_age >= b.life_span:
                 nb = _spawn(w, h, rmin, rmax, style, life_mul)
                 b.x, b.y, b.vx, b.vy, b.r = nb.x, nb.y, nb.vx, nb.vy, nb.r
-                b.color = nb.color
+                b.color, b.color_target = nb.color, nb.color_target
                 b.angle, b.spin = nb.angle, nb.spin
                 b.life_age, b.life_span = 0.0, nb.life_span
             b.alpha = _life_alpha(b.life_age / b.life_span)
+            b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
+                       b.color[1] + (b.color_target[1] - b.color[1]) * kc,
+                       b.color[2] + (b.color_target[2] - b.color[2]) * kc)
+            # gently avoid the cursor, heavily damped so they come to rest quickly
+            if cursor_bs is not None:
+                dx, dy = b.x - cursor_bs[0], b.y - cursor_bs[1]
+                d2 = dx * dx + dy * dy
+                if 1.0 < d2 < _AVOID_R2:
+                    d = math.sqrt(d2)
+                    push = (1.0 - d / _AVOID_R) * _AVOID_ACCEL
+                    b.vx += (dx / d) * push * dt
+                    b.vy += (dy / d) * push * dt
             b.x += b.vx * dt
             b.y += b.vy * dt
+            b.vx *= damp
+            b.vy *= damp
             b.angle += b.spin * dt
     else:
         kc = 1.0 - math.exp(-dt / TAU_COLOR)
-        # lava responds to "temperature": nearly still when idle, lively when busy
-        spd = (0.12 + 1.7 * _E) if style == "lava" else (0.5 + 0.9 * _E)
+        spd = 0.5 + 0.9 * _E
         for b in _blobs:
             b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
                        b.color[1] + (b.color_target[1] - b.color[1]) * kc,
@@ -267,34 +351,50 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
             elif b.x > w + m: b.x = -m
             if b.y < -m: b.y = h + m
             elif b.y > h + m: b.y = -m
-        _recolor_accum += dt
-        if _recolor_accum >= (12.0 - 7.0 * _E) and _blobs:
-            _recolor_accum = 0.0
-            random.choice(_blobs).color_target = _target_color()
+
+    # ambient colour drift: bias the field toward the active feature over a few
+    # seconds even without discrete events (e.g. while brushing).
+    _recolor_accum += dt
+    if _blobs and _recolor_accum >= (8.0 - 5.0 * _E):
+        _recolor_accum = 0.0
+        random.choice(_blobs).color_target = _target_color()
 
 
-def frame(dt: float, w: int, h: int, camera):
+def frame(dt: float, w: int, h: int, camera, cursor=None):
     """Advance the field and return (blobs, base_colour, intensity, shape) for the
-    GL renderer, or None when disabled. blobs = [(x, y, radius, rgb, angle, alpha)]."""
+    GL renderer, or None when disabled. blobs = [(x, y, radius, rgb, angle, alpha)].
+    cursor is the mouse position in screen px (bokeh avoids it)."""
     prm = _params()
     if not prm.get("enabled", False):
         return None
     style = prm.get("style", "blob")
+    px = camera.position[0] * camera.zoom * PARALLAX
+    py = -camera.position[1] * camera.zoom * PARALLAX
+
+    if style == "brushstroke":
+        if _blobs:
+            _blobs.clear()          # the ambient pool isn't used in this mode
+        _tick_strokes(dt)
+        out = [(b.x + px, b.y + py, b.r, b.color, b.angle, b.alpha) for b in _strokes]
+        base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
+        return out, base, prm.get("intensity", 0.6), _SHAPE["brushstroke"]
+
+    if _strokes:
+        _strokes.clear()            # left over from a previous mode
     n = int(prm.get("n", 8))
     rmin = prm.get("rmin", 320.0)
     rmax = prm.get("rmax", 720.0)
     life_mul = prm.get("life_mul", 1.0)
     _ensure(w, h, style, n, rmin, rmax, life_mul)
-    _tick(dt, w, h, style, rmin, rmax, life_mul)
+    cursor_bs = (cursor[0] - px, cursor[1] - py) if (cursor is not None and style == "bokeh") else None
+    _tick(dt, w, h, style, rmin, rmax, life_mul, cursor_bs)
 
     i0 = prm.get("intensity", 0.45)
     intensity = i0 * (0.55 + 0.45 * _E) + 0.12 * _wash
     size_mul = 0.94 + 0.10 * _E
     amp = 0.07 + 0.06 * _E
     wmix = 0.22 * _wash
-    lifecycle = style in ("confetti", "bokeh")
-    px = camera.position[0] * camera.zoom * PARALLAX
-    py = -camera.position[1] * camera.zoom * PARALLAX
+    lifecycle = style == "bokeh"
 
     out = []
     for i, b in enumerate(_blobs):
@@ -314,8 +414,9 @@ def frame(dt: float, w: int, h: int, camera):
 
 
 def clear() -> None:
-    global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake
+    global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake, _last_stroke_pt
     _blobs.clear()
+    _strokes.clear()
     _bt = 0.0
     _energy = 0.0
     _event = 0.0
@@ -325,4 +426,5 @@ def clear() -> None:
     _cur_w = 0
     _cur_h = 0
     _awake = 0.0
+    _last_stroke_pt = None
     _pending.clear()

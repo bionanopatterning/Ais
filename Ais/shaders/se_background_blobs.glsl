@@ -20,7 +20,7 @@ in vec2 uv;
 out vec4 fragColour;
 
 uniform int uN;
-uniform int uShape;         // 0 = soft blob, 1 = triangle, 2 = disc, 3 = lava hole
+uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh)
 uniform vec2 uRes;          // screen size in px
 uniform vec3 uBase;         // papery base colour
 uniform float uIntensity;
@@ -38,39 +38,27 @@ void main()
     {
         float w;
         vec3 tgt = uCol[i];
-        if (uShape == 1)
-        {
-            // sharp equilateral triangle (max of three half-planes), ~1px AA
-            vec2 rel = frag - uPos[i];
-            float c = cos(uAng[i]);
-            float s = sin(uAng[i]);
-            vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
-            float rin = uRad[i] * 0.5;
-            float sd = -1e9;
-            for (int k = 0; k < 3; k++)
-            {
-                float th = 1.5707963 + float(k) * 2.0943951;
-                sd = max(sd, dot(lo, vec2(cos(th), sin(th))) - rin);
-            }
-            w = smoothstep(1.2, -1.2, sd) * uIntensity * uAlp[i];
-        }
-        else if (uShape == 2)
+        if (uShape == 2)
         {
             // soft disc (bokeh)
             float d = distance(frag, uPos[i]);
             float soft = max(6.0, uRad[i] * 0.30);
             w = smoothstep(uRad[i] + soft, uRad[i] - soft, d) * uIntensity * uAlp[i];
         }
-        else if (uShape == 3)
+        else if (uShape == 1)
         {
-            // lava hole: darken toward a deep tint of the colour (inverted "hole")
-            float d = distance(frag, uPos[i]) / max(uRad[i], 1.0);
-            w = exp(-d * d * 2.0) * uIntensity * uAlp[i];
-            tgt = uCol[i] * 0.28;
+            // brushstroke: large, soft, elongated & rotated gaussian wisp
+            vec2 rel = frag - uPos[i];
+            float c = cos(uAng[i]);
+            float s = sin(uAng[i]);
+            vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
+            float rr = max(uRad[i], 1.0);
+            vec2 nrm = vec2(lo.x / (rr * 1.9), lo.y / (rr * 0.7));
+            w = exp(-dot(nrm, nrm) * 1.6) * uIntensity * uAlp[i];
         }
         else
         {
-            // soft gaussian blob
+            // soft gaussian blob (Aurora)
             float d = distance(frag, uPos[i]) / max(uRad[i], 1.0);
             w = exp(-d * d * 2.2) * uIntensity * uAlp[i];
         }
