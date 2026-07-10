@@ -3,6 +3,8 @@
 from .events import (
     LevelUp,
     award,
+    award_inference,
+    award_training,
     last_gain,
     peek_pending,
     pop_level_up,
@@ -43,6 +45,8 @@ from .ui import (
 __all__ = [
     "LevelUp",
     "award",
+    "award_inference",
+    "award_training",
     "last_gain",
     "peek_pending",
     "pop_level_up",

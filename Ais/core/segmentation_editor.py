@@ -295,6 +295,8 @@ class SegmentationEditor:
             # launch the models
             for model in cfg.se_models:
                 model.set_slice(cfg.se_active_frame.get_slice(model_depth=model.model_depth), cfg.se_active_frame.pixel_size, cfg.se_active_frame.get_roi_indices(), cfg.se_active_frame.data.shape)
+                if model.active and model.compiled:
+                    progression.award_inference(model.title, model.colour)
                 if model.emit:
                     emissions.append(model.data)
                 if model.absorb:
@@ -1530,6 +1532,11 @@ class SegmentationEditor:
 
                     if m.background_process_train is not None:
                         self._gui_background_process_progress_bar(m.background_process_train)
+                        # trickle XP orbs off the growing training bar toward the HUD
+                        _tb0, _tb1 = imgui.get_item_rect_min(), imgui.get_item_rect_max()
+                        _tp = min(1.0, m.background_process_train.progress)
+                        progression.award_training(m.title, m.colour,
+                                                   (_tb0[0] + (_tb1[0] - _tb0[0]) * _tp, (_tb0[1] + _tb1[1]) * 0.5))
                         if m.background_process_train.progress >= 1.0:
                             m.background_process_train = None
                     if m.background_process_apply is not None:

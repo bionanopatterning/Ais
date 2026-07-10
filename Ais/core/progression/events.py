@@ -141,6 +141,39 @@ def award(
     _profile.mark_dirty()
 
 
+# Passive XP: a slow trickle while a model trains, and a tiny bit each time a
+# model paints a freshly scrolled-to slice. Paced by wall-clock, not callbacks.
+TRAIN_INTERVAL_S = 2.5
+TRAIN_XP = 1
+INFER_INTERVAL_S = 0.35
+INFER_XP = 1
+_paced_last_t: Dict[str, float] = {}
+
+
+def _paced(key: str, skill: str, xp: int, color: Optional[Color], interval: float,
+           screen_xy: Optional[Tuple[float, float]], n_orbs: int, radius: float) -> None:
+    now = time.monotonic()
+    if now - _paced_last_t.get(key, 0.0) < interval:
+        return
+    _paced_last_t[key] = now
+    award(skill, xp, color)   # XP/coins/HUD; no cursor gate, no auto orbs
+    if screen_xy is not None and cfg.settings.get("PERK_XP_ORBS", True):
+        c = tuple(float(v) for v in color) if color is not None else _profile.get_profile().skill_color(skill)
+        orbs.emit(float(screen_xy[0]), float(screen_xy[1]), c, n_orbs, skill, radius=radius)
+
+
+def award_training(skill: str, color: Optional[Color] = None,
+                   screen_xy: Optional[Tuple[float, float]] = None) -> None:
+    if skill:
+        _paced("train:" + skill, skill, TRAIN_XP, color, TRAIN_INTERVAL_S, screen_xy, 3, 8.0)
+
+
+def award_inference(skill: str, color: Optional[Color] = None,
+                    screen_xy: Optional[Tuple[float, float]] = None) -> None:
+    if skill:
+        _paced("infer:" + skill, skill, INFER_XP, color, INFER_INTERVAL_S, screen_xy, 2, 6.0)
+
+
 def _push(ev: LevelUp) -> None:
     with _queue_lock:
         _queue.append(ev)
