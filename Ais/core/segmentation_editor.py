@@ -338,10 +338,13 @@ class SegmentationEditor:
             self.camera.on_update()
             self.camera3d.on_update()
             # living background: GL pre-pass, drawn behind the tomogram
+            _bg = None
             if not cfg.settings.get("PROGRESSION_HIDE", False):
                 _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera, self.window.cursor_pos)
-                if _bg is not None:
-                    SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
+            if _bg is not None:
+                SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
+            else:
+                SegmentationEditor.renderer._bg_field = None   # border falls back to black
             self.gui_main()
             SegmentationEditor.renderer.render_draw_list(self.camera)
             self.input()
@@ -641,15 +644,6 @@ class SegmentationEditor:
         imgui.push_style_color(imgui.COLOR_SLIDER_GRAB, *c, 1.0)
         imgui.push_style_color(imgui.COLOR_SLIDER_GRAB_ACTIVE, *hi, 1.0)
         return 2
-
-    @staticmethod
-    def _frame_border_colour(se_frame):
-        # The GL outline around the tomogram slice takes the active feature's colour;
-        # falls back to a theme-appropriate neutral when nothing is being annotated.
-        af = getattr(se_frame, "active_feature", None)
-        if af is not None:
-            return tuple(float(x) for x in af.colour[:3])
-        return (0.85, 0.85, 0.88) if cfg.settings.get("DARK_MODE", False) else (0.0, 0.0, 0.0)
 
     @staticmethod
     def save_dataset(dialog=False):
@@ -3922,7 +3916,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", 0)
         self.border_shader.uniform1f("alpha", 1.0)
-        self.border_shader.uniform3f("borderColour", SegmentationEditor._frame_border_colour(se_frame))
+        self._apply_border_field()
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -3976,7 +3970,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", 0)
         self.border_shader.uniform1f("alpha", 1.0)
-        self.border_shader.uniform3f("borderColour", SegmentationEditor._frame_border_colour(se_frame))
+        self._apply_border_field()
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -3990,7 +3984,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", (se_frame.current_slice - se_frame.n_slices / 2))
         self.border_shader.uniform1f("alpha", SegmentationEditor.PICKING_FRAME_ALPHA)
-        self.border_shader.uniform3f("borderColour", SegmentationEditor._frame_border_colour(se_frame))
+        self._apply_border_field()
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -4265,10 +4259,32 @@ class Renderer:
     def render_draw_list(self, camera):
         self.render_lines(camera)
 
+    def _apply_border_field(self):
+        # Feed the border shader the current background field so its outline can
+        # chameleon to the colour behind it (uN=0 -> plain black border).
+        field = getattr(self, "_bg_field", None)
+        if not field or not field[0]:
+            self.border_shader.uniform1i("uN", 0)
+            return
+        blobs, res, intensity, shape = field
+        self.border_shader.uniform2f("uRes", res)
+        self.border_shader.uniform1f("uIntensity", intensity)
+        self.border_shader.uniform1i("uShape", shape)
+        n = min(48, len(blobs))
+        self.border_shader.uniform1i("uN", n)
+        for i in range(n):
+            bx, by, br, bc, bang, balp = blobs[i]
+            self.border_shader.uniform2f(f"uPos[{i}]", (bx, by))
+            self.border_shader.uniform1f(f"uRad[{i}]", br)
+            self.border_shader.uniform3f(f"uCol[{i}]", bc)
+            self.border_shader.uniform1f(f"uAng[{i}]", bang)
+            self.border_shader.uniform1f(f"uAlp[{i}]", balp)
+
     def render_background(self, blobs, base_col, intensity, res, shape=0):
         # Fullscreen papery base with soft feature-colour blobs / cards, drawn
         # right after the clear so the tomogram and annotations render on top.
         # blobs = [(x, y, radius, rgb, angle, alpha)]
+        self._bg_field = (blobs, res, intensity, shape)   # stash for the chameleon border
         if self.background_blob_shader is None or not blobs:
             return
         glDisable(GL_DEPTH_TEST)
