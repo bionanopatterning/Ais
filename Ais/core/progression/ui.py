@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple
 import imgui
 
 import Ais.core.config as cfg
+from . import background
 from . import cosmetics
 from . import events
 from . import orbs
@@ -351,6 +352,7 @@ def render_level_up(window_width: int, window_height: int, hidden: bool = False)
         ev = events.pop_level_up()
         if ev is None:
             return
+        background.notify_levelup(ev)   # whole-field colour swell in the background
         if cfg.settings.get("PERK_CONFETTI", True):
             _cp = cosmetics.params(cosmetics.CONFETTI)
             particles.emit_confetti(window_width, ev.color, n=70,

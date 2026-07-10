@@ -483,6 +483,7 @@ class SegmentationEditor:
                             _skill_lvl_box = progression.get_profile().skill_level(active_feature.title)
                             progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
                             progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
+                            progression.background_pulse("box", tuple(active_feature.colour))
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)
             if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
@@ -1212,6 +1213,7 @@ class SegmentationEditor:
                                     feature.set_slice_ndarray(slice_data, cfg.se_active_frame.current_slice)
                                     SegmentationEditor.FORCE_SELECT_TAB = 0
                                     progression.award(skill=feature.title, xp=15, color=tuple(feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]))
+                                    progression.background_pulse("copy", tuple(feature.colour))
                             imgui.pop_style_var(1)
                             imgui.end_menu()
                         imgui.end_popup()
