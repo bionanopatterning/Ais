@@ -20,6 +20,7 @@
   "DEBUG_A": false,
   "DEBUG_B": false,
   "DEBUG_C": false,
+  "DARK_MODE": false,
   "RECENT_DATASETS": [],
   "RECENT_MODELS": []
 }
