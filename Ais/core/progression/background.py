@@ -56,9 +56,9 @@ _STROKE_DOT_R = 13.0         # small, thin dots that trace the echoed path
 _STROKE_MAX_PTS = 22         # dots per echoed gesture (after downsampling)
 _STROKE_MAX = 44             # total dot budget (<= shader MAXB)
 _STROKE_SCALE = (0.40, 0.70) # echo smaller than the drawn gesture
-_STROKE_LIFE = (2.2, 4.5)    # brief - the echoes come and go
-_STROKE_FADE_IN = 0.35
-_STROKE_FADE_OUT = 1.3
+_STROKE_LIFE = (220.0, 450.0)  # linger a very long time
+_STROKE_FADE_IN = 1.5
+_STROKE_FADE_OUT = 4.0
 _GESTURE_END_S = 0.2         # a gap this long ends the current gesture
 
 A_MAX = 0.70

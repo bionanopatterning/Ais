@@ -3028,8 +3028,9 @@ class SegmentationEditor:
         self.tooltip("Dark mode: " + ("on" if dark_on else "off"))
         imgui.same_line(spacing=G)
         if self._glass_circle_button("##flib_toggle", D, "library", SegmentationEditor.FEATURE_LIB_OPEN, (0.55, 0.78, 1.0)):
-            SegmentationEditor.FEATURE_LIB_OPEN = True
-            self.parse_available_features()
+            SegmentationEditor.FEATURE_LIB_OPEN = not SegmentationEditor.FEATURE_LIB_OPEN
+            if SegmentationEditor.FEATURE_LIB_OPEN:
+                self.parse_available_features()
         self.tooltip("Feature library")
         imgui.end()
         imgui.pop_style_var(3)
