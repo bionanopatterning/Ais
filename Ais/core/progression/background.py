@@ -56,9 +56,9 @@ _STROKE_DOT_R = 13.0         # small, thin dots that trace the echoed path
 _STROKE_MAX_PTS = 22         # dots per echoed gesture (after downsampling)
 _STROKE_MAX = 44             # total dot budget (<= shader MAXB)
 _STROKE_SCALE = (0.40, 0.70) # echo smaller than the drawn gesture
-_STROKE_LIFE = (22.0, 45.0)  # linger a long time
-_STROKE_FADE_IN = 1.2
-_STROKE_FADE_OUT = 5.0
+_STROKE_LIFE = (2.2, 4.5)    # brief - the echoes come and go
+_STROKE_FADE_IN = 0.35
+_STROKE_FADE_OUT = 1.3
 _GESTURE_END_S = 0.2         # a gap this long ends the current gesture
 
 A_MAX = 0.70
@@ -123,11 +123,11 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
-def _hue_jitter(c: Color, amp: float = 0.035) -> Color:
+def _hue_jitter(c: Color, amp: float = 0.055) -> Color:
     h, s, v = colorsys.rgb_to_hsv(*c)
     h = (h + random.uniform(-amp, amp)) % 1.0
-    s = _clamp(s + random.uniform(-0.06, 0.06), 0.0, 1.0)
-    v = _clamp(v + random.uniform(-0.05, 0.05), 0.0, 1.0)
+    s = _clamp(s + random.uniform(-0.09, 0.09), 0.0, 1.0)
+    v = _clamp(v + random.uniform(-0.07, 0.07), 0.0, 1.0)
     return colorsys.hsv_to_rgb(h, s, v)
 
 
@@ -221,7 +221,9 @@ def _finalize_gesture(w: int, h: int) -> None:
     tx = random.uniform(margin, max(margin + 1.0, w - margin))
     ty = random.uniform(margin, max(margin + 1.0, h - margin))
     life = random.uniform(*_STROKE_LIFE)
-    col = _hue_jitter(_gesture_col, amp=0.02)
+    # one constant colour per stroke, jittered a little between strokes; rarely inverse
+    base = tuple(1.0 - float(c) for c in _gesture_col) if random.random() < 0.02 else _gesture_col
+    col = _hue_jitter(base, amp=0.07)
     placed = []
     for px, py in pts:
         rx, ry = (px - cx) * scale, (py - cy) * scale
@@ -318,7 +320,7 @@ def _life_alpha(frac: float) -> float:
 
 def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_mul: float,
           cursor_bs: Optional[Tuple[float, float]] = None) -> None:
-    global _bt, _recolor_accum, _energy, _event, _wash, _wash_color, _E, _awake
+    global _bt, _energy, _event, _wash, _wash_color, _E, _awake
     if dt > 0.1:
         dt = 0.1
     lifecycle = style == "bokeh"
@@ -326,12 +328,8 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
     while _pending:
         kind, col = _pending.pop(0)
         _event += _KICK[kind] * (1.0 - _clamp(_energy + _event, 0.0, 1.0))
-        # the active feature's colour is boss: on any annotation the whole field
-        # retargets to it and migrates there via the colour lerp below. Bokeh is
-        # exempt - each disc keeps the colour it was born with.
-        if not lifecycle:
-            for b in _blobs:
-                b.color_target = _hue_jitter(col)
+        # shapes keep the colour they were born with; only the transient level-up
+        # wash briefly tints the whole field.
         if kind == "levelup":
             _wash = 1.0
             _wash_color = col
@@ -378,12 +376,8 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
             b.vy *= damp
             b.angle += b.spin * dt
     else:
-        kc = 1.0 - math.exp(-dt / TAU_COLOR)
         spd = 0.5 + 0.9 * _E
         for b in _blobs:
-            b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
-                       b.color[1] + (b.color_target[1] - b.color[1]) * kc,
-                       b.color[2] + (b.color_target[2] - b.color[2]) * kc)
             b.x += b.vx * spd * dt
             b.y += b.vy * spd * dt
             m = b.r
@@ -391,14 +385,6 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
             elif b.x > w + m: b.x = -m
             if b.y < -m: b.y = h + m
             elif b.y > h + m: b.y = -m
-
-    # ambient colour drift: bias the field toward the active feature over a few
-    # seconds even without discrete events (e.g. while brushing). Bokeh is exempt.
-    if not lifecycle:
-        _recolor_accum += dt
-        if _blobs and _recolor_accum >= (8.0 - 5.0 * _E):
-            _recolor_accum = 0.0
-            random.choice(_blobs).color_target = _target_color()
 
 
 def frame(dt: float, w: int, h: int, camera, cursor=None):
@@ -409,6 +395,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if not prm.get("enabled", False):
         if _pending:
             _pending.clear()   # nothing consumes events while disabled; don't accumulate
+        _gesture.clear()
         return None
     style = prm.get("style", "blob")
     px = camera.position[0] * camera.zoom * PARALLAX
@@ -424,6 +411,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
 
     if _strokes:
         _strokes.clear()            # left over from a previous mode
+    _gesture.clear()                # don't finalise a stale gesture on mode re-entry
     n = int(prm.get("n", 8))
     rmin = prm.get("rmin", 320.0)
     rmax = prm.get("rmax", 720.0)

@@ -3004,7 +3004,9 @@ class SegmentationEditor:
         imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (0, 0))
         imgui.push_style_var(imgui.STYLE_ITEM_SPACING, (0, 0))
         imgui.push_style_var(imgui.STYLE_WINDOW_BORDERSIZE, 0.0)
-        imgui.set_next_window_position(SegmentationEditor.MENU_BAR_END_X + 14.0, SegmentationEditor.MENU_BAR_H + 4.0, imgui.ALWAYS)
+        # top-left, just right of the main menu bar items but never over the left panel
+        win_x = max(SegmentationEditor.MENU_BAR_END_X + 14.0, SegmentationEditor.MAIN_WINDOW_WIDTH + 14.0)
+        imgui.set_next_window_position(win_x, SegmentationEditor.MENU_BAR_H + 4.0, imgui.ALWAYS)
         imgui.set_next_window_size(win_w, win_h)
         imgui.begin("##party_buttons", False,
                     imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE
@@ -3013,8 +3015,10 @@ class SegmentationEditor:
         party_on = not cfg.settings.get("PROGRESSION_HIDE", False)
         _px, _py = imgui.get_cursor_screen_pos()
         if self._glass_circle_button("##party_toggle", D, "sparkle", party_on, (0.98, 0.78, 0.30)):
-            cfg.edit_setting("PROGRESSION_HIDE", not cfg.settings["PROGRESSION_HIDE"])
-            progression.particles.emit_confetti_burst(_px + D * 0.5, _py + D * 0.5)
+            new_hidden = not cfg.settings["PROGRESSION_HIDE"]
+            cfg.edit_setting("PROGRESSION_HIDE", new_hidden)
+            if not new_hidden:   # turning party ON -> celebrate (only drawn while visible)
+                progression.particles.emit_confetti_burst(_px + D * 0.5, _py + D * 0.5)
         self.tooltip("Party mode: " + ("on" if party_on else "off"))
         imgui.same_line(spacing=G)
         dark_on = cfg.settings.get("DARK_MODE", False)
