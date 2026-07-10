@@ -351,6 +351,7 @@ class SegmentationEditor:
             progression.render_profile_panel()
             if not _prog_hidden:
                 progression.draw_particles(self.camera, self.window.height)
+            self.render_party_buttons()
             progression.maybe_save()
 
         imgui.render()
@@ -2995,6 +2996,65 @@ class SegmentationEditor:
                 to_pop.append(key)
         for key in to_pop:
             self.trainset_feature_selection.pop(key)
+
+    def render_party_buttons(self):
+        # Two frosted-glass circular buttons, bottom-right: toggle Party mode
+        # (the progression system) and open the feature library. No labels.
+        D, G, M = 44.0, 12.0, 18.0
+        win_w, win_h = 2.0 * D + G, D
+        imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (0, 0))
+        imgui.push_style_var(imgui.STYLE_ITEM_SPACING, (0, 0))
+        imgui.push_style_var(imgui.STYLE_WINDOW_BORDERSIZE, 0.0)
+        imgui.set_next_window_position(cfg.window_width - M - win_w, cfg.window_height - M - win_h, imgui.ALWAYS)
+        imgui.set_next_window_size(win_w, win_h)
+        imgui.begin("##party_buttons", False,
+                    imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE
+                    | imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_SAVED_SETTINGS
+                    | imgui.WINDOW_NO_FOCUS_ON_APPEARING | imgui.WINDOW_NO_NAV | imgui.WINDOW_NO_BACKGROUND)
+        party_on = not cfg.settings.get("PROGRESSION_HIDE", False)
+        if self._glass_circle_button("##party_toggle", D, "sparkle", party_on, (0.98, 0.78, 0.30)):
+            cfg.edit_setting("PROGRESSION_HIDE", not cfg.settings["PROGRESSION_HIDE"])
+        self.tooltip("Party mode: " + ("on" if party_on else "off"))
+        imgui.same_line(spacing=G)
+        if self._glass_circle_button("##flib_toggle", D, "library", SegmentationEditor.FEATURE_LIB_OPEN, (0.55, 0.78, 1.0)):
+            SegmentationEditor.FEATURE_LIB_OPEN = True
+            self.parse_available_features()
+        self.tooltip("Feature library")
+        imgui.end()
+        imgui.pop_style_var(3)
+
+    def _glass_circle_button(self, label, D, icon, active, accent):
+        dl = imgui.get_window_draw_list()
+        p0 = imgui.get_cursor_screen_pos()
+        clicked = imgui.invisible_button(label, D, D)
+        hovered = imgui.is_item_hovered()
+        cx, cy, r = p0[0] + D * 0.5, p0[1] + D * 0.5, D * 0.5
+        # frosted glass: translucent light fill, top sheen, bright rim
+        fill_a = (0.20 if active else 0.11) + (0.07 if hovered else 0.0)
+        dl.add_circle_filled(cx, cy, r, imgui.get_color_u32_rgba(0.90, 0.93, 0.98, fill_a), 40)
+        dl.add_circle_filled(cx, cy - r * 0.30, r * 0.60, imgui.get_color_u32_rgba(1.0, 1.0, 1.0, 0.05 + (0.05 if hovered else 0.0)), 28)
+        dl.add_circle(cx, cy, r - 0.5, imgui.get_color_u32_rgba(1.0, 1.0, 1.0, 0.45 if hovered else 0.28), 40, 1.5)
+        if active:
+            dl.add_circle(cx, cy, r - 2.5, imgui.get_color_u32_rgba(accent[0], accent[1], accent[2], 0.85), 40, 2.0)
+        icol = imgui.get_color_u32_rgba(accent[0], accent[1], accent[2], 1.0) if active else imgui.get_color_u32_rgba(0.82, 0.82, 0.86, 0.9)
+        self._draw_party_icon(dl, icon, cx, cy, r, icol)
+        return clicked
+
+    @staticmethod
+    def _draw_party_icon(dl, icon, cx, cy, r, col):
+        if icon == "sparkle":
+            def star(ox, oy, s, wv):
+                dl.add_quad_filled(cx + ox, cy + oy - s, cx + ox + wv, cy + oy, cx + ox, cy + oy + s, cx + ox - wv, cy + oy, col)
+                dl.add_quad_filled(cx + ox - s, cy + oy, cx + ox, cy + oy - wv, cx + ox + s, cy + oy, cx + ox, cy + oy + wv, col)
+            star(0.0, 0.0, r * 0.52, r * 0.15)
+            star(r * 0.44, -r * 0.40, r * 0.20, r * 0.06)
+        else:  # "library" - a 2x2 grid of rounded tiles
+            g, gap = r * 0.17, r * 0.07
+            step = g + gap
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    ox, oy = sx * step, sy * step
+                    dl.add_rect_filled(cx + ox - g, cy + oy - g, cx + ox + g, cy + oy + g, col, 2.0, imgui.DRAW_ROUND_CORNERS_ALL)
 
     def _gui_background_process_progress_bar(self, process, colour=cfg.COLOUR_POSITIVE, cancellable=False, height=None, transparent_background=False):
         height = SegmentationEditor.PROGRESS_BAR_HEIGHT if height is None else height
