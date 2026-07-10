@@ -3360,9 +3360,16 @@ class SegmentationEditor:
                 delta_cursor = self.window.cursor_delta
                 self.camera.position[0] += delta_cursor[0] / self.camera.zoom
                 self.camera.position[1] -= delta_cursor[1] / self.camera.zoom
-            if SegmentationEditor.is_shift_down():
+            if SegmentationEditor.is_shift_down() and self.window.scroll_delta[1] != 0.0:
+                # zoom toward the cursor: keep the world point under the cursor fixed
+                self.camera.on_update()
+                world_before = self.camera.cursor_to_world_position(self.window.cursor_pos)
                 self.camera.zoom *= (1.0 + self.window.scroll_delta[1] * SegmentationEditor.CAMERA_ZOOM_STEP)
                 self.camera.zoom = min([self.camera.zoom, SegmentationEditor.CAMERA_MAX_ZOOM])
+                self.camera.on_update()
+                world_after = self.camera.cursor_to_world_position(self.window.cursor_pos)
+                self.camera.position[0] += world_after[0] - world_before[0]
+                self.camera.position[1] += world_after[1] - world_before[1]
         else:
             if SegmentationEditor.is_shift_down():
                 if self.window.get_mouse_button(glfw.MOUSE_BUTTON_MIDDLE):
