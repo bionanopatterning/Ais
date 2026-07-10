@@ -2751,6 +2751,9 @@ class SegmentationEditor:
         imgui.set_next_window_position(0, 17, imgui.ONCE)
         imgui.set_next_window_size(SegmentationEditor.MAIN_WINDOW_WIDTH, self.window.height - 17)
 
+        # slightly more transparent than other panels so the background shows
+        # through (most visibly in the empty area below the controls)
+        imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, *cfg.COLOUR_PANEL_BACKGROUND[:3], 0.85)
         imgui.begin("##se_main", False, imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE)
         shared_gui()
         imgui.spacing()
@@ -2782,6 +2785,7 @@ class SegmentationEditor:
             imgui.end_tab_bar()
 
         imgui.end()
+        imgui.pop_style_color(1)
 
         slicer_window()
         self._warning_window()
