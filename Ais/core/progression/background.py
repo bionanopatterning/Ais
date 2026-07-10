@@ -47,9 +47,19 @@ _AVOID_R2 = _AVOID_R * _AVOID_R
 _AVOID_ACCEL = 350.0
 _AVOID_DAMP = 0.02       # per-second velocity retention (heavy)
 
-# Brushstroke mode: large blurred wisps spawned along the user's annotations.
-_STROKE_MIN_DT = 0.10    # throttle spawns while painting
-_STROKE_MAX = 40
+# Brushstroke mode: the user's click-hold-drag gesture is captured, then its
+# SHAPE is echoed into the background - smaller, rotated, moved elsewhere, and
+# left to linger a long time. Each echo is a chain of small soft dots tracing
+# the (transformed) path.
+_STROKE_SEG = 7.0            # min gesture point spacing while capturing (px)
+_STROKE_DOT_R = 13.0         # small, thin dots that trace the echoed path
+_STROKE_MAX_PTS = 22         # dots per echoed gesture (after downsampling)
+_STROKE_MAX = 44             # total dot budget (<= shader MAXB)
+_STROKE_SCALE = (0.40, 0.70) # echo smaller than the drawn gesture
+_STROKE_LIFE = (22.0, 45.0)  # linger a long time
+_STROKE_FADE_IN = 1.2
+_STROKE_FADE_OUT = 5.0
+_GESTURE_END_S = 0.2         # a gap this long ends the current gesture
 
 A_MAX = 0.70
 DRIVE_GRACE = 0.5
@@ -95,9 +105,10 @@ _E = 0.0
 _awake = 0.0             # how many shapes have woken up (grows with activity)
 _pending: List[Tuple[str, Color]] = []
 
-_strokes: List[_Blob] = []           # brushstroke mode: event-spawned, fading wisps
-_last_stroke_pt: Optional[Tuple[float, float]] = None
-_last_stroke_t = 0.0
+_strokes: List[_Blob] = []               # brushstroke mode: echoed-gesture dots
+_gesture: List[Tuple[float, float]] = []  # the gesture being captured (screen px)
+_gesture_col: Color = (1.0, 1.0, 1.0)
+_gesture_last_t = 0.0                      # monotonic time of the last captured point
 
 
 def _soft(v: float) -> float:
@@ -171,56 +182,86 @@ def notify_levelup(ev) -> None:
 
 
 def stroke(sx: float, sy: float, colour) -> None:
-    # Brushstroke mode: spawn a big blurred wisp at the annotation, oriented along
-    # the gesture but rotated a little, that grows and fades away. Throttled; a
-    # no-op unless the Brushstroke background is equipped.
-    global _last_stroke_pt, _last_stroke_t
+    # Brushstroke mode: accumulate the current click-hold-drag gesture. Points are
+    # captured whenever the cursor moves far enough (so we record the SHAPE, not
+    # the timing); the gesture is echoed into the background when it ends (see
+    # _finalize_gesture). A no-op unless the Brushstroke background is equipped.
+    global _gesture_col, _gesture_last_t
     prm = _params()
     if prm.get("style") != "brushstroke" or not prm.get("enabled", False):
-        _last_stroke_pt = None
+        _gesture.clear()
         return
-    now = time.monotonic()
-    if now - _last_stroke_t < _STROKE_MIN_DT:
+    if _gesture:
+        dx, dy = sx - _gesture[-1][0], sy - _gesture[-1][1]
+        if dx * dx + dy * dy < _STROKE_SEG * _STROKE_SEG:
+            return
+    _gesture.append((float(sx), float(sy)))
+    _gesture_col = _soft_color(colour)
+    _gesture_last_t = time.monotonic()
+
+
+def _finalize_gesture(w: int, h: int) -> None:
+    # Echo the captured gesture's shape into the background: recentre it, rotate
+    # by a random angle, scale it down, and drop it somewhere else on screen as a
+    # chain of small soft dots that linger. Then clear the gesture.
+    pts = list(_gesture)
+    _gesture.clear()
+    if len(pts) < 2:
         return
-    if _last_stroke_pt is not None and (now - _last_stroke_t) < 0.5:
-        dx, dy = sx - _last_stroke_pt[0], sy - _last_stroke_pt[1]
-        base_ang = math.atan2(dy, dx) if (dx * dx + dy * dy) > 4.0 else random.uniform(0.0, 6.28)
-    else:
-        base_ang = random.uniform(0.0, 6.28)
-    _last_stroke_pt, _last_stroke_t = (sx, sy), now
-    ang = base_ang + random.uniform(-0.5, 0.5)   # rotated relative to the gesture
-    col = _hue_jitter(_soft_color(colour))
-    r = random.uniform(prm.get("rmin", 240.0), prm.get("rmax", 520.0))
-    _strokes.append(_Blob(
-        x=float(sx), y=float(sy),
-        vx=math.cos(ang) * 6.0, vy=math.sin(ang) * 6.0,
-        r=r, color=col, color_target=col,
-        phase=0.0, breathe=0.0,
-        angle=ang, spin=random.uniform(-0.1, 0.1),
-        alpha=0.0, life_age=0.0,
-        life_span=random.uniform(2.2, 4.0),
-    ))
+    # downsample to at most _STROKE_MAX_PTS, keeping endpoints
+    if len(pts) > _STROKE_MAX_PTS:
+        step = len(pts) / float(_STROKE_MAX_PTS)
+        pts = [pts[min(len(pts) - 1, int(i * step))] for i in range(_STROKE_MAX_PTS)]
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    theta = random.uniform(0.0, 2.0 * math.pi)
+    ct, st = math.cos(theta), math.sin(theta)
+    scale = random.uniform(*_STROKE_SCALE)
+    margin = 120.0
+    tx = random.uniform(margin, max(margin + 1.0, w - margin))
+    ty = random.uniform(margin, max(margin + 1.0, h - margin))
+    life = random.uniform(*_STROKE_LIFE)
+    col = _hue_jitter(_gesture_col, amp=0.02)
+    placed = []
+    for px, py in pts:
+        rx, ry = (px - cx) * scale, (py - cy) * scale
+        placed.append((tx + rx * ct - ry * st, ty + rx * st + ry * ct))
+    for i, (x, y) in enumerate(placed):
+        j = min(i + 1, len(placed) - 1)
+        k = max(i - 1, 0)
+        ang = math.atan2(placed[j][1] - placed[k][1], placed[j][0] - placed[k][0])
+        _strokes.append(_Blob(
+            x=x, y=y, vx=0.0, vy=0.0,
+            r=_STROKE_DOT_R, color=col, color_target=col,
+            phase=0.0, breathe=0.0,
+            angle=ang, spin=0.0,
+            alpha=0.0, life_age=0.0, life_span=life,
+        ))
     if len(_strokes) > _STROKE_MAX:
         del _strokes[: len(_strokes) - _STROKE_MAX]
 
 
-def _tick_strokes(dt: float) -> None:
+def _stroke_alpha(age: float, life: float) -> float:
+    if age < _STROKE_FADE_IN:
+        return age / _STROKE_FADE_IN
+    if age > life - _STROKE_FADE_OUT:
+        return max(0.0, (life - age) / _STROKE_FADE_OUT)
+    return 1.0
+
+
+def _tick_strokes(dt: float, w: int, h: int) -> None:
+    global _gesture_last_t
     if dt > 0.1:
         dt = 0.1
     _pending.clear()   # pulses aren't used in this mode; don't let them accumulate
+    if _gesture and (time.monotonic() - _gesture_last_t) > _GESTURE_END_S:
+        _finalize_gesture(w, h)
     alive: List[_Blob] = []
     for b in _strokes:
         b.life_age += dt
-        frac = b.life_age / b.life_span
-        if frac >= 1.0:
+        if b.life_age >= b.life_span:
             continue
-        b.alpha = _life_alpha(frac)
-        b.x += b.vx * dt
-        b.y += b.vy * dt
-        b.angle += b.spin * dt
-        b.r += b.r * 0.12 * dt          # slowly grow as it dissipates
-        b.vx *= (1.0 - 0.9 * dt)        # ease the drift to a halt
-        b.vy *= (1.0 - 0.9 * dt)
+        b.alpha = _stroke_alpha(b.life_age, b.life_span)
         alive.append(b)
     _strokes[:] = alive
 
@@ -376,7 +417,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if style == "brushstroke":
         if _blobs:
             _blobs.clear()          # the ambient pool isn't used in this mode
-        _tick_strokes(dt)
+        _tick_strokes(dt, w, h)
         out = [(b.x + px, b.y + py, b.r, b.color, b.angle, b.alpha) for b in _strokes]
         base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
         return out, base, prm.get("intensity", 0.6), _SHAPE["brushstroke"]
@@ -416,9 +457,10 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
 
 
 def clear() -> None:
-    global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake, _last_stroke_pt
+    global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake
     _blobs.clear()
     _strokes.clear()
+    _gesture.clear()
     _bt = 0.0
     _energy = 0.0
     _event = 0.0
@@ -428,5 +470,4 @@ def clear() -> None:
     _cur_w = 0
     _cur_h = 0
     _awake = 0.0
-    _last_stroke_pt = None
     _pending.clear()

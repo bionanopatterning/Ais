@@ -494,7 +494,6 @@ class SegmentationEditor:
                             progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
                             progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
                             progression.background_pulse("box", tuple(active_feature.colour))
-                            progression.background_stroke(self.window.cursor_pos[0], self.window.cursor_pos[1], tuple(active_feature.colour))
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)
             if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
