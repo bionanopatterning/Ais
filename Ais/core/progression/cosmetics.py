@@ -69,7 +69,7 @@ CATALOG: Dict[str, List[Cosmetic]] = {
         _c("bg.aurora",   BACKGROUND, "Aurora",   0,  0,  enabled=True, style="blob",     n=6,  rmin=380, rmax=820, intensity=0.42),
         _c("bg.lava",     BACKGROUND, "Lavalamp", 60, 0,  enabled=True, style="lava",     n=5,  rmin=380, rmax=760, intensity=0.55),
         _c("bg.confetti", BACKGROUND, "Confetti", 0,  0,  enabled=True, style="confetti", n=12, rmin=80,  rmax=190, intensity=0.55),
-        _c("bg.bokeh",    BACKGROUND, "Bokeh",    90, 0,  enabled=True, style="bokeh",    n=16, rmin=30,  rmax=130, intensity=0.5),
+        _c("bg.bokeh",    BACKGROUND, "Bokeh",    90, 0,  enabled=True, style="bokeh",    n=16, rmin=30,  rmax=130, intensity=0.5, life_mul=3.0),
     ],
 }
 

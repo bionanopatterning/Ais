@@ -55,10 +55,20 @@ void main()
         }
         else if (uShape == 2)
         {
-            // crisp disc
-            float d = distance(frag, uPos[i]);
-            float soft = max(2.0, uRad[i] * 0.06);
-            w = smoothstep(uRad[i] + soft, uRad[i] - soft, d) * uIntensity * uAlp[i];
+            // soft octagon (bokeh) - max of 8 half-planes, gentle edges
+            vec2 rel = frag - uPos[i];
+            float c = cos(uAng[i]);
+            float s = sin(uAng[i]);
+            vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
+            float ap = uRad[i] * 0.92;
+            float sd = -1e9;
+            for (int k = 0; k < 8; k++)
+            {
+                float th = float(k) * 0.7853982;
+                sd = max(sd, dot(lo, vec2(cos(th), sin(th))) - ap);
+            }
+            float soft = max(6.0, uRad[i] * 0.22);
+            w = smoothstep(soft, -soft, sd) * uIntensity * uAlp[i];
         }
         else
         {

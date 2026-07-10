@@ -158,7 +158,7 @@ def _params() -> dict:
     return cosmetics.params(cosmetics.BACKGROUND)
 
 
-def _spawn(w: int, h: int, rmin: float, rmax: float, style: str) -> _Blob:
+def _spawn(w: int, h: int, rmin: float, rmax: float, style: str, life_mul: float = 1.0) -> _Blob:
     c = _target_color()
     lifecycle = style in ("confetti", "bokeh")
     if style == "lava":
@@ -178,11 +178,11 @@ def _spawn(w: int, h: int, rmin: float, rmax: float, style: str) -> _Blob:
         spin=random.uniform(-0.25, 0.25),
         alpha=0.0 if lifecycle else 1.0,
         life_age=0.0,
-        life_span=random.uniform(4.0, 9.0),
+        life_span=random.uniform(4.0, 9.0) * life_mul,
     )
 
 
-def _ensure(w: int, h: int, style: str, n: int, rmin: float, rmax: float) -> None:
+def _ensure(w: int, h: int, style: str, n: int, rmin: float, rmax: float, life_mul: float) -> None:
     global _cur_style, _cur_n, _cur_w, _cur_h
     if _blobs and _cur_style == style and _cur_n == n:
         if _cur_w > 0 and (_cur_w != w or _cur_h != h):
@@ -194,7 +194,7 @@ def _ensure(w: int, h: int, style: str, n: int, rmin: float, rmax: float) -> Non
         return
     _blobs.clear()
     for _ in range(n):
-        _blobs.append(_spawn(w, h, rmin, rmax, style))
+        _blobs.append(_spawn(w, h, rmin, rmax, style, life_mul))
     _cur_style, _cur_n, _cur_w, _cur_h = style, n, w, h
 
 
@@ -206,7 +206,7 @@ def _life_alpha(frac: float) -> float:
     return 1.0
 
 
-def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> None:
+def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_mul: float) -> None:
     global _bt, _recolor_accum, _energy, _event, _wash, _wash_color, _E, _awake
     if dt > 0.1:
         dt = 0.1
@@ -241,7 +241,7 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> No
         for b in _blobs:
             b.life_age += dt * rate
             if b.life_age >= b.life_span:
-                nb = _spawn(w, h, rmin, rmax, style)
+                nb = _spawn(w, h, rmin, rmax, style, life_mul)
                 b.x, b.y, b.vx, b.vy, b.r = nb.x, nb.y, nb.vx, nb.vy, nb.r
                 b.color = nb.color
                 b.angle, b.spin = nb.angle, nb.spin
@@ -280,8 +280,9 @@ def frame(dt: float, w: int, h: int, camera):
     n = int(prm.get("n", 8))
     rmin = prm.get("rmin", 320.0)
     rmax = prm.get("rmax", 720.0)
-    _ensure(w, h, style, n, rmin, rmax)
-    _tick(dt, w, h, style, rmin, rmax)
+    life_mul = prm.get("life_mul", 1.0)
+    _ensure(w, h, style, n, rmin, rmax, life_mul)
+    _tick(dt, w, h, style, rmin, rmax, life_mul)
 
     i0 = prm.get("intensity", 0.45)
     intensity = i0 * (0.55 + 0.45 * _E) + 0.12 * _wash
