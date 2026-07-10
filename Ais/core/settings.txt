@@ -27,6 +27,7 @@
   "PERK_CONFETTI": true,
   "PERK_MILESTONE": true,
   "PERK_COLOR_ANIM": true,
+  "DARK_MODE": false,
   "RECENT_DATASETS": [],
   "RECENT_MODELS": []
 }

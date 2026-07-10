@@ -2160,6 +2160,9 @@ class SegmentationEditor:
                             cfg.edit_setting("WAIT_TO_RENDER", not cfg.settings["WAIT_TO_RENDER"])
                         self.tooltip("In the Rendering tab, segmentations are rendered immediately  if 'wait to render' is not set.\n"
                                      "Else, rendering is triggered only when any settings (threshold, dust size, etc.) are edited.")
+                        if imgui.menu_item("Dark mode", None, cfg.settings["DARK_MODE"])[0]:
+                            cfg.edit_setting("DARK_MODE", not cfg.settings["DARK_MODE"])
+                            cfg.set_theme(cfg.settings["DARK_MODE"])
                         if imgui.begin_menu("Camera3D"):
                             _, self.camera3d.yaw = imgui.input_float("Yaw", self.camera3d.yaw, 5.0, 20.0)
                             if _:
