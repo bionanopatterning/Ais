@@ -3,25 +3,29 @@
 # space with a slight camera parallax. Opt-in via the Background cosmetic.
 #
 # Styles (from the equipped cosmetic's params):
-#   "blob"     - soft drifting gaussian washes (Aurora / Nebula)
-#   "confetti" - large soft-edged cards that fade in and out roughly in place
+#   "blob"     - soft drifting gaussian washes (Aurora)
+#   "lava"     - few big blobs drifting slowly up/down (Lavalamp)
+#   "confetti" - sharp triangles that fade in and out roughly in place
 #   "bokeh"    - crisp discs that fade in and out roughly in place
 #
-# It is RESPONSIVE to annotation via one master "arousal" scalar (_energy) that
-# rises fast while you work and decays slowly when idle, plus a recency-weighted
-# feature palette and small transient kicks from discrete events. Every channel
-# is a bounded multiplier on the calm baseline, so even at full energy it stays
-# subtle. Because the pass is occluded by the data, all responses are whole-field.
+# It starts EMPTY (like plain paper) and fills in as you annotate: a "wake"
+# counter grows with activity, revealing shapes one by one. Colour follows the
+# ACTIVE feature tightly (small hue jitter), with only a faint trace of others.
+# One master "arousal" scalar rises fast while you work and decays slowly when
+# idle, modulating intensity/motion within bounded multipliers; discrete events
+# add small whole-field swells. All responses are whole-field (the pass is
+# occluded by the data, so they only show in the papery margins).
 #
 # The GL draw lives in Renderer.render_background; this module hands it, each
 # frame, a list of (x, y, radius, colour, angle, alpha) + base colour + intensity
 # + a shape id.
 from __future__ import annotations
 
+import colorsys
 import math
 import random
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import Ais.core.config as cfg
 from . import cosmetics
@@ -31,8 +35,9 @@ from . import profile as _profile
 
 Color = Tuple[float, float, float]
 
-PARALLAX = 0.15           # fraction of the camera pan the background follows
-_SHAPE = {"blob": 0, "confetti": 1, "bokeh": 2}
+PARALLAX = 0.15
+FILL_TIME = 16.0          # seconds of activity to fully populate the field
+_SHAPE = {"blob": 0, "lava": 0, "confetti": 1, "bokeh": 2}
 
 A_MAX = 0.70
 DRIVE_GRACE = 0.5
@@ -67,6 +72,8 @@ class _Blob:
 _blobs: List[_Blob] = []
 _cur_style = ""
 _cur_n = 0
+_cur_w = 0
+_cur_h = 0
 _bt = 0.0
 _recolor_accum = 0.0
 _energy = 0.0
@@ -74,6 +81,7 @@ _event = 0.0
 _wash = 0.0
 _wash_color: Color = (1.0, 1.0, 1.0)
 _E = 0.0
+_awake = 0.0             # how many shapes have woken up (grows with activity)
 _pending: List[Tuple[str, Color]] = []
 
 
@@ -89,6 +97,14 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
+def _hue_jitter(c: Color, amp: float = 0.035) -> Color:
+    h, s, v = colorsys.rgb_to_hsv(*c)
+    h = (h + random.uniform(-amp, amp)) % 1.0
+    s = _clamp(s + random.uniform(-0.06, 0.06), 0.0, 1.0)
+    v = _clamp(v + random.uniform(-0.05, 0.05), 0.0, 1.0)
+    return colorsys.hsv_to_rgb(h, s, v)
+
+
 def _default_palette() -> List[Color]:
     return [(0.42, 0.52, 0.90), (0.90, 0.52, 0.62), (0.48, 0.80, 0.66), (0.92, 0.78, 0.42)]
 
@@ -99,7 +115,9 @@ def _palette() -> List[Color]:
     return cols or [_soft_color(c) for c in _default_palette()]
 
 
-def _weighted_target() -> Color:
+def _target_color() -> Color:
+    # Strongly favour the ACTIVE feature; only a faint trace of others. Small hue
+    # jitter keeps it lively without wandering off the active feature's colour.
     p = _profile.get_profile()
     active = None
     if cfg.se_active_frame is not None and getattr(cfg.se_active_frame, "active_feature", None) is not None:
@@ -108,20 +126,23 @@ def _weighted_target() -> Color:
     for name, c in p.colors.items():
         if p.skill_xp(name) <= 0:
             continue
-        w = 0.05 + math.exp(-events.time_since_feature(name) / 12.0)
         if name == active:
-            w *= 1.6
+            w = 6.0
+        else:
+            w = 0.03 + 0.5 * math.exp(-events.time_since_feature(name) / 8.0)
         weighted.append((w, _soft_color(c)))
     if not weighted:
-        return random.choice(_palette())
+        return _hue_jitter(random.choice(_palette()))
     total = sum(w for w, _ in weighted)
     r = random.uniform(0.0, total)
     acc = 0.0
+    chosen = weighted[-1][1]
     for w, col in weighted:
         acc += w
         if r <= acc:
-            return col
-    return weighted[-1][1]
+            chosen = col
+            break
+    return _hue_jitter(chosen)
 
 
 def pulse(kind: str, color) -> None:
@@ -137,33 +158,44 @@ def _params() -> dict:
     return cosmetics.params(cosmetics.BACKGROUND)
 
 
-def _spawn(w: int, h: int, rmin: float, rmax: float, lifecycle: bool) -> _Blob:
-    c = _weighted_target()
+def _spawn(w: int, h: int, rmin: float, rmax: float, style: str) -> _Blob:
+    c = _target_color()
+    lifecycle = style in ("confetti", "bokeh")
+    if style == "lava":
+        vx, vy = random.uniform(-3, 3), random.choice((-1.0, 1.0)) * random.uniform(7, 14)
+    elif lifecycle:
+        vx, vy = random.uniform(-6, 6), random.uniform(-6, 6)
+    else:
+        vx, vy = random.uniform(-16, 16), random.uniform(-16, 16)
     return _Blob(
         x=random.uniform(0, w), y=random.uniform(0, h),
-        vx=random.uniform(-6, 6) if lifecycle else random.uniform(-16, 16),
-        vy=random.uniform(-6, 6) if lifecycle else random.uniform(-16, 16),
+        vx=vx, vy=vy,
         r=random.uniform(rmin, rmax),
         color=c, color_target=c,
         phase=random.uniform(0, 6.28),
-        breathe=random.uniform(0.15, 0.4),
+        breathe=random.uniform(0.2, 0.5) if style == "lava" else random.uniform(0.15, 0.4),
         angle=random.uniform(-0.6, 0.6),
         spin=random.uniform(-0.25, 0.25),
         alpha=0.0 if lifecycle else 1.0,
-        life_age=random.uniform(0.0, 5.0),   # desync so they don't pulse together
+        life_age=0.0,
         life_span=random.uniform(4.0, 9.0),
     )
 
 
 def _ensure(w: int, h: int, style: str, n: int, rmin: float, rmax: float) -> None:
-    global _cur_style, _cur_n
+    global _cur_style, _cur_n, _cur_w, _cur_h
     if _blobs and _cur_style == style and _cur_n == n:
+        if _cur_w > 0 and (_cur_w != w or _cur_h != h):
+            sx, sy = w / _cur_w, h / _cur_h    # follow window resizes
+            for b in _blobs:
+                b.x *= sx
+                b.y *= sy
+        _cur_w, _cur_h = w, h
         return
     _blobs.clear()
-    lifecycle = style in ("confetti", "bokeh")
     for _ in range(n):
-        _blobs.append(_spawn(w, h, rmin, rmax, lifecycle))
-    _cur_style, _cur_n = style, n
+        _blobs.append(_spawn(w, h, rmin, rmax, style))
+    _cur_style, _cur_n, _cur_w, _cur_h = style, n, w, h
 
 
 def _life_alpha(frac: float) -> float:
@@ -175,7 +207,7 @@ def _life_alpha(frac: float) -> float:
 
 
 def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> None:
-    global _bt, _recolor_accum, _energy, _event, _wash, _wash_color, _E
+    global _bt, _recolor_accum, _energy, _event, _wash, _wash_color, _E, _awake
     if dt > 0.1:
         dt = 0.1
     lifecycle = style in ("confetti", "bokeh")
@@ -185,7 +217,7 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> No
         _event += _KICK[kind] * (1.0 - _clamp(_energy + _event, 0.0, 1.0))
         if not lifecycle:
             for b in random.sample(_blobs, min(_RETARGET[kind], len(_blobs))):
-                b.color_target = col
+                b.color_target = _hue_jitter(col)
         if kind == "levelup":
             _wash = 1.0
             _wash_color = col
@@ -200,19 +232,22 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> No
     _E = _clamp(_energy + _event, 0.0, 1.0)
     _bt += (1.0 + 0.3 * _E) * dt
 
+    # wake shapes in as the user works; the field starts empty on launch
+    if _E > 0.06:
+        _awake = min(float(len(_blobs)), _awake + dt * len(_blobs) / FILL_TIME)
+
     if lifecycle:
-        # cards/discs fade in and out roughly in place, then respawn
         rate = 1.0 + 0.5 * _E
         for b in _blobs:
             b.life_age += dt * rate
             if b.life_age >= b.life_span:
-                nb = _spawn(w, h, rmin, rmax, True)
+                nb = _spawn(w, h, rmin, rmax, style)
                 b.x, b.y, b.vx, b.vy, b.r = nb.x, nb.y, nb.vx, nb.vy, nb.r
                 b.color = nb.color
                 b.angle, b.spin = nb.angle, nb.spin
                 b.life_age, b.life_span = 0.0, nb.life_span
             b.alpha = _life_alpha(b.life_age / b.life_span)
-            b.x += b.vx * dt          # only a tiny drift
+            b.x += b.vx * dt
             b.y += b.vy * dt
             b.angle += b.spin * dt
     else:
@@ -232,7 +267,7 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> No
         _recolor_accum += dt
         if _recolor_accum >= (12.0 - 7.0 * _E) and _blobs:
             _recolor_accum = 0.0
-            random.choice(_blobs).color_target = _weighted_target()
+            random.choice(_blobs).color_target = _target_color()
 
 
 def frame(dt: float, w: int, h: int, camera):
@@ -258,7 +293,10 @@ def frame(dt: float, w: int, h: int, camera):
     py = -camera.position[1] * camera.zoom * PARALLAX
 
     out = []
-    for b in _blobs:
+    for i, b in enumerate(_blobs):
+        wake = _clamp(_awake - i, 0.0, 1.0)   # empty at launch; shapes fade in with use
+        if wake <= 0.0:
+            continue
         if lifecycle:
             rad = b.r * size_mul
         else:
@@ -266,13 +304,13 @@ def frame(dt: float, w: int, h: int, camera):
         col = (b.color[0] + (_wash_color[0] - b.color[0]) * wmix,
                b.color[1] + (_wash_color[1] - b.color[1]) * wmix,
                b.color[2] + (_wash_color[2] - b.color[2]) * wmix)
-        out.append((b.x + px, b.y + py, rad, col, b.angle, b.alpha))
+        out.append((b.x + px, b.y + py, rad, col, b.angle, b.alpha * wake))
     base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
     return out, base, intensity, _SHAPE.get(style, 0)
 
 
 def clear() -> None:
-    global _bt, _energy, _event, _wash, _cur_style, _cur_n
+    global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake
     _blobs.clear()
     _bt = 0.0
     _energy = 0.0
@@ -280,4 +318,7 @@ def clear() -> None:
     _wash = 0.0
     _cur_style = ""
     _cur_n = 0
+    _cur_w = 0
+    _cur_h = 0
+    _awake = 0.0
     _pending.clear()
