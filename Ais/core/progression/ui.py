@@ -112,7 +112,7 @@ def emit_box_burst(cx: float, cy: float, size_px: float, color: Color, skill_lev
     if tier is None or tier.box_burst_n <= 0:
         return
     prm = cosmetics.params(cosmetics.BURST)
-    particles.emit_box_outline_burst(cx, cy, size_px, color, n=tier.box_burst_n * 2, h_amp=tier.hue_amp, world=True,
+    particles.emit_box_outline_burst(cx, cy, size_px, color, n=tier.box_burst_n, h_amp=tier.hue_amp, world=True,
                                      palette=prm.get("palette", "feature"), size_mul=prm.get("size_mul", 1.0))
 
 

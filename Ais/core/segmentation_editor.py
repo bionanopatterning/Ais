@@ -467,7 +467,7 @@ class SegmentationEditor:
                                 pass  # bit experimental still. TODO: fix error thrown when flood fill ROI partially falls outside image.
                         else:
                             Brush.apply_circular(active_feature, pixel_coordinate, True)
-                        progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy))
+                        progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
                         progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
@@ -476,7 +476,7 @@ class SegmentationEditor:
                         if imgui.is_mouse_clicked(0):
                             active_feature.add_box(pixel_coordinate)
                             _skill_lvl_box = progression.get_profile().skill_level(active_feature.title)
-                            progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]))
+                            progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
                             progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)

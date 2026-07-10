@@ -77,6 +77,7 @@ def award(
     color: Optional[Color] = None,
     rate_limit: bool = False,
     cursor_pos: Optional[Tuple[float, float]] = None,
+    orb_radius: float = 0.0,
 ) -> None:
     if xp <= 0 or not skill:
         return
@@ -126,11 +127,11 @@ def award(
     if after > before:
         p.add_coins(LEVELUP_COIN * after)
 
-    # XP orbs fly from the interaction point into the HUD
+    # XP orbs fly from the cursor's brush/box rim into the HUD
     if cursor_pos is not None and cfg.settings.get("PERK_XP_ORBS", True):
         _oc = tuple(color) if color is not None else p.skill_color(skill)
         _on = max(1, min(8, 1 + xp // 4))
-        orbs.emit(float(cursor_pos[0]), float(cursor_pos[1]), _oc, _on, skill)
+        orbs.emit(float(cursor_pos[0]), float(cursor_pos[1]), _oc, _on, skill, radius=orb_radius)
 
     now_mono = time.monotonic()
     global _global_last_award_t

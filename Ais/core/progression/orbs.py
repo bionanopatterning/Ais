@@ -47,19 +47,22 @@ _targets: Dict[str, Tuple[float, float]] = {}
 _impacts: Dict[str, float] = {}
 
 
-def emit(sx: float, sy: float, feature_color: Color, n: int, feature: str) -> None:
+def emit(sx: float, sy: float, feature_color: Color, n: int, feature: str, radius: float = 0.0) -> None:
+    # Orbs are born on the rim of the brush/box cursor (radius px), flung slightly
+    # outward, then home to the HUD. radius 0 -> born at the point itself.
     prm = cosmetics.params(cosmetics.ORB)
     palette = prm.get("palette", "feature")
     size_mul = prm.get("size_mul", 1.0)
     t = time.monotonic()   # stagger births so a multi-orb gain trickles out
     for _ in range(n):
         ang = random.uniform(0.0, 2.0 * math.pi)
+        ca, sa = math.cos(ang), math.sin(ang)
         spd = random.uniform(40.0, 120.0)
         _orbs.append(_Orb(
-            x=sx + random.uniform(-4, 4),
-            y=sy + random.uniform(-4, 4),
-            vx=math.cos(ang) * spd,
-            vy=math.sin(ang) * spd - 40.0,   # slight upward pop
+            x=sx + ca * radius + random.uniform(-3, 3),
+            y=sy + sa * radius + random.uniform(-3, 3),
+            vx=ca * spd,               # fling outward from the rim
+            vy=sa * spd - 30.0,        # slight upward pop
             color=particles.palette_color(palette, feature_color),
             size=random.uniform(2.8, 3.8) * size_mul,
             feature=feature,
