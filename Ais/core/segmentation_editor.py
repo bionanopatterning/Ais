@@ -4130,7 +4130,9 @@ class Renderer:
         self.background_blob_shader.unbind()
         glEnable(GL_BLEND)
         glDepthMask(GL_TRUE)
-        glEnable(GL_DEPTH_TEST)
+        # leave depth test DISABLED: the 2D frame/brush/box pass draws in
+        # painter's order and must not depth-cull against the tomogram.
+        glDisable(GL_DEPTH_TEST)
 
     def render_overlay(self, se_frame, camera, blend_mode, alpha):
         if se_frame.overlay is None:
