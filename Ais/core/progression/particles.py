@@ -199,6 +199,31 @@ def emit_confetti(screen_w: int, color: Color, n: int = 55, palette: str = "feat
     _clamp_pool()
 
 
+def emit_confetti_burst(cx: float, cy: float, n: int = 40) -> None:
+    """Multicolour confetti popping outward from a screen point (e.g. a button)."""
+    for _ in range(n):
+        ang = random.uniform(0.0, 2.0 * math.pi)
+        spd = random.uniform(80.0, 340.0)
+        _particles.append(Particle(
+            x=cx,
+            y=cy,
+            vx=math.cos(ang) * spd,
+            vy=math.sin(ang) * spd - 70.0,          # bias the pop upward
+            age=0.0,
+            lifetime=random.uniform(1.1, 2.4) * CONFETTI_LIFETIME_MUL,
+            color=colorsys.hsv_to_rgb(random.random(), random.uniform(0.75, 0.95), 1.0),  # all colours
+            size=random.uniform(3.0, 6.0) * CONFETTI_SIZE_MUL,
+            gravity=random.uniform(180.0, 260.0),
+            drag=0.35,
+            spin=random.uniform(-8.0, 8.0),
+            angle=random.uniform(0.0, 2.0 * math.pi),
+            kind="confetti",
+            world=False,
+            fade_bias=random.uniform(-0.09, 0.09),
+        ))
+    _clamp_pool()
+
+
 def emit_burst(cx: float, cy: float, color: Color, n: int = 40) -> None:
     """Firework-like radial spark burst at a screen point."""
     for _ in range(n):

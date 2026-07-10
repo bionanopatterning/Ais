@@ -12,6 +12,7 @@ from Ais.core.util import clamp, bin_mrc
 from Ais.core import progression
 import pyperclip
 import os
+import math
 import subprocess
 import shutil
 from time import sleep
@@ -119,6 +120,8 @@ class SegmentationEditor:
     PATH_VIEWER_OPEN_REPLACE = ""
     SHOW_IMGUI_DEBUG = False
 
+    MENU_BAR_END_X = 400.0          # x where the main menu bar items end (party buttons anchor here)
+    MENU_BAR_H = 22.0
     FEATURE_LIB_OPEN = False
     FEATURE_LIB_OPEN_INCLUDE_SESSION = False
     FEATURE_LIB_ANNOTATION = True   # whether the feature library panel shows the annotation (True) or the rendering (False) settings.
@@ -2340,6 +2343,8 @@ class SegmentationEditor:
                 if imgui.begin_menu("Controls"):
                     imgui.text(cfg.controls_info_text)
                     imgui.end_menu()
+                SegmentationEditor.MENU_BAR_END_X = imgui.get_cursor_screen_pos()[0]
+                SegmentationEditor.MENU_BAR_H = imgui.get_window_height()
                 imgui.end_main_menu_bar()
 
             imgui.pop_style_color(6)
@@ -2998,23 +3003,32 @@ class SegmentationEditor:
             self.trainset_feature_selection.pop(key)
 
     def render_party_buttons(self):
-        # Two frosted-glass circular buttons, bottom-right: toggle Party mode
-        # (the progression system) and open the feature library. No labels.
-        D, G, M = 44.0, 12.0, 18.0
-        win_w, win_h = 2.0 * D + G, D
+        # Three frosted-glass circular buttons at the top-left, just right of the
+        # main menu bar: toggle Party mode, toggle dark mode, open the feature
+        # library. No labels.
+        D, G = 40.0, 10.0
+        win_w, win_h = 3.0 * D + 2.0 * G, D
         imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (0, 0))
         imgui.push_style_var(imgui.STYLE_ITEM_SPACING, (0, 0))
         imgui.push_style_var(imgui.STYLE_WINDOW_BORDERSIZE, 0.0)
-        imgui.set_next_window_position(cfg.window_width - M - win_w, cfg.window_height - M - win_h, imgui.ALWAYS)
+        imgui.set_next_window_position(SegmentationEditor.MENU_BAR_END_X + 14.0, SegmentationEditor.MENU_BAR_H + 4.0, imgui.ALWAYS)
         imgui.set_next_window_size(win_w, win_h)
         imgui.begin("##party_buttons", False,
                     imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE
                     | imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_SAVED_SETTINGS
                     | imgui.WINDOW_NO_FOCUS_ON_APPEARING | imgui.WINDOW_NO_NAV | imgui.WINDOW_NO_BACKGROUND)
         party_on = not cfg.settings.get("PROGRESSION_HIDE", False)
+        _px, _py = imgui.get_cursor_screen_pos()
         if self._glass_circle_button("##party_toggle", D, "sparkle", party_on, (0.98, 0.78, 0.30)):
             cfg.edit_setting("PROGRESSION_HIDE", not cfg.settings["PROGRESSION_HIDE"])
+            progression.particles.emit_confetti_burst(_px + D * 0.5, _py + D * 0.5)
         self.tooltip("Party mode: " + ("on" if party_on else "off"))
+        imgui.same_line(spacing=G)
+        dark_on = cfg.settings.get("DARK_MODE", False)
+        if self._glass_circle_button("##dark_toggle", D, "moon", dark_on, (0.62, 0.72, 1.0)):
+            cfg.edit_setting("DARK_MODE", not cfg.settings["DARK_MODE"])
+            cfg.set_theme(cfg.settings["DARK_MODE"])
+        self.tooltip("Dark mode: " + ("on" if dark_on else "off"))
         imgui.same_line(spacing=G)
         if self._glass_circle_button("##flib_toggle", D, "library", SegmentationEditor.FEATURE_LIB_OPEN, (0.55, 0.78, 1.0)):
             SegmentationEditor.FEATURE_LIB_OPEN = True
@@ -3048,6 +3062,16 @@ class SegmentationEditor:
                 dl.add_quad_filled(cx + ox - s, cy + oy, cx + ox, cy + oy - wv, cx + ox + s, cy + oy, cx + ox, cy + oy + wv, col)
             star(0.0, 0.0, r * 0.52, r * 0.15)
             star(r * 0.44, -r * 0.40, r * 0.20, r * 0.06)
+        elif icon == "moon":  # half-filled circle: a theme / dark-mode toggle
+            ri = r * 0.44
+            dl.add_circle(cx, cy, ri, col, 28, 1.6)
+            prev = None
+            for i in range(13):
+                a = math.pi * 0.5 + math.pi * (i / 12.0)   # bottom -> left -> top = left half
+                pt = (cx + math.cos(a) * ri, cy + math.sin(a) * ri)
+                if prev is not None:
+                    dl.add_triangle_filled(cx, cy, prev[0], prev[1], pt[0], pt[1], col)
+                prev = pt
         else:  # "library" - a 2x2 grid of rounded tiles
             g, gap = r * 0.17, r * 0.07
             step = g + gap

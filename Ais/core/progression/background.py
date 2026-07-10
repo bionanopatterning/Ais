@@ -286,9 +286,11 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
         kind, col = _pending.pop(0)
         _event += _KICK[kind] * (1.0 - _clamp(_energy + _event, 0.0, 1.0))
         # the active feature's colour is boss: on any annotation the whole field
-        # retargets to it and migrates there smoothly via the colour lerp below.
-        for b in _blobs:
-            b.color_target = _hue_jitter(col)
+        # retargets to it and migrates there via the colour lerp below. Bokeh is
+        # exempt - each disc keeps the colour it was born with.
+        if not lifecycle:
+            for b in _blobs:
+                b.color_target = _hue_jitter(col)
         if kind == "levelup":
             _wash = 1.0
             _wash_color = col
@@ -310,19 +312,16 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
     if lifecycle:
         rate = 1.0 + 0.5 * _E
         damp = _AVOID_DAMP ** dt
-        kc = 1.0 - math.exp(-dt / TAU_COLOR)
         for b in _blobs:
             b.life_age += dt * rate
             if b.life_age >= b.life_span:
+                # respawn in the current active colour, then keep it for life
                 nb = _spawn(w, h, rmin, rmax, style, life_mul)
                 b.x, b.y, b.vx, b.vy, b.r = nb.x, nb.y, nb.vx, nb.vy, nb.r
-                b.color, b.color_target = nb.color, nb.color_target
+                b.color = nb.color
                 b.angle, b.spin = nb.angle, nb.spin
                 b.life_age, b.life_span = 0.0, nb.life_span
             b.alpha = _life_alpha(b.life_age / b.life_span)
-            b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
-                       b.color[1] + (b.color_target[1] - b.color[1]) * kc,
-                       b.color[2] + (b.color_target[2] - b.color[2]) * kc)
             # gently avoid the cursor, heavily damped so they come to rest quickly
             if cursor_bs is not None:
                 dx, dy = b.x - cursor_bs[0], b.y - cursor_bs[1]
@@ -353,11 +352,12 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
             elif b.y > h + m: b.y = -m
 
     # ambient colour drift: bias the field toward the active feature over a few
-    # seconds even without discrete events (e.g. while brushing).
-    _recolor_accum += dt
-    if _blobs and _recolor_accum >= (8.0 - 5.0 * _E):
-        _recolor_accum = 0.0
-        random.choice(_blobs).color_target = _target_color()
+    # seconds even without discrete events (e.g. while brushing). Bokeh is exempt.
+    if not lifecycle:
+        _recolor_accum += dt
+        if _blobs and _recolor_accum >= (8.0 - 5.0 * _E):
+            _recolor_accum = 0.0
+            random.choice(_blobs).color_target = _target_color()
 
 
 def frame(dt: float, w: int, h: int, camera, cursor=None):
