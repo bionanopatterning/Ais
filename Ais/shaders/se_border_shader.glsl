@@ -20,8 +20,9 @@ void main()
 out vec4 fragmentColour;
 in vec2 fXY;
 uniform float alpha;
+uniform vec3 borderColour;
 
 void main()
 {
-    fragmentColour = vec4(0.0, 0.0, 0.0, alpha);
+    fragmentColour = vec4(borderColour, alpha);
 }

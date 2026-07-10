@@ -581,23 +581,8 @@ class SegmentationEditor:
         cfg.se_active_frame.transform.translation = [world_position[0] + cfg.se_active_frame.transform.translation[0], world_position[1] + cfg.se_active_frame.transform.translation[1]]
 
     @staticmethod
-    def _push_feature_slider_colour(colour):
-        # In dark mode, tint a feature's sliders (grab, track, border) with its own colour. Returns pushed count.
-        if not cfg.settings.get("DARK_MODE", False):
-            return 0
-        c = tuple(float(x) for x in colour[:3])
-        hi = (min(1.0, c[0] + 0.25), min(1.0, c[1] + 0.25), min(1.0, c[2] + 0.25))
-        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB, *c, 1.0)
-        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB_ACTIVE, *hi, 1.0)
-        imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, c[0] * 0.22, c[1] * 0.22, c[2] * 0.22, 0.96)
-        imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_HOVERED, c[0] * 0.30, c[1] * 0.30, c[2] * 0.30, 0.96)
-        imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_ACTIVE, c[0] * 0.30, c[1] * 0.30, c[2] * 0.30, 0.96)
-        imgui.push_style_color(imgui.COLOR_BORDER, *c, 0.65)
-        return 6
-
-    @staticmethod
     def _push_slider_grab(colour):
-        # In dark mode, colour just the slider grab handles - safe to wrap a whole card. Returns pushed count.
+        # In dark mode, colour a feature/model's slider grab handles with its own colour. Returns pushed count.
         if not cfg.settings.get("DARK_MODE", False):
             return 0
         c = tuple(float(x) for x in colour[:3])
@@ -607,12 +592,13 @@ class SegmentationEditor:
         return 2
 
     @staticmethod
-    def _push_card_border(colour, active):
-        # In dark mode, outline the active feature/model card with its own colour. Returns pushed count.
-        if not (active and cfg.settings.get("DARK_MODE", False)):
-            return 0
-        imgui.push_style_color(imgui.COLOR_BORDER, *tuple(float(x) for x in colour[:3]), 0.9)
-        return 1
+    def _frame_border_colour(se_frame):
+        # The GL outline around the tomogram slice takes the active feature's colour;
+        # falls back to a theme-appropriate neutral when nothing is being annotated.
+        af = getattr(se_frame, "active_feature", None)
+        if af is not None:
+            return tuple(float(x) for x in af.colour[:3])
+        return (0.85, 0.85, 0.88) if cfg.settings.get("DARK_MODE", False) else (0.0, 0.0, 0.0)
 
     @staticmethod
     def save_dataset(dialog=False):
@@ -902,13 +888,10 @@ class SegmentationEditor:
                         return
                     features = cfg.se_active_frame.features
                     for f in features:
-                        pop_active_colour = 0
+                        pop_active_colour = False
                         if cfg.se_active_frame.active_feature == f:
                             imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *cfg.COLOUR_FRAME_ACTIVE)
-                            pop_active_colour = 1
-                            if cfg.settings.get("DARK_MODE", False):
-                                imgui.push_style_color(imgui.COLOR_BORDER, *tuple(float(x) for x in f.colour[:3]), 0.9)
-                                pop_active_colour = 2
+                            pop_active_colour = True
                         imgui.begin_child(f"##feat_{f.uid}", 0.0, SegmentationEditor.FEATURE_PANEL_HEIGHT + 16 * f.magic, True)
                         cw = imgui.get_content_region_available_width()
 
@@ -941,7 +924,7 @@ class SegmentationEditor:
                         imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                         imgui.push_item_width(cw - 40)
                         pxs = cfg.se_active_frame.pixel_size
-                        _nsc = SegmentationEditor._push_feature_slider_colour(f.colour)
+                        _nsc = SegmentationEditor._push_slider_grab(f.colour)
                         _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{f.brush_size:.1f} px / {f.brush_size * pxs:.1f} nm ")
                         if f.magic:
                             _, f.magic_strength = imgui.slider_float("flood", f.magic_strength, 1.0, 100.0, format=f"{f.magic_strength:.1f}%% sensitivity")
@@ -1045,7 +1028,7 @@ class SegmentationEditor:
 
                         imgui.pop_style_var(5)
                         if pop_active_colour:
-                            imgui.pop_style_color(pop_active_colour)
+                            imgui.pop_style_color(1)
 
                         if delete_feature:
                             cfg.se_active_frame.features.remove(f)
@@ -1170,7 +1153,6 @@ class SegmentationEditor:
                     elif m.active_tab == 2:
                         panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_LOGIC + 57 * len(m.interactions) - 20 * (len(cfg.se_models) < 2)
                     panel_height += 10 if m.background_process_train is not None else 0
-                    _mborder = SegmentationEditor._push_card_border(m.colour, cfg.se_active_model == m)
                     imgui.begin_child(f"SEModel_{m.uid}", 0.0, panel_height, True, imgui.WINDOW_NO_SCROLLBAR)
                     cw = imgui.get_content_region_available_width()
                     _mgrab = SegmentationEditor._push_slider_grab(m.colour)
@@ -1498,8 +1480,6 @@ class SegmentationEditor:
                     if _mgrab:
                         imgui.pop_style_color(_mgrab)
                     imgui.end_child()
-                    if _mborder:
-                        imgui.pop_style_color(_mborder)
                     imgui.pop_id()
                 cw = imgui.get_content_region_available_width()
                 imgui.new_line()
@@ -3770,6 +3750,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", 0)
         self.border_shader.uniform1f("alpha", 1.0)
+        self.border_shader.uniform3f("borderColour", SegmentationEditor._frame_border_colour(se_frame))
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -3823,6 +3804,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", 0)
         self.border_shader.uniform1f("alpha", 1.0)
+        self.border_shader.uniform3f("borderColour", SegmentationEditor._frame_border_colour(se_frame))
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -3836,6 +3818,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", (se_frame.current_slice - se_frame.n_slices / 2))
         self.border_shader.uniform1f("alpha", SegmentationEditor.PICKING_FRAME_ALPHA)
+        self.border_shader.uniform3f("borderColour", SegmentationEditor._frame_border_colour(se_frame))
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
