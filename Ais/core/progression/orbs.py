@@ -25,6 +25,7 @@ ACCEL = 3000.0          # px/s^2 ramp while homing
 MAX_SPEED = 1500.0
 STRANDED_S = 1.6        # give up if the target row never appears
 PULSE_S = 0.35          # bar-flash duration after an orb lands
+STAGGER_S = (0.02, 0.06)   # per-orb birth spacing so a burst trickles out
 
 
 @dataclass
@@ -36,6 +37,7 @@ class _Orb:
     color: Color
     size: float
     feature: str
+    spawn_at: float = 0.0   # monotonic time this orb becomes active
     age: float = 0.0
     homing_t: float = 0.0
 
@@ -49,6 +51,7 @@ def emit(sx: float, sy: float, feature_color: Color, n: int, feature: str) -> No
     prm = cosmetics.params(cosmetics.ORB)
     palette = prm.get("palette", "feature")
     size_mul = prm.get("size_mul", 1.0)
+    t = time.monotonic()   # stagger births so a multi-orb gain trickles out
     for _ in range(n):
         ang = random.uniform(0.0, 2.0 * math.pi)
         spd = random.uniform(40.0, 120.0)
@@ -60,7 +63,9 @@ def emit(sx: float, sy: float, feature_color: Color, n: int, feature: str) -> No
             color=particles.palette_color(palette, feature_color),
             size=random.uniform(2.8, 3.8) * size_mul,
             feature=feature,
+            spawn_at=t,
         ))
+        t += random.uniform(*STAGGER_S)
     if len(_orbs) > MAX_ORBS:
         del _orbs[: len(_orbs) - MAX_ORBS]
 
@@ -82,8 +87,12 @@ def tick(dt: float) -> None:
         return
     if dt > 0.05:
         dt = 0.05
+    now = time.monotonic()
     survivors: List[_Orb] = []
     for o in _orbs:
+        if o.spawn_at > now:
+            survivors.append(o)   # not born yet
+            continue
         o.age += dt
         tgt = _targets.get(o.feature)
         if o.age < DRIFT_S or tgt is None:
@@ -116,8 +125,11 @@ def tick(dt: float) -> None:
 def draw() -> None:
     if not _orbs:
         return
+    now = time.monotonic()
     dl = imgui.get_foreground_draw_list()
     for o in _orbs:
+        if o.spawn_at > now:
+            continue   # not born yet
         r, g, b = o.color
         # homing orbs stretch slightly toward the bar via a faint trailing glow
         dl.add_circle_filled(o.x, o.y, o.size * 2.0, imgui.get_color_u32_rgba(r, g, b, 0.18), 12)
