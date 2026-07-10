@@ -4062,7 +4062,13 @@ class Renderer:
                 vertices += [*line[1], *line[2][:3]]
                 indices += [2*i, 2*i+1]
                 i += 1
-            self.line_va.update(VertexBuffer(vertices), IndexBuffer(indices))
+            # Reuse the VA's GL buffers each frame rather than allocating new
+            # VertexBuffer/IndexBuffer objects (which leaked their GL buffers).
+            if self.line_va.vertexBuffer is None:
+                self.line_va.update(VertexBuffer(vertices), IndexBuffer(indices))
+            else:
+                self.line_va.vertexBuffer.update(vertices)
+                self.line_va.indexBuffer.update(indices)
 
             # launch
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
