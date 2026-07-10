@@ -1248,6 +1248,7 @@ class SegmentationEditor:
                                     model_path = filedialog.askopenfilename(filetypes=[("Ais model", f"{cfg.filetype_semodel}")])
                                     if model_path != "":
                                         m.load(model_path)
+                                        cfg.push_recent("RECENT_MODELS", model_path)
                             imgui.same_line(spacing=8)
                             block_save_button = False
                             if m.model is None:
