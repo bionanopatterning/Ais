@@ -241,10 +241,13 @@ def tick(dt: float) -> None:
     _particles[:] = survivors
 
 
-def draw(camera=None) -> None:
+def draw(camera=None, screen_h: float = 0.0) -> None:
     if not _particles:
         return
     dl = imgui.get_foreground_draw_list()
+    # confetti fades out as it falls past mid-screen instead of raining to the bottom
+    fade_start = screen_h * 0.40
+    fade_end = screen_h * 0.60
     # World->screen affine (from the 2D camera), precomputed once for the frame.
     m00 = m01 = m03 = m10 = m11 = m13 = hw = hh = 0.0
     if camera is not None:
@@ -265,6 +268,8 @@ def draw(camera=None) -> None:
             px, py, psize = p.x, p.y, p.size
         u = max(0.0, 1.0 - (p.age / p.lifetime))
         a = u * u
+        if screen_h > 0.0 and p.kind.startswith("confetti") and fade_end > fade_start:
+            a *= max(0.0, min(1.0, (fade_end - py) / (fade_end - fade_start)))
         col = imgui.get_color_u32_rgba(p.color[0], p.color[1], p.color[2], a)
         if p.kind == "confetti":
             s = psize

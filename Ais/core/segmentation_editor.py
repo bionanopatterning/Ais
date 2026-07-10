@@ -336,7 +336,7 @@ class SegmentationEditor:
             if not cfg.settings.get("PROGRESSION_HIDE", False):
                 _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera)
                 if _bg is not None:
-                    SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height))
+                    SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
             self.gui_main()
             SegmentationEditor.renderer.render_draw_list(self.camera)
             self.input()
@@ -348,7 +348,7 @@ class SegmentationEditor:
                 progression.render_level_up(self.window.width, self.window.height)
             progression.render_profile_panel()
             if not _prog_hidden:
-                progression.draw_particles(self.camera)
+                progression.draw_particles(self.camera, self.window.height)
             progression.maybe_save()
 
         imgui.render()
@@ -4105,9 +4105,10 @@ class Renderer:
     def render_draw_list(self, camera):
         self.render_lines(camera)
 
-    def render_background(self, blobs, base_col, intensity, res):
-        # Fullscreen papery base with soft feature-colour blobs, drawn right after
-        # the clear so the tomogram and annotations render on top of it.
+    def render_background(self, blobs, base_col, intensity, res, shape=0):
+        # Fullscreen papery base with soft feature-colour blobs / cards, drawn
+        # right after the clear so the tomogram and annotations render on top.
+        # blobs = [(x, y, radius, rgb, angle, alpha)]
         if self.background_blob_shader is None or not blobs:
             return
         glDisable(GL_DEPTH_TEST)
@@ -4117,13 +4118,16 @@ class Renderer:
         self.background_blob_shader.uniform2f("uRes", res)
         self.background_blob_shader.uniform3f("uBase", base_col)
         self.background_blob_shader.uniform1f("uIntensity", intensity)
+        self.background_blob_shader.uniform1i("uShape", shape)
         n = min(16, len(blobs))
         self.background_blob_shader.uniform1i("uN", n)
         for i in range(n):
-            bx, by, br, bc = blobs[i]
+            bx, by, br, bc, bang, balp = blobs[i]
             self.background_blob_shader.uniform2f(f"uPos[{i}]", (bx, by))
             self.background_blob_shader.uniform1f(f"uRad[{i}]", br)
             self.background_blob_shader.uniform3f(f"uCol[{i}]", bc)
+            self.background_blob_shader.uniform1f(f"uAng[{i}]", bang)
+            self.background_blob_shader.uniform1f(f"uAlp[{i}]", balp)
         self.ndc_screen_va.bind()
         glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.ndc_screen_va.unbind()

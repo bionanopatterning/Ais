@@ -90,8 +90,8 @@ def tick_particles(dt: float) -> None:
     orbs.tick(dt)
 
 
-def draw_particles(camera=None) -> None:
-    particles.draw(camera)
+def draw_particles(camera=None, screen_h: float = 0.0) -> None:
+    particles.draw(camera, screen_h)
     orbs.draw()
 
 

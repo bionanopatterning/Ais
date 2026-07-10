@@ -1,22 +1,26 @@
-# Living background: soft feature-colour blobs rendered in a GL pre-pass BEHIND
-# the tomogram (fills the empty papery space; the data draws over it). Mostly
-# screen-space, with a slight camera parallax. Opt-in via the Background cosmetic.
+# Living background: feature-colour shapes rendered in a GL pre-pass BEHIND the
+# tomogram (fills the empty papery space; the data draws over it). Mostly screen-
+# space with a slight camera parallax. Opt-in via the Background cosmetic.
+#
+# Styles (from the equipped cosmetic's params):
+#   "blob"     - soft drifting gaussian washes (Aurora / Nebula)
+#   "confetti" - large soft-edged cards that fade in and out roughly in place
+#   "bokeh"    - crisp discs that fade in and out roughly in place
 #
 # It is RESPONSIVE to annotation via one master "arousal" scalar (_energy) that
 # rises fast while you work and decays slowly when idle, plus a recency-weighted
-# feature palette and small transient kicks from discrete events (box/copy/level
-# -up). Every channel is a bounded multiplier on the calm baseline, so even at
-# full energy it stays subtle. Because the pass is occluded by the data, all
-# responses are whole-field (they only show in the papery margins).
+# feature palette and small transient kicks from discrete events. Every channel
+# is a bounded multiplier on the calm baseline, so even at full energy it stays
+# subtle. Because the pass is occluded by the data, all responses are whole-field.
 #
-# This module holds the state and hands the renderer a list of (x, y, radius,
-# colour) plus the papery base colour and an intensity each frame; the GL draw
-# lives in Renderer.render_background.
+# The GL draw lives in Renderer.render_background; this module hands it, each
+# frame, a list of (x, y, radius, colour, angle, alpha) + base colour + intensity
+# + a shape id.
 from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import Ais.core.config as cfg
@@ -27,17 +31,17 @@ from . import profile as _profile
 
 Color = Tuple[float, float, float]
 
-N_BLOBS = 8
-PARALLAX = 0.08            # fraction of the camera pan the background follows
+PARALLAX = 0.15           # fraction of the camera pan the background follows
+_SHAPE = {"blob": 0, "confetti": 1, "bokeh": 2}
 
-A_MAX = 0.70              # ceiling of the continuous arousal drive
-DRIVE_GRACE = 0.5        # seconds after an award that drive stays maxed
-DRIVE_RAMP = 3.5         # drive ramps to 0 over this many more seconds
-TAU_RISE = 1.5           # fast attack on _energy
-TAU_FALL = 12.0          # slow release on _energy
-TAU_EVENT = 2.5          # decay of the discrete-event transient
-TAU_WASH = 6.0           # decay of the level-up colour wash
-TAU_COLOR = 4.0          # per-blob colour crossfade
+A_MAX = 0.70
+DRIVE_GRACE = 0.5
+DRIVE_RAMP = 3.5
+TAU_RISE = 1.5
+TAU_FALL = 12.0
+TAU_EVENT = 2.5
+TAU_WASH = 6.0
+TAU_COLOR = 4.0
 _KICK = {"box": 0.12, "copy": 0.28, "levelup": 0.28}
 _RETARGET = {"box": 1, "copy": 2, "levelup": 2}
 
@@ -53,17 +57,24 @@ class _Blob:
     color_target: Color
     phase: float
     breathe: float
+    angle: float = 0.0
+    spin: float = 0.0
+    alpha: float = 1.0
+    life_age: float = 0.0
+    life_span: float = 1.0
 
 
 _blobs: List[_Blob] = []
-_bt = 0.0                 # breath clock (accumulates at an energy-scaled rate)
+_cur_style = ""
+_cur_n = 0
+_bt = 0.0
 _recolor_accum = 0.0
 _energy = 0.0
 _event = 0.0
 _wash = 0.0
 _wash_color: Color = (1.0, 1.0, 1.0)
-_E = 0.0                  # last E_out, shared between _tick and frame
-_pending: List[Tuple[str, Color]] = []   # (kind, softened colour) from event hooks
+_E = 0.0
+_pending: List[Tuple[str, Color]] = []
 
 
 def _soft(v: float) -> float:
@@ -89,8 +100,6 @@ def _palette() -> List[Color]:
 
 
 def _weighted_target() -> Color:
-    # Pick a target colour weighted toward recently/actively annotated features;
-    # the whole palette stays faintly present via a floor weight.
     p = _profile.get_profile()
     active = None
     if cfg.se_active_frame is not None and getattr(cfg.se_active_frame, "active_feature", None) is not None:
@@ -116,8 +125,6 @@ def _weighted_target() -> Color:
 
 
 def pulse(kind: str, color) -> None:
-    # Called from the box/copy award sites. Queues a whole-field swell + palette
-    # bias; drained on the next _tick (sole owner of the blob list).
     if kind in _KICK:
         _pending.append((kind, _soft_color(color)))
 
@@ -126,106 +133,151 @@ def notify_levelup(ev) -> None:
     _pending.append(("levelup", _soft_color(ev.color)))
 
 
-def _ensure(w: int, h: int) -> None:
-    if _blobs:
+def _params() -> dict:
+    return cosmetics.params(cosmetics.BACKGROUND)
+
+
+def _spawn(w: int, h: int, rmin: float, rmax: float, lifecycle: bool) -> _Blob:
+    c = _weighted_target()
+    return _Blob(
+        x=random.uniform(0, w), y=random.uniform(0, h),
+        vx=random.uniform(-6, 6) if lifecycle else random.uniform(-16, 16),
+        vy=random.uniform(-6, 6) if lifecycle else random.uniform(-16, 16),
+        r=random.uniform(rmin, rmax),
+        color=c, color_target=c,
+        phase=random.uniform(0, 6.28),
+        breathe=random.uniform(0.15, 0.4),
+        angle=random.uniform(-0.6, 0.6),
+        spin=random.uniform(-0.25, 0.25),
+        alpha=0.0 if lifecycle else 1.0,
+        life_age=random.uniform(0.0, 5.0),   # desync so they don't pulse together
+        life_span=random.uniform(4.0, 9.0),
+    )
+
+
+def _ensure(w: int, h: int, style: str, n: int, rmin: float, rmax: float) -> None:
+    global _cur_style, _cur_n
+    if _blobs and _cur_style == style and _cur_n == n:
         return
-    pal = _palette()
-    for _ in range(N_BLOBS):
-        c = random.choice(pal)
-        _blobs.append(_Blob(
-            x=random.uniform(0, w), y=random.uniform(0, h),
-            vx=random.uniform(-16, 16), vy=random.uniform(-16, 16),
-            r=random.uniform(320, 720),
-            color=c, color_target=c,
-            phase=random.uniform(0, 6.28),
-            breathe=random.uniform(0.15, 0.4),
-        ))
+    _blobs.clear()
+    lifecycle = style in ("confetti", "bokeh")
+    for _ in range(n):
+        _blobs.append(_spawn(w, h, rmin, rmax, lifecycle))
+    _cur_style, _cur_n = style, n
 
 
-def _tick(dt: float, w: int, h: int) -> None:
+def _life_alpha(frac: float) -> float:
+    if frac < 0.18:
+        return frac / 0.18
+    if frac > 0.72:
+        return max(0.0, (1.0 - frac) / 0.28)
+    return 1.0
+
+
+def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float) -> None:
     global _bt, _recolor_accum, _energy, _event, _wash, _wash_color, _E
     if dt > 0.1:
         dt = 0.1
+    lifecycle = style in ("confetti", "bokeh")
 
-    # drain discrete-event hooks: saturating kick to _event, palette bias, wash
     while _pending:
         kind, col = _pending.pop(0)
         _event += _KICK[kind] * (1.0 - _clamp(_energy + _event, 0.0, 1.0))
-        for b in random.sample(_blobs, min(_RETARGET[kind], len(_blobs))):
-            b.color_target = col
+        if not lifecycle:
+            for b in random.sample(_blobs, min(_RETARGET[kind], len(_blobs))):
+                b.color_target = col
         if kind == "levelup":
             _wash = 1.0
             _wash_color = col
 
-    # continuous drive from time-since-any-award: fast attack, slow release
     idle = events.time_since_last_award()
     a = A_MAX * _clamp(1.0 - (idle - DRIVE_GRACE) / DRIVE_RAMP, 0.0, 1.0)
     tau = TAU_RISE if a > _energy else TAU_FALL
     _energy += (a - _energy) * (1.0 - math.exp(-dt / tau))
-    # idle-envelope guard: can never stay bright once genuinely away
     _energy = min(_energy, math.exp(-max(0.0, idle - 2.0) / 12.0))
-
     _event *= math.exp(-dt / TAU_EVENT)
     _wash *= math.exp(-dt / TAU_WASH)
     _E = _clamp(_energy + _event, 0.0, 1.0)
-
-    # per-blob colour crossfade (no hard swaps)
-    kc = 1.0 - math.exp(-dt / TAU_COLOR)
-    spd = 0.5 + 0.9 * _E
-    for b in _blobs:
-        b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
-                   b.color[1] + (b.color_target[1] - b.color[1]) * kc,
-                   b.color[2] + (b.color_target[2] - b.color[2]) * kc)
-        b.x += b.vx * spd * dt
-        b.y += b.vy * spd * dt
-        m = b.r
-        if b.x < -m: b.x = w + m
-        elif b.x > w + m: b.x = -m
-        if b.y < -m: b.y = h + m
-        elif b.y > h + m: b.y = -m
-
     _bt += (1.0 + 0.3 * _E) * dt
 
-    # palette churn: livelier while working, holds still when away
-    _recolor_accum += dt
-    if _recolor_accum >= (12.0 - 7.0 * _E) and _blobs:
-        _recolor_accum = 0.0
-        random.choice(_blobs).color_target = _weighted_target()
+    if lifecycle:
+        # cards/discs fade in and out roughly in place, then respawn
+        rate = 1.0 + 0.5 * _E
+        for b in _blobs:
+            b.life_age += dt * rate
+            if b.life_age >= b.life_span:
+                nb = _spawn(w, h, rmin, rmax, True)
+                b.x, b.y, b.vx, b.vy, b.r = nb.x, nb.y, nb.vx, nb.vy, nb.r
+                b.color = nb.color
+                b.angle, b.spin = nb.angle, nb.spin
+                b.life_age, b.life_span = 0.0, nb.life_span
+            b.alpha = _life_alpha(b.life_age / b.life_span)
+            b.x += b.vx * dt          # only a tiny drift
+            b.y += b.vy * dt
+            b.angle += b.spin * dt
+    else:
+        kc = 1.0 - math.exp(-dt / TAU_COLOR)
+        spd = 0.5 + 0.9 * _E
+        for b in _blobs:
+            b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
+                       b.color[1] + (b.color_target[1] - b.color[1]) * kc,
+                       b.color[2] + (b.color_target[2] - b.color[2]) * kc)
+            b.x += b.vx * spd * dt
+            b.y += b.vy * spd * dt
+            m = b.r
+            if b.x < -m: b.x = w + m
+            elif b.x > w + m: b.x = -m
+            if b.y < -m: b.y = h + m
+            elif b.y > h + m: b.y = -m
+        _recolor_accum += dt
+        if _recolor_accum >= (12.0 - 7.0 * _E) and _blobs:
+            _recolor_accum = 0.0
+            random.choice(_blobs).color_target = _weighted_target()
 
 
-def frame(dt: float, w: int, h: int, camera) -> Optional[Tuple[List[Tuple[float, float, float, Color]], Color, float]]:
-    """Advance the field and return (blobs, base_colour, intensity) for the GL
-    renderer, or None when disabled. blobs = [(x, y, radius, rgb)]."""
-    prm = cosmetics.params(cosmetics.BACKGROUND)
+def frame(dt: float, w: int, h: int, camera):
+    """Advance the field and return (blobs, base_colour, intensity, shape) for the
+    GL renderer, or None when disabled. blobs = [(x, y, radius, rgb, angle, alpha)]."""
+    prm = _params()
     if not prm.get("enabled", False):
         return None
-    _ensure(w, h)
-    _tick(dt, w, h)
+    style = prm.get("style", "blob")
+    n = int(prm.get("n", 8))
+    rmin = prm.get("rmin", 320.0)
+    rmax = prm.get("rmax", 720.0)
+    _ensure(w, h, style, n, rmin, rmax)
+    _tick(dt, w, h, style, rmin, rmax)
 
     i0 = prm.get("intensity", 0.45)
     intensity = i0 * (0.55 + 0.45 * _E) + 0.12 * _wash
     size_mul = 0.94 + 0.10 * _E
     amp = 0.07 + 0.06 * _E
     wmix = 0.22 * _wash
+    lifecycle = style in ("confetti", "bokeh")
     px = camera.position[0] * camera.zoom * PARALLAX
     py = -camera.position[1] * camera.zoom * PARALLAX
 
-    out: List[Tuple[float, float, float, Color]] = []
+    out = []
     for b in _blobs:
-        rad = b.r * size_mul * (1.0 + amp * math.sin(_bt * b.breathe + b.phase))
+        if lifecycle:
+            rad = b.r * size_mul
+        else:
+            rad = b.r * size_mul * (1.0 + amp * math.sin(_bt * b.breathe + b.phase))
         col = (b.color[0] + (_wash_color[0] - b.color[0]) * wmix,
                b.color[1] + (_wash_color[1] - b.color[1]) * wmix,
                b.color[2] + (_wash_color[2] - b.color[2]) * wmix)
-        out.append((b.x + px, b.y + py, rad, col))
+        out.append((b.x + px, b.y + py, rad, col, b.angle, b.alpha))
     base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
-    return out, base, intensity
+    return out, base, intensity, _SHAPE.get(style, 0)
 
 
 def clear() -> None:
-    global _bt, _energy, _event, _wash
+    global _bt, _energy, _event, _wash, _cur_style, _cur_n
     _blobs.clear()
     _bt = 0.0
     _energy = 0.0
     _event = 0.0
     _wash = 0.0
+    _cur_style = ""
+    _cur_n = 0
     _pending.clear()

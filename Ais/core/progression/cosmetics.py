@@ -65,9 +65,11 @@ CATALOG: Dict[str, List[Cosmetic]] = {
         _c("hud.ink",    HUD, "Ink",    0,  10, track=(0.05, 0.05, 0.07), track_alpha=0.95, backdrop=0.7),
     ],
     BACKGROUND: [
-        _c("bg.paper",  BACKGROUND, "Paper",  0,  0,  enabled=False),
-        _c("bg.aurora", BACKGROUND, "Aurora", 0,  0,  enabled=True, intensity=0.45),
-        _c("bg.nebula", BACKGROUND, "Nebula", 60, 0,  enabled=True, intensity=0.7),
+        _c("bg.paper",    BACKGROUND, "Paper",    0,  0,  enabled=False),
+        _c("bg.aurora",   BACKGROUND, "Aurora",   0,  0,  enabled=True, style="blob",     n=6,  rmin=380, rmax=820, intensity=0.42),
+        _c("bg.nebula",   BACKGROUND, "Nebula",   60, 0,  enabled=True, style="blob",     n=14, rmin=150, rmax=420, intensity=0.62),
+        _c("bg.confetti", BACKGROUND, "Confetti", 0,  0,  enabled=True, style="confetti", n=12, rmin=80,  rmax=190, intensity=0.55),
+        _c("bg.bokeh",    BACKGROUND, "Bokeh",    90, 0,  enabled=True, style="bokeh",    n=16, rmin=30,  rmax=130, intensity=0.5),
     ],
 }
 
