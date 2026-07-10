@@ -14,13 +14,13 @@ void main()
 #fragment
 #version 420
 
-#define MAXB 16
+#define MAXB 48
 
 in vec2 uv;
 out vec4 fragColour;
 
 uniform int uN;
-uniform int uShape;         // 0 = soft blob, 1 = sharp triangle, 2 = crisp disc
+uniform int uShape;         // 0 = soft blob, 1 = triangle, 2 = disc, 3 = lava hole
 uniform vec2 uRes;          // screen size in px
 uniform vec3 uBase;         // papery base colour
 uniform float uIntensity;
@@ -37,6 +37,7 @@ void main()
     for (int i = 0; i < uN; i++)
     {
         float w;
+        vec3 tgt = uCol[i];
         if (uShape == 1)
         {
             // sharp equilateral triangle (max of three half-planes), ~1px AA
@@ -55,20 +56,17 @@ void main()
         }
         else if (uShape == 2)
         {
-            // soft octagon (bokeh) - max of 8 half-planes, gentle edges
-            vec2 rel = frag - uPos[i];
-            float c = cos(uAng[i]);
-            float s = sin(uAng[i]);
-            vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
-            float ap = uRad[i] * 0.92;
-            float sd = -1e9;
-            for (int k = 0; k < 8; k++)
-            {
-                float th = float(k) * 0.7853982;
-                sd = max(sd, dot(lo, vec2(cos(th), sin(th))) - ap);
-            }
-            float soft = max(6.0, uRad[i] * 0.22);
-            w = smoothstep(soft, -soft, sd) * uIntensity * uAlp[i];
+            // soft disc (bokeh)
+            float d = distance(frag, uPos[i]);
+            float soft = max(6.0, uRad[i] * 0.30);
+            w = smoothstep(uRad[i] + soft, uRad[i] - soft, d) * uIntensity * uAlp[i];
+        }
+        else if (uShape == 3)
+        {
+            // lava hole: darken toward a deep tint of the colour (inverted "hole")
+            float d = distance(frag, uPos[i]) / max(uRad[i], 1.0);
+            w = exp(-d * d * 2.0) * uIntensity * uAlp[i];
+            tgt = uCol[i] * 0.28;
         }
         else
         {
@@ -76,7 +74,7 @@ void main()
             float d = distance(frag, uPos[i]) / max(uRad[i], 1.0);
             w = exp(-d * d * 2.2) * uIntensity * uAlp[i];
         }
-        col = mix(col, uCol[i], clamp(w, 0.0, 1.0));
+        col = mix(col, tgt, clamp(w, 0.0, 1.0));
     }
     fragColour = vec4(col, 1.0);
 }

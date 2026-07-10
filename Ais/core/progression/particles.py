@@ -45,6 +45,7 @@ class Particle:
     # convention) and are transformed to screen at draw time so they track the
     # scene under zoom/pan. Screen particles (confetti) live in pixels.
     world: bool = False
+    fade_bias: float = 0.0   # per-confetti offset (fraction of screen) for the fade band
 
 
 _particles: List[Particle] = []
@@ -183,16 +184,17 @@ def emit_confetti(screen_w: int, color: Color, n: int = 55, palette: str = "feat
             x=x,
             y=-12.0 + random.uniform(-30, 30),
             vx=random.uniform(-60.0, 60.0),
-            vy=random.uniform(40.0, 130.0),
+            vy=random.uniform(36.0, 140.0),          # slight drop-speed variation
             age=0.0,
             lifetime=random.uniform(7.2, 12.6) * CONFETTI_LIFETIME_MUL,
             color=_jitter_color(palette_color(palette, color), h_amp=0.10),
             size=random.uniform(3.2, 6.4) * CONFETTI_SIZE_MUL * size_mul,
-            gravity=140.0,
+            gravity=random.uniform(120.0, 165.0),    # varies fall a little over time
             drag=0.25,
             spin=random.uniform(-6.0, 6.0),
             angle=random.uniform(0.0, 2 * math.pi),
             kind=kind,
+            fade_bias=random.uniform(-0.09, 0.09),   # each fades at a slightly different height
         ))
     _clamp_pool()
 
@@ -268,8 +270,11 @@ def draw(camera=None, screen_h: float = 0.0) -> None:
             px, py, psize = p.x, p.y, p.size
         u = max(0.0, 1.0 - (p.age / p.lifetime))
         a = u * u
-        if screen_h > 0.0 and p.kind.startswith("confetti") and fade_end > fade_start:
-            a *= max(0.0, min(1.0, (fade_end - py) / (fade_end - fade_start)))
+        if screen_h > 0.0 and p.kind.startswith("confetti"):
+            fs = fade_start + p.fade_bias * screen_h   # per-particle fade height
+            fe = fade_end + p.fade_bias * screen_h
+            if fe > fs:
+                a *= max(0.0, min(1.0, (fe - py) / (fe - fs)))
         col = imgui.get_color_u32_rgba(p.color[0], p.color[1], p.color[2], a)
         if p.kind == "confetti":
             s = psize

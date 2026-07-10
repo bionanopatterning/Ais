@@ -4130,7 +4130,7 @@ class Renderer:
         self.background_blob_shader.uniform3f("uBase", base_col)
         self.background_blob_shader.uniform1f("uIntensity", intensity)
         self.background_blob_shader.uniform1i("uShape", shape)
-        n = min(16, len(blobs))
+        n = min(48, len(blobs))
         self.background_blob_shader.uniform1i("uN", n)
         for i in range(n):
             bx, by, br, bc, bang, balp = blobs[i]

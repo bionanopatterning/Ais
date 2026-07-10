@@ -36,8 +36,9 @@ from . import profile as _profile
 Color = Tuple[float, float, float]
 
 PARALLAX = 0.15
-FILL_TIME = 16.0          # seconds of activity to fully populate the field
-_SHAPE = {"blob": 0, "lava": 0, "confetti": 1, "bokeh": 2}
+FILL_UP = 3.2            # how fast shapes wake with activity (scaled by energy)
+FILL_DOWN = 0.4         # how fast they recede when idle
+_SHAPE = {"blob": 0, "confetti": 1, "bokeh": 2, "lava": 3}
 
 A_MAX = 0.70
 DRIVE_GRACE = 0.5
@@ -127,9 +128,10 @@ def _target_color() -> Color:
         if p.skill_xp(name) <= 0:
             continue
         if name == active:
-            w = 6.0
+            w = 14.0
         else:
-            w = 0.03 + 0.5 * math.exp(-events.time_since_feature(name) / 8.0)
+            # only very recently-touched other features get any weight at all
+            w = 0.004 + 0.25 * math.exp(-events.time_since_feature(name) / 5.0)
         weighted.append((w, _soft_color(c)))
     if not weighted:
         return _hue_jitter(random.choice(_palette()))
@@ -232,9 +234,9 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
     _E = _clamp(_energy + _event, 0.0, 1.0)
     _bt += (1.0 + 0.3 * _E) * dt
 
-    # wake shapes in as the user works; the field starts empty on launch
-    if _E > 0.06:
-        _awake = min(float(len(_blobs)), _awake + dt * len(_blobs) / FILL_TIME)
+    # wake shapes in proportional to how much the user is doing: a lot of
+    # activity reveals many, a little reveals few, and they recede when idle.
+    _awake = _clamp(_awake + dt * (FILL_UP * _E - FILL_DOWN), 0.0, float(len(_blobs)))
 
     if lifecycle:
         rate = 1.0 + 0.5 * _E
@@ -252,7 +254,8 @@ def _tick(dt: float, w: int, h: int, style: str, rmin: float, rmax: float, life_
             b.angle += b.spin * dt
     else:
         kc = 1.0 - math.exp(-dt / TAU_COLOR)
-        spd = 0.5 + 0.9 * _E
+        # lava responds to "temperature": nearly still when idle, lively when busy
+        spd = (0.12 + 1.7 * _E) if style == "lava" else (0.5 + 0.9 * _E)
         for b in _blobs:
             b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
                        b.color[1] + (b.color_target[1] - b.color[1]) * kc,
