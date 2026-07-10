@@ -22,6 +22,7 @@ from .profile import (
     maybe_save,
     xp_into_level,
 )
+from .background import frame as background_frame
 from .ui import (
     BIG_FONT_PX,
     PERK_UNLOCK_LEVEL,
@@ -30,7 +31,6 @@ from .ui import (
     emit_box_burst,
     emit_brush_trail,
     is_panel_open,
-    render_background,
     render_level_up,
     render_profile_panel,
     render_xp_hud,
@@ -64,12 +64,12 @@ __all__ = [
     "xp_into_level",
     "BIG_FONT_PX",
     "PERK_UNLOCK_LEVEL",
+    "background_frame",
     "big_font_path",
     "draw_particles",
     "emit_box_burst",
     "emit_brush_trail",
     "is_panel_open",
-    "render_background",
     "render_level_up",
     "render_profile_panel",
     "render_xp_hud",

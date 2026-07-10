@@ -11,7 +11,6 @@ from typing import List, Optional, Tuple
 import imgui
 
 import Ais.core.config as cfg
-from . import background
 from . import cosmetics
 from . import events
 from . import orbs
@@ -83,11 +82,6 @@ def toggle_panel() -> None:
 
 def is_panel_open() -> bool:
     return _panel_open
-
-
-def render_background(window_width: int, window_height: int, dt: float) -> None:
-    background.tick(dt, window_width, window_height)
-    background.draw(window_width, window_height)
 
 
 def tick_particles(dt: float) -> None:

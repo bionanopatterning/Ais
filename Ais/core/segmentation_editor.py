@@ -332,6 +332,11 @@ class SegmentationEditor:
             self.camera_control()
             self.camera.on_update()
             self.camera3d.on_update()
+            # living background: GL pre-pass, drawn behind the tomogram
+            if not cfg.settings.get("PROGRESSION_HIDE", False):
+                _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera)
+                if _bg is not None:
+                    SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height))
             self.gui_main()
             SegmentationEditor.renderer.render_draw_list(self.camera)
             self.input()
@@ -339,7 +344,6 @@ class SegmentationEditor:
             _prog_hidden = cfg.settings.get("PROGRESSION_HIDE", False)
             progression.tick_particles(self.window.delta_time)
             if not _prog_hidden:
-                progression.render_background(self.window.width, self.window.height, self.window.delta_time)
                 progression.render_xp_hud(self.window.width, self.window.height)
                 progression.render_level_up(self.window.width, self.window.height)
             progression.render_profile_panel()
@@ -3560,6 +3564,11 @@ class Renderer:
         self.overlay_blend_shader = Shader(os.path.join(cfg.root, "shaders", "se_overlay_blend_shader.glsl"))
         self.particle_shader = Shader(os.path.join(cfg.root, "shaders", "se_particle_shader.glsl"))
         self.edge_shader = Shader(os.path.join(cfg.root, "shaders", "se_depth_edge_detect.glsl"))
+        try:
+            self.background_blob_shader = Shader(os.path.join(cfg.root, "shaders", "se_background_blobs.glsl"))
+        except Exception as _e:
+            print(f"Background blob shader failed to load: {_e}")
+            self.background_blob_shader = None
         self.line_list = list()
         self.line_list_s = list()
         self.line_va = VertexArray(None, None, attribute_format="xyrgb")
@@ -4093,6 +4102,33 @@ class Renderer:
 
     def render_draw_list(self, camera):
         self.render_lines(camera)
+
+    def render_background(self, blobs, base_col, intensity, res):
+        # Fullscreen papery base with soft feature-colour blobs, drawn right after
+        # the clear so the tomogram and annotations render on top of it.
+        if self.background_blob_shader is None or not blobs:
+            return
+        glDisable(GL_DEPTH_TEST)
+        glDepthMask(GL_FALSE)
+        glDisable(GL_BLEND)
+        self.background_blob_shader.bind()
+        self.background_blob_shader.uniform2f("uRes", res)
+        self.background_blob_shader.uniform3f("uBase", base_col)
+        self.background_blob_shader.uniform1f("uIntensity", intensity)
+        n = min(16, len(blobs))
+        self.background_blob_shader.uniform1i("uN", n)
+        for i in range(n):
+            bx, by, br, bc = blobs[i]
+            self.background_blob_shader.uniform2f(f"uPos[{i}]", (bx, by))
+            self.background_blob_shader.uniform1f(f"uRad[{i}]", br)
+            self.background_blob_shader.uniform3f(f"uCol[{i}]", bc)
+        self.ndc_screen_va.bind()
+        glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+        self.ndc_screen_va.unbind()
+        self.background_blob_shader.unbind()
+        glEnable(GL_BLEND)
+        glDepthMask(GL_TRUE)
+        glEnable(GL_DEPTH_TEST)
 
     def render_overlay(self, se_frame, camera, blend_mode, alpha):
         if se_frame.overlay is None:

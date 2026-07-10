@@ -75,8 +75,8 @@ CATALOG: Dict[str, List[Cosmetic]] = {
     ],
     BACKGROUND: [
         _c("bg.paper",  BACKGROUND, "Paper",  0,  0,  enabled=False),
-        _c("bg.aurora", BACKGROUND, "Aurora", 0,  0,  enabled=True, intensity=0.35, dim=0.55),
-        _c("bg.nebula", BACKGROUND, "Nebula", 60, 0,  enabled=True, intensity=0.55, dim=0.65),
+        _c("bg.aurora", BACKGROUND, "Aurora", 0,  0,  enabled=True, intensity=0.45),
+        _c("bg.nebula", BACKGROUND, "Nebula", 60, 0,  enabled=True, intensity=0.7),
     ],
 }
 
