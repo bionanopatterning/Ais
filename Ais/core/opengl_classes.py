@@ -222,10 +222,12 @@ class IndexBuffer:
     """Note that indices must be a default python list. It is turned in to a np.array along the 2nd dimension with type np.uint16 before sending to GPU"""
     def __init__(self, indices, long=False):
         self.indexBufferObject = glGenBuffers(1)
-        if not long:
-            self.indices = np.asarray([indices], dtype = np.uint16)
-        else:
-            self.indices = np.asarray([indices], dtype = np.uint32)
+        self.dtype = np.uint32 if long else np.uint16
+        self.update(indices)
+
+    def update(self, indices):
+        # Re-upload into the existing GL buffer (reused every frame, no new alloc).
+        self.indices = np.asarray([indices], dtype=self.dtype)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.indexBufferObject)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, self.indices, GL_STATIC_DRAW)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0)
