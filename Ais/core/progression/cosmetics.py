@@ -44,28 +44,19 @@ def _c(id, category, name, price, min_level, **params):
 
 CATALOG: Dict[str, List[Cosmetic]] = {
     CURSOR: [
+        # Particle colour always follows the feature; level-based hue jitter is
+        # handled by the perk tiers, so the shop offers no colour swaps here.
         _c("cursor.spark",  CURSOR, "Sparks",  0,   0,  palette="feature", size_mul=1.0),
-        _c("cursor.ember",  CURSOR, "Embers",  60,  0,  palette="warm",    size_mul=1.15),
-        _c("cursor.frost",  CURSOR, "Frost",   60,  0,  palette="cool",    size_mul=1.0),
-        _c("cursor.gild",   CURSOR, "Gilded",  120, 0,  palette="gold",    size_mul=1.1),
-        _c("cursor.prism",  CURSOR, "Prism",   0,   15, palette="prism",   size_mul=1.1),
     ],
     ORB: [
         _c("orb.default",   ORB, "Orbs",      0,   0,  palette="feature", size_mul=1.0),
-        _c("orb.gold",      ORB, "Gold",      40,  0,  palette="gold",    size_mul=1.0),
-        _c("orb.star",      ORB, "Starlight", 40,  0,  palette="mono",    size_mul=1.15),
-        _c("orb.prism",     ORB, "Prism",     0,   10, palette="prism",   size_mul=1.0),
     ],
     BURST: [
         _c("burst.default", BURST, "Burst",   0,   0,  palette="feature", size_mul=1.0),
-        _c("burst.ember",   BURST, "Embers",  50,  0,  palette="warm",    size_mul=1.15),
-        _c("burst.prism",   BURST, "Prism",   90,  0,  palette="prism",   size_mul=1.0),
     ],
     CONFETTI: [
         _c("conf.default",  CONFETTI, "Confetti",  0,  0,  palette="feature", shape="rect", size_mul=1.0),
-        _c("conf.party",    CONFETTI, "Party",     50, 0,  palette="prism",   shape="rect", size_mul=1.0),
         _c("conf.bubbles",  CONFETTI, "Bubbles",   50, 0,  palette="feature", shape="dot",  size_mul=1.15),
-        _c("conf.gold",     CONFETTI, "Gold Rain", 0,  20, palette="gold",    shape="rect", size_mul=1.0),
     ],
     HUD: [
         _c("hud.slate",  HUD, "Slate",  0,  0,  track=(0.18, 0.18, 0.20), track_alpha=0.9,  backdrop=0.55),
