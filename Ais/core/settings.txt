@@ -22,6 +22,7 @@
   "DEBUG_C": false,
   "PROGRESSION_HIDE": false,
   "PERK_CURSOR": true,
+  "PERK_XP_ORBS": true,
   "PERK_BOX_BURST": true,
   "PERK_CONFETTI": true,
   "PERK_MILESTONE": true,

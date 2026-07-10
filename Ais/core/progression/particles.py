@@ -69,6 +69,22 @@ def _jitter_color(
     return colorsys.hsv_to_rgb(h, s, v)
 
 
+def palette_color(palette: str, base: Color) -> Color:
+    # Map a feature's base colour through a named cosmetic palette (see cosmetics).
+    if palette == "gold":
+        return (1.0, random.uniform(0.78, 0.86), random.uniform(0.24, 0.34))
+    if palette == "mono":
+        v = random.uniform(0.9, 1.0)
+        return (v, v, min(1.0, v + 0.02))
+    if palette == "warm":
+        return colorsys.hsv_to_rgb(random.uniform(0.02, 0.11), random.uniform(0.75, 0.95), 1.0)
+    if palette == "cool":
+        return colorsys.hsv_to_rgb(random.uniform(0.50, 0.62), random.uniform(0.55, 0.80), 1.0)
+    if palette == "prism":
+        return colorsys.hsv_to_rgb(random.random(), random.uniform(0.70, 0.90), 1.0)
+    return base   # "feature" / unknown
+
+
 def emit_brush_ring(
     cx: float,
     cy: float,
@@ -77,6 +93,8 @@ def emit_brush_ring(
     n: int = 1,
     h_amp: float = 0.05,
     world: bool = False,
+    palette: str = "feature",
+    size_mul: float = 1.0,
 ) -> None:
     if radius < 1.0:
         radius = 1.0
@@ -95,8 +113,8 @@ def emit_brush_ring(
             vy=math.sin(ang) * out_speed - 6.0,
             age=0.0,
             lifetime=random.uniform(0.70, 1.50) * LIFETIME_MUL,
-            color=_jitter_color(color, h_amp=h_amp),
-            size=random.uniform(1.6, 2.8) * SIZE_MUL,
+            color=_jitter_color(palette_color(palette, color), h_amp=h_amp),
+            size=random.uniform(1.6, 2.8) * SIZE_MUL * size_mul,
             gravity=24.0,
             drag=2.4,
             kind="dot",
@@ -113,6 +131,8 @@ def emit_box_outline_burst(
     n: int = 18,
     h_amp: float = 0.05,
     world: bool = False,
+    palette: str = "feature",
+    size_mul: float = 1.0,
 ) -> None:
     if size < 4.0:
         size = 4.0
@@ -144,8 +164,8 @@ def emit_box_outline_burst(
             vy=vy,
             age=0.0,
             lifetime=random.uniform(1.10, 2.00) * LIFETIME_MUL,
-            color=_jitter_color(color, h_amp=h_amp),
-            size=random.uniform(2.0, 3.4) * SIZE_MUL,
+            color=_jitter_color(palette_color(palette, color), h_amp=h_amp),
+            size=random.uniform(2.0, 3.4) * SIZE_MUL * size_mul,
             gravity=110.0,
             drag=1.6,
             kind="dot",
@@ -154,7 +174,9 @@ def emit_box_outline_burst(
     _clamp_pool()
 
 
-def emit_confetti(screen_w: int, color: Color, n: int = 55) -> None:
+def emit_confetti(screen_w: int, color: Color, n: int = 55, palette: str = "feature",
+                  shape: str = "rect", size_mul: float = 1.0) -> None:
+    kind = "confetti_dot" if shape == "dot" else "confetti"
     for _ in range(n * CONFETTI_COUNT_MUL):
         x = random.uniform(0.0, max(1.0, screen_w))
         _particles.append(Particle(
@@ -164,13 +186,13 @@ def emit_confetti(screen_w: int, color: Color, n: int = 55) -> None:
             vy=random.uniform(40.0, 130.0),
             age=0.0,
             lifetime=random.uniform(7.2, 12.6) * CONFETTI_LIFETIME_MUL,
-            color=_jitter_color(color, h_amp=0.10),
-            size=random.uniform(3.2, 6.4) * CONFETTI_SIZE_MUL,
+            color=_jitter_color(palette_color(palette, color), h_amp=0.10),
+            size=random.uniform(3.2, 6.4) * CONFETTI_SIZE_MUL * size_mul,
             gravity=140.0,
             drag=0.25,
             spin=random.uniform(-6.0, 6.0),
             angle=random.uniform(0.0, 2 * math.pi),
-            kind="confetti",
+            kind=kind,
         ))
     _clamp_pool()
 
@@ -260,6 +282,8 @@ def draw(camera=None) -> None:
                 px + x3, py + y3,
                 col,
             )
+        elif p.kind == "confetti_dot":
+            dl.add_circle_filled(px, py, psize * 0.75, col, 12)
         else:
             dl.add_circle_filled(
                 px, py, psize * 1.6,

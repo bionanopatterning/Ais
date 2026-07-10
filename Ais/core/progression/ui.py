@@ -11,7 +11,9 @@ from typing import List, Optional, Tuple
 import imgui
 
 import Ais.core.config as cfg
+from . import cosmetics
 from . import events
+from . import orbs
 from . import particles
 from . import perks
 from . import profile as _profile
@@ -84,10 +86,12 @@ def is_panel_open() -> bool:
 
 def tick_particles(dt: float) -> None:
     particles.tick(dt)
+    orbs.tick(dt)
 
 
 def draw_particles(camera=None) -> None:
     particles.draw(camera)
+    orbs.draw()
 
 
 def emit_brush_trail(cx: float, cy: float, radius_px: float, color: Color, skill_level: int) -> None:
@@ -96,7 +100,9 @@ def emit_brush_trail(cx: float, cy: float, radius_px: float, color: Color, skill
     tier = perks.perk_for_level(skill_level)
     if tier is None or tier.cursor_n <= 0:
         return
-    particles.emit_brush_ring(cx, cy, radius_px, color, n=tier.cursor_n, h_amp=tier.hue_amp, world=True)
+    prm = cosmetics.params(cosmetics.CURSOR)
+    particles.emit_brush_ring(cx, cy, radius_px, color, n=tier.cursor_n, h_amp=tier.hue_amp, world=True,
+                              palette=prm.get("palette", "feature"), size_mul=prm.get("size_mul", 1.0))
 
 
 def emit_box_burst(cx: float, cy: float, size_px: float, color: Color, skill_level: int) -> None:
@@ -105,7 +111,9 @@ def emit_box_burst(cx: float, cy: float, size_px: float, color: Color, skill_lev
     tier = perks.perk_for_level(skill_level)
     if tier is None or tier.box_burst_n <= 0:
         return
-    particles.emit_box_outline_burst(cx, cy, size_px, color, n=tier.box_burst_n * 2, h_amp=tier.hue_amp, world=True)
+    prm = cosmetics.params(cosmetics.BURST)
+    particles.emit_box_outline_burst(cx, cy, size_px, color, n=tier.box_burst_n * 2, h_amp=tier.hue_amp, world=True,
+                                     palette=prm.get("palette", "feature"), size_mul=prm.get("size_mul", 1.0))
 
 
 def _ease_out_cubic(t: float) -> float:
@@ -245,6 +253,12 @@ def render_xp_hud(window_width: int, window_height: int, hidden: bool = False) -
     dl = imgui.get_window_draw_list()
     win_pos = imgui.get_window_position()
 
+    theme = cosmetics.params(cosmetics.HUD)
+    track_col = theme.get("track", (0.18, 0.18, 0.20))
+    track_alpha = theme.get("track_alpha", 0.9)
+    backdrop_a = theme.get("backdrop", 0.55)
+    orb_targets = {}
+
     for i, (name, dt, in_frame) in enumerate(rows):
         row_top = win_pos[1] + 4 + i * _XP_HUD_ROW_H
         row_x = win_pos[0]
@@ -291,28 +305,34 @@ def render_xp_hud(window_width: int, window_height: int, hidden: bool = False) -
         _draw_text_outlined(dl, name_x, row_top + 3, name_text, name_fg, (1.0, 1.0, 1.0), outline_alpha=0.85 * row_alpha)
         _draw_text_outlined(dl, lv_x, row_top + 3, lv_text, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0), outline_alpha=0.85 * row_alpha)
 
-        # progress bar: square, dark track over a black backdrop for contrast
+        # progress bar: square, themed track over a black backdrop for contrast
         bar_x = content_x
         bar_y = row_top + 20
         bar_w = row_x + _XP_HUD_W - bar_x - 4
         bar_h = 6.0
         frac = (into / needed) if needed else 1.0
+        orb_targets[name] = (bar_x + 6.0, bar_y + bar_h * 0.5)
+        flash = max(gain_pulse, orbs.impact_pulse(name))   # brighten on gain and on orb landing
         dl.add_rect_filled(bar_x - 1, bar_y - 1, bar_x + bar_w + 1, bar_y + bar_h + 1,
-                           imgui.get_color_u32_rgba(0.0, 0.0, 0.0, 0.55 * row_alpha), 0.0)
+                           imgui.get_color_u32_rgba(0.0, 0.0, 0.0, backdrop_a * row_alpha), 0.0)
         dl.add_rect_filled(bar_x, bar_y, bar_x + bar_w, bar_y + bar_h,
-                           imgui.get_color_u32_rgba(0.18, 0.18, 0.20, 0.9 * row_alpha), 0.0)
+                           imgui.get_color_u32_rgba(track_col[0], track_col[1], track_col[2], track_alpha * row_alpha), 0.0)
         fill_w = max(bar_h, bar_w * max(0.0, min(1.0, frac)))
         if fill_w > 0:
             fill = color
-            if gain_pulse > 0:
+            if flash > 0:
                 fill = (
-                    _lerp(color[0], 1.0, 0.40 * gain_pulse),
-                    _lerp(color[1], 1.0, 0.40 * gain_pulse),
-                    _lerp(color[2], 1.0, 0.40 * gain_pulse),
+                    _lerp(color[0], 1.0, 0.40 * flash),
+                    _lerp(color[1], 1.0, 0.40 * flash),
+                    _lerp(color[2], 1.0, 0.40 * flash),
                 )
             dl.add_rect_filled(bar_x, bar_y, bar_x + fill_w, bar_y + bar_h,
                                imgui.get_color_u32_rgba(fill[0], fill[1], fill[2], row_alpha), 0.0)
+        if flash > 0:
+            dl.add_rect_filled(bar_x, bar_y, bar_x + bar_w, bar_y + bar_h,
+                               imgui.get_color_u32_rgba(1.0, 1.0, 1.0, 0.30 * flash), 0.0)
 
+    orbs.set_targets(orb_targets)
     imgui.end()
     imgui.pop_style_var(2)
 
@@ -332,7 +352,11 @@ def render_level_up(window_width: int, window_height: int, hidden: bool = False)
         if ev is None:
             return
         if cfg.settings.get("PERK_CONFETTI", True):
-            particles.emit_confetti(window_width, ev.color, n=70)
+            _cp = cosmetics.params(cosmetics.CONFETTI)
+            particles.emit_confetti(window_width, ev.color, n=70,
+                                    palette=_cp.get("palette", "feature"),
+                                    shape=_cp.get("shape", "rect"),
+                                    size_mul=_cp.get("size_mul", 1.0))
         # confetti fires regardless; the centre text is opt-out via PERK_MILESTONE
         if not cfg.settings.get("PERK_MILESTONE", True):
             return
@@ -507,6 +531,9 @@ def render_profile_panel() -> None:
         _render_skill_grid(visible, p)
 
     imgui.dummy(0, 14)
+    _render_shop(p)
+
+    imgui.dummy(0, 14)
     _render_perk_toggles()
 
     imgui.end()
@@ -514,10 +541,63 @@ def render_profile_panel() -> None:
     imgui.pop_style_var(2)
 
 
+def _render_shop_item(p: _profile.Profile, it, equipped_id: str) -> None:
+    is_eq = (it.id == equipped_id)
+    owned = cosmetics.is_owned(p, it)
+    unlocked = cosmetics.is_unlocked(p, it)
+    affordable = p.can_afford(it.price)
+
+    if is_eq:
+        label, btn, txt = f"* {it.name}", (0.20, 0.48, 0.32), (1.0, 1.0, 1.0)
+    elif owned:
+        label, btn, txt = it.name, cfg.COLOUR_FRAME_DARK[:3], (0.10, 0.10, 0.12)
+    elif not unlocked:
+        label, btn, txt = f"{it.name}  Lv{it.min_level}", (0.86, 0.86, 0.84), (0.55, 0.55, 0.58)
+    elif it.price > 0 and not affordable:
+        label, btn, txt = f"{it.name}  {it.price}c", (0.86, 0.86, 0.84), (0.55, 0.55, 0.58)
+    elif it.price > 0:
+        label, btn, txt = f"{it.name}  {it.price}c", (0.85, 0.72, 0.30), (0.15, 0.12, 0.05)
+    else:
+        label, btn, txt = f"{it.name}  claim", (0.55, 0.72, 0.85), (0.10, 0.12, 0.16)
+
+    imgui.push_style_color(imgui.COLOR_BUTTON, btn[0], btn[1], btn[2], 1.0)
+    imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, min(1.0, btn[0] + 0.08), min(1.0, btn[1] + 0.08), min(1.0, btn[2] + 0.08), 1.0)
+    imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, btn[0], btn[1], btn[2], 1.0)
+    imgui.push_style_color(imgui.COLOR_TEXT, txt[0], txt[1], txt[2], 1.0)
+    if imgui.button(f"{label}##shop_{it.id}"):
+        if owned:
+            cosmetics.equip(p, it)
+        elif unlocked and (it.price == 0 or affordable):
+            cosmetics.buy(p, it)
+    imgui.pop_style_color(4)
+
+
+def _render_shop(p: _profile.Profile) -> None:
+    _section_label("SHOP")
+    imgui.push_style_color(imgui.COLOR_TEXT, 0.62, 0.50, 0.16, 1.0)
+    imgui.text(f"{p.coins} coins")
+    imgui.pop_style_color(1)
+    imgui.spacing()
+    imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 3.0)
+    imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (7, 3))
+    for cat in (cosmetics.CURSOR, cosmetics.ORB, cosmetics.BURST, cosmetics.CONFETTI, cosmetics.HUD):
+        imgui.push_style_color(imgui.COLOR_TEXT, 0.40, 0.38, 0.34, 1.0)
+        imgui.text(cosmetics.CATEGORY_LABELS[cat])
+        imgui.pop_style_color(1)
+        eq = cosmetics.equipped_id(p, cat)
+        for j, it in enumerate(cosmetics.CATALOG[cat]):
+            if j > 0:
+                imgui.same_line()
+            _render_shop_item(p, it, eq)
+        imgui.spacing()
+    imgui.pop_style_var(2)
+
+
 def _render_perk_toggles() -> None:
     _section_label("PERKS")
     items = (
         ("PERK_CURSOR",     "Cursor sparkles"),
+        ("PERK_XP_ORBS",    "XP orbs"),
         ("PERK_BOX_BURST",  "Box-placement burst"),
         ("PERK_CONFETTI",   "Level-up confetti"),
         ("PERK_MILESTONE",  "Level-up celebration"),
@@ -573,7 +653,11 @@ def _render_header_card(p: _profile.Profile) -> None:
     overall = p.overall_level()
     big = f"Total Level   {overall}"
     big_tw, _ = imgui.calc_text_size(big)
-    dl.add_text(x0 + avail_w - big_tw - 18, y0 + 24, imgui.get_color_u32_rgba(0.16, 0.20, 0.36, 1.0), big)
+    dl.add_text(x0 + avail_w - big_tw - 18, y0 + 16, imgui.get_color_u32_rgba(0.16, 0.20, 0.36, 1.0), big)
+
+    coins_text = f"{p.coins} coins"
+    ct_w, _ = imgui.calc_text_size(coins_text)
+    dl.add_text(x0 + avail_w - ct_w - 18, y0 + 36, imgui.get_color_u32_rgba(0.62, 0.50, 0.16, 1.0), coins_text)
 
     imgui.dummy(avail_w, card_h)
 

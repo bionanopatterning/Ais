@@ -8,10 +8,15 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Deque, Dict, List, Optional, Tuple
 
+import Ais.core.config as cfg
+from . import orbs
 from . import profile as _profile
 
 
 Color = Tuple[float, float, float]
+
+COIN_PER_XP = 0.12      # coins trickle with effort (XP)
+LEVELUP_COIN = 3        # bonus coins per level, on each level-up
 
 
 @dataclass
@@ -115,6 +120,17 @@ def award(
             color=tuple(color) if color is not None else p.skill_color(skill),
             timestamp=time.time(),
         ))
+
+    # coins accrue with effort, plus a lump on each level-up
+    p.add_coins(xp * COIN_PER_XP)
+    if after > before:
+        p.add_coins(LEVELUP_COIN * after)
+
+    # XP orbs fly from the interaction point into the HUD
+    if cursor_pos is not None and cfg.settings.get("PERK_XP_ORBS", True):
+        _oc = tuple(color) if color is not None else p.skill_color(skill)
+        _on = max(1, min(8, 1 + xp // 4))
+        orbs.emit(float(cursor_pos[0]), float(cursor_pos[1]), _oc, _on, skill)
 
     now_mono = time.monotonic()
     global _global_last_award_t

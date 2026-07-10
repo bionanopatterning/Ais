@@ -1206,7 +1206,7 @@ class SegmentationEditor:
                                     slice_data = (m.data > m.threshold) * 255
                                     feature.set_slice_ndarray(slice_data, cfg.se_active_frame.current_slice)
                                     SegmentationEditor.FORCE_SELECT_TAB = 0
-                                    progression.award(skill=feature.title, xp=15, color=tuple(feature.colour))
+                                    progression.award(skill=feature.title, xp=15, color=tuple(feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]))
                             imgui.pop_style_var(1)
                             imgui.end_menu()
                         imgui.end_popup()
