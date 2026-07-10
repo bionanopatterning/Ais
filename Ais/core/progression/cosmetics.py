@@ -16,6 +16,7 @@ ORB = "xp_orb"
 BURST = "box_burst"
 CONFETTI = "confetti"
 HUD = "hud_theme"
+BACKGROUND = "background"
 
 CATEGORY_LABELS = {
     CURSOR: "Cursor trail",
@@ -23,6 +24,7 @@ CATEGORY_LABELS = {
     BURST: "Box burst",
     CONFETTI: "Confetti",
     HUD: "HUD theme",
+    BACKGROUND: "Background",
 }
 
 
@@ -70,6 +72,11 @@ CATALOG: Dict[str, List[Cosmetic]] = {
         _c("hud.cream",  HUD, "Cream",  70, 0,  track=(0.80, 0.80, 0.74), track_alpha=0.85, backdrop=0.25),
         _c("hud.mint",   HUD, "Mint",   70, 0,  track=(0.16, 0.34, 0.30), track_alpha=0.9,  backdrop=0.5),
         _c("hud.ink",    HUD, "Ink",    0,  10, track=(0.05, 0.05, 0.07), track_alpha=0.95, backdrop=0.7),
+    ],
+    BACKGROUND: [
+        _c("bg.paper",  BACKGROUND, "Paper",  0,  0,  enabled=False),
+        _c("bg.aurora", BACKGROUND, "Aurora", 0,  0,  enabled=True, intensity=0.14, dim=0.4),
+        _c("bg.nebula", BACKGROUND, "Nebula", 60, 0,  enabled=True, intensity=0.22, dim=0.5),
     ],
 }
 

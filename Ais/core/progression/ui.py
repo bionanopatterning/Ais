@@ -11,6 +11,7 @@ from typing import List, Optional, Tuple
 import imgui
 
 import Ais.core.config as cfg
+from . import background
 from . import cosmetics
 from . import events
 from . import orbs
@@ -82,6 +83,11 @@ def toggle_panel() -> None:
 
 def is_panel_open() -> bool:
     return _panel_open
+
+
+def render_background(window_width: int, window_height: int, dt: float) -> None:
+    background.tick(dt, window_width, window_height)
+    background.draw(window_width, window_height)
 
 
 def tick_particles(dt: float) -> None:
@@ -580,7 +586,7 @@ def _render_shop(p: _profile.Profile) -> None:
     imgui.spacing()
     imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 3.0)
     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (7, 3))
-    for cat in (cosmetics.CURSOR, cosmetics.ORB, cosmetics.BURST, cosmetics.CONFETTI, cosmetics.HUD):
+    for cat in (cosmetics.BACKGROUND, cosmetics.CURSOR, cosmetics.ORB, cosmetics.BURST, cosmetics.CONFETTI, cosmetics.HUD):
         imgui.push_style_color(imgui.COLOR_TEXT, 0.40, 0.38, 0.34, 1.0)
         imgui.text(cosmetics.CATEGORY_LABELS[cat])
         imgui.pop_style_color(1)

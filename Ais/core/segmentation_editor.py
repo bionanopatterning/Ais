@@ -339,6 +339,7 @@ class SegmentationEditor:
             _prog_hidden = cfg.settings.get("PROGRESSION_HIDE", False)
             progression.tick_particles(self.window.delta_time)
             if not _prog_hidden:
+                progression.render_background(self.window.width, self.window.height, self.window.delta_time)
                 progression.render_xp_hud(self.window.width, self.window.height)
                 progression.render_level_up(self.window.width, self.window.height)
             progression.render_profile_panel()
