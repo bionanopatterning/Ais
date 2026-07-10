@@ -624,6 +624,40 @@ class SegmentationEditor:
         cfg.se_active_frame.transform.translation = [world_position[0] + cfg.se_active_frame.transform.translation[0], world_position[1] + cfg.se_active_frame.transform.translation[1]]
 
     @staticmethod
+    def _push_feature_slider_colour(colour):
+        # In dark mode, tint a feature's sliders (grab, track, border) with its own colour. Returns pushed count.
+        if not cfg.settings.get("DARK_MODE", False):
+            return 0
+        c = tuple(float(x) for x in colour[:3])
+        hi = (min(1.0, c[0] + 0.25), min(1.0, c[1] + 0.25), min(1.0, c[2] + 0.25))
+        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB, *c, 1.0)
+        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB_ACTIVE, *hi, 1.0)
+        imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, c[0] * 0.22, c[1] * 0.22, c[2] * 0.22, 0.96)
+        imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_HOVERED, c[0] * 0.30, c[1] * 0.30, c[2] * 0.30, 0.96)
+        imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_ACTIVE, c[0] * 0.30, c[1] * 0.30, c[2] * 0.30, 0.96)
+        imgui.push_style_color(imgui.COLOR_BORDER, *c, 0.65)
+        return 6
+
+    @staticmethod
+    def _push_slider_grab(colour):
+        # In dark mode, colour just the slider grab handles - safe to wrap a whole card. Returns pushed count.
+        if not cfg.settings.get("DARK_MODE", False):
+            return 0
+        c = tuple(float(x) for x in colour[:3])
+        hi = (min(1.0, c[0] + 0.25), min(1.0, c[1] + 0.25), min(1.0, c[2] + 0.25))
+        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB, *c, 1.0)
+        imgui.push_style_color(imgui.COLOR_SLIDER_GRAB_ACTIVE, *hi, 1.0)
+        return 2
+
+    @staticmethod
+    def _push_card_border(colour, active):
+        # In dark mode, outline the active feature/model card with its own colour. Returns pushed count.
+        if not (active and cfg.settings.get("DARK_MODE", False)):
+            return 0
+        imgui.push_style_color(imgui.COLOR_BORDER, *tuple(float(x) for x in colour[:3]), 0.9)
+        return 1
+
+    @staticmethod
     def save_dataset(dialog=False):
         try:
             default_name = cfg.se_active_frame.path[:-4]
@@ -673,7 +707,7 @@ class SegmentationEditor:
             imgui.push_style_color(imgui.COLOR_SCROLLBAR_BACKGROUND, *cfg.COLOUR_FRAME_EXTRA_DARK)
             imgui.push_style_color(imgui.COLOR_PLOT_HISTOGRAM, *cfg.COLOUR_TEXT)
             imgui.push_style_color(imgui.COLOR_PLOT_HISTOGRAM_HOVERED, *cfg.COLOUR_TEXT)
-            imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+            imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
             imgui.push_style_color(imgui.COLOR_MENUBAR_BACKGROUND, *cfg.COLOUR_MAIN_MENU_BAR)
             imgui.push_style_color(imgui.COLOR_HEADER, *cfg.COLOUR_HEADER)
             imgui.push_style_color(imgui.COLOR_HEADER_HOVERED, *cfg.COLOUR_HEADER_HOVERED)
@@ -779,7 +813,7 @@ class SegmentationEditor:
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
-                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                 _, SegmentationEditor.DATASETS_WINDOW_EXPANDED = imgui.checkbox("expand", SegmentationEditor.DATASETS_WINDOW_EXPANDED)
                 imgui.pop_style_var(3)
                 imgui.pop_style_color(1)
@@ -911,10 +945,13 @@ class SegmentationEditor:
                         return
                     features = cfg.se_active_frame.features
                     for f in features:
-                        pop_active_colour = False
+                        pop_active_colour = 0
                         if cfg.se_active_frame.active_feature == f:
                             imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, *cfg.COLOUR_FRAME_ACTIVE)
-                            pop_active_colour = True
+                            pop_active_colour = 1
+                            if cfg.settings.get("DARK_MODE", False):
+                                imgui.push_style_color(imgui.COLOR_BORDER, *tuple(float(x) for x in f.colour[:3]), 0.9)
+                                pop_active_colour = 2
                         imgui.begin_child(f"##feat_{f.uid}", 0.0, SegmentationEditor.FEATURE_PANEL_HEIGHT + 16 * f.magic, True)
                         cw = imgui.get_content_region_available_width()
 
@@ -944,15 +981,18 @@ class SegmentationEditor:
                         imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
                         imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
                         imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
-                        imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                        imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                         imgui.push_item_width(cw - 40)
                         pxs = cfg.se_active_frame.pixel_size
+                        _nsc = SegmentationEditor._push_feature_slider_colour(f.colour)
                         _, f.brush_size = imgui.slider_float("brush", f.brush_size, 1.0, 25.0 / pxs, format=f"{f.brush_size:.1f} px / {f.brush_size * pxs:.1f} nm ")
                         if f.magic:
                             _, f.magic_strength = imgui.slider_float("flood", f.magic_strength, 1.0, 100.0, format=f"{f.magic_strength:.1f}%% sensitivity")
                         _, f.alpha = imgui.slider_float("alpha", f.alpha, 0.0, 1.0, format="%.2f")
                         _, f.box_size = imgui.slider_int("boxes", f.box_size, 8, 256, format=f"{f.box_size} pixel")
                         f.box_size = int(np.round(f.box_size / 32) * 32)
+                        if _nsc:
+                            imgui.pop_style_color(_nsc)
 
                         imgui.pop_item_width()
                         f.brush_size = int(f.brush_size)
@@ -1048,7 +1088,7 @@ class SegmentationEditor:
 
                         imgui.pop_style_var(5)
                         if pop_active_colour:
-                            imgui.pop_style_color(1)
+                            imgui.pop_style_color(pop_active_colour)
 
                         if delete_feature:
                             cfg.se_active_frame.features.remove(f)
@@ -1120,7 +1160,7 @@ class SegmentationEditor:
                 imgui.end_child()
 
                 imgui.text("Datasets to sample")
-                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                 imgui.begin_child("datasets_to_sample", 0.0, min([120, 10 + len(cfg.se_frames)*20]), True)
                 for s in cfg.se_frames:
                     imgui.push_id(f"{s.uid}")
@@ -1173,8 +1213,10 @@ class SegmentationEditor:
                     elif m.active_tab == 2:
                         panel_height = SegmentationEditor.MODEL_PANEL_HEIGHT_LOGIC + 57 * len(m.interactions) - 20 * (len(cfg.se_models) < 2)
                     panel_height += 10 if m.background_process_train is not None else 0
+                    _mborder = SegmentationEditor._push_card_border(m.colour, cfg.se_active_model == m)
                     imgui.begin_child(f"SEModel_{m.uid}", 0.0, panel_height, True, imgui.WINDOW_NO_SCROLLBAR)
                     cw = imgui.get_content_region_available_width()
+                    _mgrab = SegmentationEditor._push_slider_grab(m.colour)
 
                     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                     if m.background_process_train is None:
@@ -1498,8 +1540,11 @@ class SegmentationEditor:
                     if imgui.is_window_hovered() and imgui.is_mouse_clicked(0):
                         cfg.se_active_model = m
 
-
+                    if _mgrab:
+                        imgui.pop_style_color(_mgrab)
                     imgui.end_child()
+                    if _mborder:
+                        imgui.pop_style_color(_mborder)
                     imgui.pop_id()
                 cw = imgui.get_content_region_available_width()
                 imgui.new_line()
@@ -1526,7 +1571,7 @@ class SegmentationEditor:
                     imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, *m.colour)
                     imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_HOVERED, *m.colour)
                     imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_ACTIVE, *m.colour)
-                    imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                    imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                     _, m.export = imgui.checkbox(m.title + " " + m.info_short, m.export)
                     if _:
                         m.active = m.export
@@ -1545,7 +1590,7 @@ class SegmentationEditor:
                 if _:
                     for s in cfg.se_frames:
                         s.export = SegmentationEditor.DATASETS_EXPORT_SELECT_ALL
-                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                 c_height = min([120, (1 if len(cfg.se_frames) == 0 else 9) + len(cfg.se_frames) * 21])
                 if SegmentationEditor.DATASETS_EXPORT_PANEL_EXPANDED:
                     c_height = SegmentationEditor.DATASETS_EXPORT_PANEL_EXPANDED_HEIGHT
@@ -1623,7 +1668,7 @@ class SegmentationEditor:
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
                 imgui.push_style_var(imgui.STYLE_FRAME_BORDERSIZE, 1)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
-                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0)
+                imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
 
                 # list the segmentations found for the currently selected dataset.
                 def update_picking_tab_for_new_active_frame():
@@ -1691,6 +1736,7 @@ class SegmentationEditor:
                         imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
                     imgui.begin_child(f"{s.title}_surfm{s.uid}", 0.0, 82 + (15 if s.particles else 0), True)
                     cw = imgui.get_content_region_available_width()
+                    _sgrab = SegmentationEditor._push_slider_grab(s.colour)
                     _, s.colour = imgui.color_edit3(s.title, *s.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
 
                     imgui.same_line()
@@ -1783,6 +1829,8 @@ class SegmentationEditor:
                         if imgui.menu_item("Remove volume")[0]:
                             s_to_remove.append(s)
                         imgui.end_popup()
+                    if _sgrab:
+                        imgui.pop_style_color(_sgrab)
                     imgui.end_child()
 
                 imgui.pop_style_var(3)
@@ -1835,7 +1883,7 @@ class SegmentationEditor:
                     imgui.pop_item_width()
                     imgui.pop_style_var(3)
 
-                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0)
+                imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 10)
@@ -2512,7 +2560,7 @@ class SegmentationEditor:
                             imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
                             imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
 
-                            imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                            imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
 
                             if SegmentationEditor.FEATURE_LIB_ANNOTATION:
                                 imgui.push_item_width(imgui.get_content_region_available_width() - 38)
@@ -2593,7 +2641,7 @@ class SegmentationEditor:
                                 imgui.push_style_var(imgui.STYLE_GRAB_ROUNDING, 20)
                                 imgui.push_style_var(imgui.STYLE_GRAB_MIN_SIZE, 9)
 
-                                imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.0, 0.0, 0.0, 1.0)
+                                imgui.push_style_color(imgui.COLOR_CHECK_MARK, *cfg.COLOUR_CHECK_MARK)
 
                                 if SegmentationEditor.FEATURE_LIB_ANNOTATION:
                                     imgui.push_item_width(imgui.get_content_region_available_width() - 38)
