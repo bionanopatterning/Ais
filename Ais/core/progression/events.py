@@ -86,10 +86,10 @@ def award(
     if "+" in skill:
         xp *= 10
 
-    # skip if the cursor hasn't moved since the last award; discrete events
-    # (box placement) pass no cursor_pos and bypass this gate
+    # skip if the cursor hasn't moved since the last award, but only for the
+    # continuous brush (rate_limit); discrete clicks (box placement) always count
     global _last_award_cursor
-    if cursor_pos is not None and _last_award_cursor is not None:
+    if rate_limit and cursor_pos is not None and _last_award_cursor is not None:
         if (abs(cursor_pos[0] - _last_award_cursor[0]) < _CURSOR_EPS_PX
                 and abs(cursor_pos[1] - _last_award_cursor[1]) < _CURSOR_EPS_PX):
             return

@@ -366,6 +366,8 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     cursor is the mouse position in screen px (bokeh avoids it)."""
     prm = _params()
     if not prm.get("enabled", False):
+        if _pending:
+            _pending.clear()   # nothing consumes events while disabled; don't accumulate
         return None
     style = prm.get("style", "blob")
     px = camera.position[0] * camera.zoom * PARALLAX
