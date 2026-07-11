@@ -672,28 +672,6 @@ class SegmentationEditor:
                 _h = self.boot_sprite_height * 0.25
                 imgui.set_next_window_position(SegmentationEditor.MAIN_WINDOW_WIDTH + (cfg.window_width - SegmentationEditor.MAIN_WINDOW_WIDTH) / 2.0 - (_w / 2.0), (cfg.window_height - _h) / 2.0 - 25)
                 self.show_boot_img = imgui.begin("##boot_sprite", True,imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | imgui.WINDOW_NO_BACKGROUND | imgui.WINDOW_NO_SCROLLBAR)[1]
-                # The dark, warm logo was drawn for the light theme (~29% near-black ink
-                # that no tint can lift), so in dark mode we lift it onto a warm plaque.
-                if cfg.settings.get("DARK_MODE", False):
-                    _p = imgui.get_cursor_screen_pos()          # image top-left (image() advances the cursor)
-                    _pad = _w * 0.06
-                    _r = (_w + 2.0 * _pad) * 0.06
-                    _x0, _y0, _x1, _y1 = _p[0] - _pad, _p[1] - _pad, _p[0] + _w + _pad, _p[1] + _h + _pad
-                    _dl = imgui.get_background_draw_list()       # behind the window, never clipped
-                    _rc = imgui.DRAW_ROUND_CORNERS_ALL
-                    for _i in range(6):                          # soft warm glow, fading outward
-                        _t = _i / 5.0
-                        _e = _w * 0.09 * _t
-                        _dl.add_rect_filled(_x0 - _e, _y0 - _e, _x1 + _e, _y1 + _e,
-                                            imgui.get_color_u32_rgba(0.98, 0.92, 0.80, 0.16 * (1.0 - _t) ** 1.5), _r + _e, _rc)
-                    _dl.add_rect_filled(_x0, _y0, _x1, _y1, imgui.get_color_u32_rgba(0.82, 0.80, 0.76, 1.0), _r, _rc)
-                    _dl.add_rect_filled_multicolor(_x0 + _r, _y0, _x1 - _r, _y0 + _h * 0.55,
-                                                   imgui.get_color_u32_rgba(0.97, 0.95, 0.90, 0.18),
-                                                   imgui.get_color_u32_rgba(0.97, 0.95, 0.90, 0.18),
-                                                   imgui.get_color_u32_rgba(0.97, 0.95, 0.90, 0.0),
-                                                   imgui.get_color_u32_rgba(0.97, 0.95, 0.90, 0.0))
-                    _dl.add_rect(_x0 + 1.0, _y0 + 1.0, _x1 - 1.0, _y1 - 1.0,
-                                 imgui.get_color_u32_rgba(0.99, 0.97, 0.92, 0.22), _r - 1.0, _rc, 1.5)
                 imgui.image(self.boot_sprite_texture.renderer_id, _w, _h)
                 imgui.push_style_color(imgui.COLOR_POPUP_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND)
                 if imgui.begin_popup_context_window():
