@@ -15,9 +15,6 @@ from . import profile as _profile
 
 Color = Tuple[float, float, float]
 
-COIN_PER_XP = 0.12      # coins trickle with effort (XP)
-LEVELUP_COIN = 3        # bonus coins per level, on each level-up
-
 
 @dataclass
 class LevelUp:
@@ -122,11 +119,6 @@ def award(
             timestamp=time.time(),
         ))
 
-    # coins accrue with effort, plus a lump on each level-up
-    p.add_coins(xp * COIN_PER_XP)
-    if after > before:
-        p.add_coins(LEVELUP_COIN * after)
-
     # XP orbs fly from the cursor's brush/box rim into the HUD
     if cursor_pos is not None and cfg.settings.get("PERK_XP_ORBS", True):
         _oc = tuple(color) if color is not None else p.skill_color(skill)
@@ -156,7 +148,7 @@ def _paced(key: str, skill: str, xp: int, color: Optional[Color], interval: floa
     if now - _paced_last_t.get(key, 0.0) < interval:
         return
     _paced_last_t[key] = now
-    award(skill, xp, color)   # XP/coins/HUD; no cursor gate, no auto orbs
+    award(skill, xp, color)   # XP + HUD row; no cursor gate, no auto orbs
     if screen_xy is not None and cfg.settings.get("PERK_XP_ORBS", True):
         c = tuple(float(v) for v in color) if color is not None else _profile.get_profile().skill_color(skill)
         orbs.emit(float(screen_xy[0]), float(screen_xy[1]), c, n_orbs, skill, radius=radius)

@@ -14,21 +14,20 @@ void main()
 #fragment
 #version 420
 
-#define MAXB 48
+#define MAXB 480
 
 in vec2 uv;
 out vec4 fragColour;
 
 uniform int uN;
-uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh)
+uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh), 3 = mosaic tile
 uniform vec2 uRes;          // screen size in px
 uniform vec3 uBase;         // papery base colour
 uniform float uIntensity;
-uniform vec2 uPos[MAXB];    // centres in px (top-left origin)
-uniform float uRad[MAXB];   // radius / circumradius in px
-uniform vec3 uCol[MAXB];
-uniform float uAng[MAXB];   // rotation (radians)
-uniform float uAlp[MAXB];   // per-particle alpha (fade in/out)
+// Per-blob data packed into two vec4s to stay under the fragment constant-
+// register limit (5 separate arrays overflowed at high MAXB):
+uniform vec4 uA[MAXB];      // xy = centre px, z = radius / half-width, w = alpha
+uniform vec4 uB[MAXB];      // xyz = colour, w = angle / half-height
 
 void main()
 {
@@ -36,33 +35,45 @@ void main()
     vec3 col = uBase;
     for (int i = 0; i < uN; i++)
     {
+        vec2 pPos = uA[i].xy;
+        float pRad = uA[i].z;
+        float pAlp = uA[i].w;
+        vec3 pCol = uB[i].xyz;
+        float pAng = uB[i].w;
         float w;
-        vec3 tgt = uCol[i];
         if (uShape == 2)
         {
             // soft disc (bokeh)
-            float d = distance(frag, uPos[i]);
-            float soft = max(6.0, uRad[i] * 0.30);
-            w = smoothstep(uRad[i] + soft, uRad[i] - soft, d) * uIntensity * uAlp[i];
+            float d = distance(frag, pPos);
+            float soft = max(6.0, pRad * 0.30);
+            w = smoothstep(pRad + soft, pRad - soft, d) * uIntensity * pAlp;
         }
         else if (uShape == 1)
         {
             // brushstroke: large, soft, elongated & rotated gaussian wisp
-            vec2 rel = frag - uPos[i];
-            float c = cos(uAng[i]);
-            float s = sin(uAng[i]);
+            vec2 rel = frag - pPos;
+            float c = cos(pAng);
+            float s = sin(pAng);
             vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
-            float rr = max(uRad[i], 1.0);
+            float rr = max(pRad, 1.0);
             vec2 nrm = vec2(lo.x / (rr * 1.9), lo.y / (rr * 0.7));
-            w = exp(-dot(nrm, nrm) * 1.6) * uIntensity * uAlp[i];
+            w = exp(-dot(nrm, nrm) * 1.6) * uIntensity * pAlp;
+        }
+        else if (uShape == 3)
+        {
+            // mosaic tile: filled rectangle (half-width in z, half-height in w),
+            // hard axis-aligned edges so neighbours touch exactly, no outline
+            vec2 rel = abs(frag - pPos);
+            float inside = step(rel.x, pRad) * step(rel.y, pAng);
+            w = inside * uIntensity * pAlp;
         }
         else
         {
             // soft gaussian blob (Aurora)
-            float d = distance(frag, uPos[i]) / max(uRad[i], 1.0);
-            w = exp(-d * d * 2.2) * uIntensity * uAlp[i];
+            float d = distance(frag, pPos) / max(pRad, 1.0);
+            w = exp(-d * d * 2.2) * uIntensity * pAlp;
         }
-        col = mix(col, tgt, clamp(w, 0.0, 1.0));
+        col = mix(col, pCol, clamp(w, 0.0, 1.0));
     }
     fragColour = vec4(col, 1.0);
 }

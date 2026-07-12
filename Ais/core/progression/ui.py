@@ -73,16 +73,26 @@ LEVELUP_DURATION_S = 3.2
 # they go off in sequence rather than all at once.
 _pending_bursts: List[Tuple[float, float, float, Color, int]] = []
 
-_panel_open: bool = False
+_skills_open: bool = False
+
+# Effect on/off toggles, surfaced in the editor's Party-mode menu.
+EFFECT_TOGGLES = (
+    ("PERK_CURSOR",     "Cursor sparkles"),
+    ("PERK_XP_ORBS",    "XP orbs"),
+    ("PERK_BOX_BURST",  "Box-placement burst"),
+    ("PERK_CONFETTI",   "Level-up confetti"),
+    ("PERK_MILESTONE",  "Level-up celebration"),
+    ("PERK_COLOR_ANIM", "Colour animations"),
+)
 
 
-def toggle_panel() -> None:
-    global _panel_open
-    _panel_open = not _panel_open
+def toggle_skills_panel() -> None:
+    global _skills_open
+    _skills_open = not _skills_open
 
 
-def is_panel_open() -> bool:
-    return _panel_open
+def is_skills_open() -> bool:
+    return _skills_open
 
 
 def tick_particles(dt: float) -> None:
@@ -254,10 +264,9 @@ def render_xp_hud(window_width: int, window_height: int, hidden: bool = False) -
     dl = imgui.get_window_draw_list()
     win_pos = imgui.get_window_position()
 
-    theme = cosmetics.params(cosmetics.HUD)
-    track_col = theme.get("track", (0.18, 0.18, 0.20))
-    track_alpha = theme.get("track_alpha", 0.9)
-    backdrop_a = theme.get("backdrop", 0.55)
+    track_col = (0.18, 0.18, 0.20)   # slate HUD look (fixed)
+    track_alpha = 0.9
+    backdrop_a = 0.55
     orb_targets = {}
 
     for i, (name, dt, in_frame) in enumerate(rows):
@@ -353,27 +362,24 @@ def render_level_up(window_width: int, window_height: int, hidden: bool = False)
         if ev is None:
             return
         background.notify_levelup(ev)   # whole-field colour swell in the background
+        _cx, _cy = window_width * 0.5, window_height * 0.5
         if cfg.settings.get("PERK_CONFETTI", True):
-            _cp = cosmetics.params(cosmetics.CONFETTI)
-            particles.emit_confetti(window_width, ev.color, n=70,
-                                    palette=_cp.get("palette", "feature"),
-                                    shape=_cp.get("shape", "rect"),
-                                    size_mul=_cp.get("size_mul", 1.0))
+            # confetti bursts outward from the centre LEVEL text and falls, like
+            # the party-mode-on pop (feature-coloured rather than multicolour).
+            particles.emit_confetti_burst(_cx, _cy, n=110, color=ev.color)
         # confetti fires regardless; the centre text is opt-out via PERK_MILESTONE
         if not cfg.settings.get("PERK_MILESTONE", True):
             return
         _active_levelup = ev
         _levelup_started_at = now
-        # a sequence of firework pops around the text, ~140 ms apart
+        # a couple of extra spark pops around the text, ~140 ms apart
         if cfg.settings.get("PERK_CONFETTI", True):
-            _bx, _by = window_width * 0.5, window_height * 0.5
-            _spread = window_width * 0.11
-            _plan = ((0.0, 0.0, 48), (-1.0, -0.02, 32), (1.0, -0.02, 32),
-                     (-0.5, 0.06, 26), (0.5, 0.06, 26))
+            _plan = ((0.0, 0.0, 40), (-0.5, 0.04, 26), (0.5, 0.04, 26))
+            _spread = window_width * 0.10
             for _i, (_ox, _oy, _bn) in enumerate(_plan):
                 _pending_bursts.append((now + _i * 0.14,
-                                        _bx + _spread * _ox,
-                                        _by + window_height * _oy,
+                                        _cx + _spread * _ox,
+                                        _cy + window_height * _oy,
                                         ev.color, _bn))
 
     elapsed = now - _levelup_started_at
@@ -492,12 +498,8 @@ def render_level_up(window_width: int, window_height: int, hidden: bool = False)
         imgui.pop_font()
 
 
-def render_profile_panel() -> None:
-    global _panel_open
-    if not _panel_open:
-        return
-
-    imgui.set_next_window_size(560, 640, imgui.FIRST_USE_EVER)
+def _begin_panel(title: str, tag: str, w: int, h: int):
+    imgui.set_next_window_size(w, h, imgui.FIRST_USE_EVER)
     imgui.push_style_var(imgui.STYLE_WINDOW_PADDING, (16, 14))
     imgui.push_style_var(imgui.STYLE_WINDOW_ROUNDING, cfg.WINDOW_ROUNDING)
     imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND)
@@ -505,124 +507,264 @@ def render_profile_panel() -> None:
     imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, *cfg.COLOUR_TITLE_BACKGROUND)
     imgui.push_style_color(imgui.COLOR_BORDER, *cfg.COLOUR_FRAME_EXTRA_DARK[:3], 0.85)
     imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
+    return imgui.begin(f"{title}##{tag}", True, imgui.WINDOW_NO_COLLAPSE)
 
-    expanded, opened = imgui.begin(
-        "Progression##progression_panel",
-        True,
-        imgui.WINDOW_NO_COLLAPSE,
-    )
-    if not opened:
-        _panel_open = False
-    if not expanded:
-        imgui.end()
-        imgui.pop_style_color(5)
-        imgui.pop_style_var(2)
-        return
 
-    p = _profile.get_profile()
-    _render_header_card(p)
-    imgui.dummy(0, 10)
-
-    visible = p.visible_skills()
-    _section_label("SKILLS")
-    if not visible:
-        imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT_DISABLED)
-        imgui.text("  Annotate a feature to begin a skill.")
-        imgui.pop_style_color(1)
-    else:
-        _render_skill_grid(visible, p)
-
-    imgui.dummy(0, 14)
-    _render_shop(p)
-
-    imgui.dummy(0, 14)
-    _render_perk_toggles()
-
+def _end_panel() -> None:
     imgui.end()
     imgui.pop_style_color(5)
     imgui.pop_style_var(2)
 
 
-def _render_shop_item(p: _profile.Profile, it, equipped_id: str) -> None:
-    is_eq = (it.id == equipped_id)
-    owned = cosmetics.is_owned(p, it)
-    unlocked = cosmetics.is_unlocked(p, it)
-    affordable = p.can_afford(it.price)
+def render_skills_panel() -> None:
+    global _skills_open
+    if not _skills_open:
+        return
+    expanded, opened = _begin_panel("Skills & Levels", "progression_skills", 470, 520)
+    if not opened:
+        _skills_open = False
+    if not expanded:
+        _end_panel()
+        return
 
-    if is_eq:
-        label, btn, txt = f"* {it.name}", (0.20, 0.48, 0.32), (1.0, 1.0, 1.0)
-    elif owned:
-        label, btn, txt = it.name, cfg.COLOUR_FRAME_DARK[:3], (0.10, 0.10, 0.12)
-    elif not unlocked:
-        label, btn, txt = f"{it.name}  Lv{it.min_level}", (0.86, 0.86, 0.84), (0.55, 0.55, 0.58)
-    elif it.price > 0 and not affordable:
-        label, btn, txt = f"{it.name}  {it.price}c", (0.86, 0.86, 0.84), (0.55, 0.55, 0.58)
-    elif it.price > 0:
-        label, btn, txt = f"{it.name}  {it.price}c", (0.85, 0.72, 0.30), (0.15, 0.12, 0.05)
-    else:
-        label, btn, txt = f"{it.name}  claim", (0.55, 0.72, 0.85), (0.10, 0.12, 0.16)
-
-    imgui.push_style_color(imgui.COLOR_BUTTON, btn[0], btn[1], btn[2], 1.0)
-    imgui.push_style_color(imgui.COLOR_BUTTON_HOVERED, min(1.0, btn[0] + 0.08), min(1.0, btn[1] + 0.08), min(1.0, btn[2] + 0.08), 1.0)
-    imgui.push_style_color(imgui.COLOR_BUTTON_ACTIVE, btn[0], btn[1], btn[2], 1.0)
-    imgui.push_style_color(imgui.COLOR_TEXT, txt[0], txt[1], txt[2], 1.0)
-    if imgui.button(f"{label}##shop_{it.id}"):
-        if owned:
-            cosmetics.equip(p, it)
-        elif unlocked and (it.price == 0 or affordable):
-            cosmetics.buy(p, it)
-    imgui.pop_style_color(4)
-
-
-def _render_shop(p: _profile.Profile) -> None:
-    _section_label("SHOP")
-    imgui.push_style_color(imgui.COLOR_TEXT, 0.62, 0.50, 0.16, 1.0)
-    imgui.text(f"{p.coins} coins")
-    imgui.pop_style_color(1)
-    imgui.spacing()
-    imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 3.0)
-    imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (7, 3))
-    for cat in (cosmetics.BACKGROUND, cosmetics.CURSOR, cosmetics.ORB, cosmetics.BURST, cosmetics.CONFETTI, cosmetics.HUD):
-        if len(cosmetics.CATALOG[cat]) <= 1:
-            continue   # nothing to choose (only the feature-coloured default)
-        imgui.push_style_color(imgui.COLOR_TEXT, 0.40, 0.38, 0.34, 1.0)
-        imgui.text(cosmetics.CATEGORY_LABELS[cat])
+    p = _profile.get_profile()
+    _render_header_card(p)
+    imgui.dummy(0, 12)
+    _section_label("SKILLS")
+    visible = p.visible_skills()
+    if not visible:
+        imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT_DISABLED)
+        imgui.text("  Annotate a feature to begin a skill.")
         imgui.pop_style_color(1)
-        eq = cosmetics.equipped_id(p, cat)
-        for j, it in enumerate(cosmetics.CATALOG[cat]):
-            if j > 0:
-                imgui.same_line()
-            _render_shop_item(p, it, eq)
+    else:
+        _render_skill_rows(visible, p)
+    _end_panel()
+
+
+# ---------------------------------------------------------------------------
+# Cosmetics debug window: live-edit the background feel constants and every
+# cosmetic item's params. On each committed change the whole set is printed to
+# stdout so it can be pasted back and ingested.
+# ---------------------------------------------------------------------------
+_debug_open: bool = False
+
+# (background-module attribute, label, min, max, is_int)
+_BG_TUNABLES = (
+    # Mosaic
+    ("_MOSAIC_CELL_PX",      "mosaic cell px",         20.0, 220.0, False),
+    ("_MOSAIC_MAX_LIT",      "mosaic max lit",         10,   400,   True),
+    ("_MOSAIC_FADE_IN",      "mosaic fade-in s",        0.1,   6.0, False),
+    ("_MOSAIC_HOLD",         "mosaic hold s",           1.0,  60.0, False),
+    ("_MOSAIC_FADE_OUT",     "mosaic fade-out s",       1.0,  30.0, False),
+    ("_MOSAIC_PEAK",         "mosaic peak alpha",       0.05,  1.0, False),
+    ("_MOSAIC_BRUSH_CHANCE", "mosaic brush chance",     0.01,  1.0, False),
+    # Brushstroke
+    ("_STROKE_DOT_R",        "stroke wisp size",       10.0, 400.0, False),
+    ("_STROKE_MAX",          "stroke max wisps",       22,   480,   True),
+    ("_STROKE_MAX_PTS",      "stroke wisps/gesture",    4,    48,   True),
+    ("_STROKE_SEG",          "stroke capture spacing", 2.0,  30.0, False),
+    ("_STROKE_FADE_IN",      "stroke fade-in s",        0.2,  10.0, False),
+    ("_STROKE_FADE_OUT",     "stroke fade-out s",       0.5,  20.0, False),
+    ("_STROKE_HUE_JITTER",   "stroke hue jitter",       0.0,   0.2, False),
+    # Bokeh / Aurora feel
+    ("_BOKEH_TURN_IDLE",     "bokeh turnover idle",     0.0,   1.0, False),
+    ("_BOKEH_TURN_ACTIVE",   "bokeh turnover active",   0.2,   3.0, False),
+    ("_BOKEH_TURN_GRACE",    "bokeh turnover grace s",  0.2,   6.0, False),
+    ("_AVOID_ACCEL",         "bokeh cursor push",       0.0, 1200.0, False),
+    ("FILL_UP",              "wake fill-up rate",       0.5,  10.0, False),
+    ("FILL_DOWN",            "wake recede rate",        0.05,  3.0, False),
+    ("A_MAX",                "arousal max",             0.1,   1.0, False),
+    ("TAU_RISE",             "arousal rise tau s",      0.2,   6.0, False),
+    ("TAU_FALL",             "arousal fall tau s",      2.0,  40.0, False),
+    ("PARALLAX",             "parallax",                0.0,   0.6, False),
+)
+
+# 2-tuple (lo, hi) constants -> rendered as two sliders each
+_BG_RANGE_TUNABLES = (
+    ("_STROKE_SCALE",  "stroke echo scale",  0.1,   5.0),
+    ("_STROKE_LIFE",   "stroke echo life s", 5.0, 600.0),
+)
+
+
+def toggle_cosmetics_debug() -> None:
+    global _debug_open
+    _debug_open = not _debug_open
+
+
+def is_cosmetics_debug_open() -> bool:
+    return _debug_open
+
+
+def _cosmetics_dump() -> str:
+    consts = {a: getattr(background, a) for a, _l, _mn, _mx, _i in _BG_TUNABLES if hasattr(background, a)}
+    for a, _l, _mn, _mx in _BG_RANGE_TUNABLES:
+        if hasattr(background, a):
+            consts[a] = getattr(background, a)
+    items = {}
+    for lst in cosmetics.CATALOG.values():
+        for it in lst:
+            items[it.id] = dict(it.params)
+    return "background_constants = %r\ncosmetic_params = %r" % (consts, items)
+
+
+def _print_cosmetics_dump() -> None:
+    print("\n===== AIS COSMETICS DUMP =====")
+    print(_cosmetics_dump())
+    print("===== END AIS COSMETICS DUMP =====\n", flush=True)
+
+
+_HAS_COMMIT_SIGNAL = hasattr(imgui, "is_item_deactivated_after_edit")
+
+
+def _committed() -> bool:
+    # True on the frame an edit is finished (mouse released), so a drag prints
+    # one dump instead of one per frame. Falls back to per-change dumps below.
+    if _HAS_COMMIT_SIGNAL:
+        try:
+            return bool(imgui.is_item_deactivated_after_edit())
+        except Exception:
+            return False
+    return False
+
+
+def render_cosmetics_debug() -> None:
+    global _debug_open
+    if not _debug_open:
+        return
+    expanded, opened = _begin_panel("Cosmetics debug", "progression_debug", 500, 640)
+    if not opened:
+        _debug_open = False
+    if not expanded:
+        _end_panel()
+        return
+
+    committed = False
+    changed = False
+
+    _section_label("BACKGROUND FEEL")
+    for attr, label, mn, mx, is_int in _BG_TUNABLES:
+        if not hasattr(background, attr):
+            continue
+        cur = getattr(background, attr)
+        if is_int:
+            ch, nv = imgui.slider_int(f"{label}##dbg_{attr}", int(cur), int(mn), int(mx))
+        else:
+            ch, nv = imgui.slider_float(f"{label}##dbg_{attr}", float(cur), float(mn), float(mx))
+        if ch:
+            setattr(background, attr, nv)
+            changed = True
+        if _committed():
+            committed = True
+
+    for attr, label, mn, mx in _BG_RANGE_TUNABLES:
+        cur = getattr(background, attr, None)
+        if not (isinstance(cur, (tuple, list)) and len(cur) == 2):
+            continue
+        lo, hi = float(cur[0]), float(cur[1])
+        chl, nlo = imgui.slider_float(f"{label} lo##dbg_{attr}", lo, float(mn), float(mx))
+        if _committed():
+            committed = True
+        chh, nhi = imgui.slider_float(f"{label} hi##dbg_{attr}", hi, float(mn), float(mx))
+        if _committed():
+            committed = True
+        if chl or chh:
+            setattr(background, attr, (nlo if chl else lo, nhi if chh else hi))
+            changed = True
+
+    imgui.dummy(0, 8)
+    _section_label("COSMETIC ITEMS")
+    for cat, lst in cosmetics.CATALOG.items():
+        imgui.push_style_color(imgui.COLOR_TEXT, 0.40, 0.38, 0.34, 1.0)
+        imgui.text(cosmetics.CATEGORY_LABELS.get(cat, cat))
+        imgui.pop_style_color(1)
+        for it in lst:
+            for key, val in list(it.params.items()):
+                wid = f"{it.id}.{key}##dbg"
+                if isinstance(val, bool):
+                    ch, nv = imgui.checkbox(wid, val)
+                elif isinstance(val, int):
+                    ch, nv = imgui.drag_int(wid, val, 1.0, 0, 4096)
+                elif isinstance(val, float):
+                    ch, nv = imgui.drag_float(wid, val, 0.01, 0.0, 0.0)
+                elif isinstance(val, (tuple, list)) and len(val) == 3 and all(isinstance(c, (int, float)) for c in val):
+                    ch, rgb = imgui.color_edit3(wid, float(val[0]), float(val[1]), float(val[2]))
+                    nv = tuple(rgb)
+                else:
+                    imgui.text(f"{key} = {val!r}")
+                    ch = False
+                    nv = val
+                if ch:
+                    it.params[key] = nv
+                    changed = True
+                if _committed():
+                    committed = True
         imgui.spacing()
-    imgui.pop_style_var(2)
+
+    if committed or (not _HAS_COMMIT_SIGNAL and changed):
+        _print_cosmetics_dump()
+
+    imgui.dummy(0, 6)
+    if imgui.button("Print full set to CLI##dbg_print"):
+        _print_cosmetics_dump()
+    _end_panel()
 
 
-def _render_perk_toggles() -> None:
-    _section_label("PERKS")
-    items = (
-        ("PERK_CURSOR",     "Cursor sparkles"),
-        ("PERK_XP_ORBS",    "XP orbs"),
-        ("PERK_BOX_BURST",  "Box-placement burst"),
-        ("PERK_CONFETTI",   "Level-up confetti"),
-        ("PERK_MILESTONE",  "Level-up celebration"),
-        ("PERK_COLOR_ANIM", "Color animations"),
-    )
-    imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 2.0)
-    imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (4, 3))
-    imgui.push_style_var(imgui.STYLE_ITEM_SPACING, (12, 9))
-    imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND, *cfg.COLOUR_FRAME_DARK)
-    imgui.push_style_color(imgui.COLOR_FRAME_BACKGROUND_HOVERED, *cfg.COLOUR_FRAME_EXTRA_DARK)
-    imgui.push_style_color(imgui.COLOR_CHECK_MARK, 0.10, 0.12, 0.16, 1.0)
-    col_w = imgui.get_content_region_available_width() * 0.5
-    for i, (key, label) in enumerate(items):
-        cur = bool(cfg.settings.get(key, True))
-        changed, new_val = imgui.checkbox(f"{label}##{key}", cur)
-        if changed:
-            cfg.edit_setting(key, bool(new_val))
-        if i % 2 == 0 and i != len(items) - 1:
-            imgui.same_line(col_w)
-    imgui.pop_style_color(3)
-    imgui.pop_style_var(3)
+_SKILL_ROW_H = 46
+
+
+def _render_skill_rows(visible: dict, p: _profile.Profile) -> None:
+    dl = imgui.get_window_draw_list()
+    avail_w = imgui.get_content_region_available_width()
+    items = sorted(visible.items(), key=lambda kv: (-_profile.level_for_xp(kv[1]), kv[0]))
+    mx, my = imgui.get_mouse_pos()
+
+    for name, xp in items:
+        x0, y0 = imgui.get_cursor_screen_pos()
+        L, into, needed = _profile.xp_into_level(xp)
+        color = p.skill_color(name)
+
+        if (x0 <= mx <= x0 + avail_w) and (y0 <= my <= y0 + _SKILL_ROW_H):
+            dl.add_rect_filled(x0 - 4, y0, x0 + avail_w + 4, y0 + _SKILL_ROW_H,
+                               imgui.get_color_u32_rgba(*cfg.COLOUR_TITLE_BACKGROUND[:3], 0.6), 6.0)
+
+        chip = 30.0
+        cx, cy = x0 + 2, y0 + (_SKILL_ROW_H - chip) * 0.5
+        dl.add_rect_filled(cx, cy, cx + chip, cy + chip,
+                           imgui.get_color_u32_rgba(color[0], color[1], color[2], 1.0), 6.0)
+        dl.add_rect(cx, cy, cx + chip, cy + chip,
+                    imgui.get_color_u32_rgba(0.0, 0.0, 0.0, 0.30), 6.0, 0, 1.0)
+
+        text_x = cx + chip + 12
+        lv = f"Level {L}"
+        lv_tw, _ = imgui.calc_text_size(lv)
+        lv_x = x0 + avail_w - lv_tw - 22
+        name_text = _truncate_to_width(name, lv_x - text_x - 8)
+        dl.add_text(text_x, y0 + 5, imgui.get_color_u32_rgba(*cfg.COLOUR_TEXT[:3], 1.0), name_text)
+        dl.add_text(lv_x, y0 + 5, imgui.get_color_u32_rgba(color[0] * 0.5, color[1] * 0.5, color[2] * 0.5, 1.0), lv)
+
+        bar_x = text_x
+        bar_y = y0 + 26
+        bar_w = x0 + avail_w - bar_x - 22
+        bar_h = 8.0
+        if needed == 0:
+            frac, overlay = 1.0, "MAX"
+        else:
+            frac, overlay = into / needed, f"{into:,} / {needed:,}"
+        _draw_track(dl, bar_x, bar_y, bar_w, bar_h, frac, bg=(0.80, 0.80, 0.74), fill=color, overlay=overlay)
+
+        imgui.set_cursor_screen_pos((x0 + avail_w - 18, y0 + 3))
+        if imgui.invisible_button(f"##hide_{name}", 16, 16):
+            p.hide(name)
+            _profile.mark_dirty()
+        if imgui.is_item_hovered():
+            with imgui.begin_tooltip():
+                imgui.text("Hide this skill")
+        g_tw, g_th = imgui.calc_text_size("x")
+        dl.add_text(x0 + avail_w - 18 + (16 - g_tw) * 0.5, y0 + 3 + (16 - g_th) * 0.5,
+                    imgui.get_color_u32_rgba(0.50, 0.50, 0.54, 0.9), "x")
+
+        imgui.set_cursor_screen_pos((x0, y0))
+        imgui.dummy(avail_w, _SKILL_ROW_H + 4)
 
 
 def _render_header_card(p: _profile.Profile) -> None:
@@ -657,11 +799,7 @@ def _render_header_card(p: _profile.Profile) -> None:
     overall = p.overall_level()
     big = f"Total Level   {overall}"
     big_tw, _ = imgui.calc_text_size(big)
-    dl.add_text(x0 + avail_w - big_tw - 18, y0 + 16, imgui.get_color_u32_rgba(0.16, 0.20, 0.36, 1.0), big)
-
-    coins_text = f"{p.coins} coins"
-    ct_w, _ = imgui.calc_text_size(coins_text)
-    dl.add_text(x0 + avail_w - ct_w - 18, y0 + 36, imgui.get_color_u32_rgba(0.62, 0.50, 0.16, 1.0), coins_text)
+    dl.add_text(x0 + avail_w - big_tw - 18, y0 + 24, imgui.get_color_u32_rgba(0.16, 0.20, 0.36, 1.0), big)
 
     imgui.dummy(avail_w, card_h)
 
@@ -674,98 +812,3 @@ def _section_label(label: str) -> None:
     imgui.spacing()
 
 
-_TILE_W = 128
-_TILE_H = 116
-_TILE_SPACING = 10
-
-
-def _render_skill_grid(visible: dict, p: _profile.Profile) -> None:
-    dl = imgui.get_window_draw_list()
-    avail_w = imgui.get_content_region_available_width()
-    cols = max(1, int((avail_w + _TILE_SPACING) // (_TILE_W + _TILE_SPACING)))
-    items = sorted(visible.items(), key=lambda kv: (-_profile.level_for_xp(kv[1]), kv[0]))
-    n = len(items)
-    rows = (n + cols - 1) // cols
-    grid_h = rows * (_TILE_H + _TILE_SPACING) - _TILE_SPACING if rows else 0
-
-    base_x, base_y = imgui.get_cursor_screen_pos()
-    grid_x_offset = (avail_w - (cols * _TILE_W + (cols - 1) * _TILE_SPACING)) * 0.5
-
-    for i, (name, xp) in enumerate(items):
-        col = i % cols
-        row = i // cols
-        tx = base_x + grid_x_offset + col * (_TILE_W + _TILE_SPACING)
-        ty = base_y + row * (_TILE_H + _TILE_SPACING)
-        _draw_skill_tile(dl, tx, ty, name, xp, p.skill_color(name))
-        imgui.set_cursor_screen_pos((tx + _TILE_W - 22, ty + 4))
-        if imgui.invisible_button(f"##hide_tile_{name}", 18, 18):
-            p.hide(name)
-            _profile.mark_dirty()
-        if imgui.is_item_hovered():
-            with imgui.begin_tooltip():
-                imgui.text("Hide this skill")
-
-    imgui.dummy(avail_w, grid_h)
-
-
-def _draw_skill_tile(dl, tx: float, ty: float, name: str, xp: int, base_color: Color) -> None:
-    L, into, needed = _profile.xp_into_level(xp)
-    tier = perks.perk_for_level(L)
-    border_anim = bool(tier and tier.border_anim and cfg.settings.get("PERK_COLOR_ANIM", True))
-
-    # Tile background — cream. Border is in the feature color, optionally
-    # animated (alpha pulse + subtle hue cycle within the perk's hue_amp) at
-    # higher skill tiers.
-    bg_u = imgui.get_color_u32_rgba(*cfg.COLOUR_TITLE_BACKGROUND[:3], 1.0)
-    if border_anim:
-        t = time.time()
-        alpha = 0.65 + 0.30 * (0.5 + 0.5 * math.sin(t * 1.6))
-        h_amp = min(0.15, tier.hue_amp) if tier else 0.0
-        h, s, v = colorsys.rgb_to_hsv(*base_color)
-        h = (h + h_amp * math.sin(t * 1.2)) % 1.0
-        br, bg, bb = colorsys.hsv_to_rgb(h, s, v)
-    else:
-        alpha = 0.85
-        br, bg, bb = base_color
-    border_u = imgui.get_color_u32_rgba(br, bg, bb, alpha)
-    dl.add_rect_filled(tx, ty, tx + _TILE_W, ty + _TILE_H, bg_u, 8.0)
-    dl.add_rect(tx, ty, tx + _TILE_W, ty + _TILE_H, border_u, 8.0, 0, 2.0)
-
-    dl.add_rect_filled(tx + 8, ty + 6, tx + _TILE_W - 8, ty + 9, border_u, 1.5)
-
-    _draw_swatch(dl, tx + 8, ty + 16, 12.0, base_color)
-
-    name_max_w = _TILE_W - 30
-    name_text = _truncate_to_width(name, name_max_w)
-    name_color = (
-        max(0.0, min(0.55, base_color[0] * 0.65)),
-        max(0.0, min(0.55, base_color[1] * 0.65)),
-        max(0.0, min(0.55, base_color[2] * 0.65)),
-    )
-    _, name_th = imgui.calc_text_size(name_text)
-    dl.add_text(tx + 24, ty + 16 + (12 - name_th) * 0.5, imgui.get_color_u32_rgba(name_color[0], name_color[1], name_color[2], 1.0), name_text)
-
-    glyph = "x"
-    g_tw, g_th = imgui.calc_text_size(glyph)
-    dl.add_text(tx + _TILE_W - 22 + (18 - g_tw) * 0.5, ty + 4 + (18 - g_th) * 0.5, imgui.get_color_u32_rgba(0.50, 0.50, 0.54, 0.85), glyph)
-
-    level_text = f"Level {L}"
-    lvl_tw, lvl_th = imgui.calc_text_size(level_text)
-    lvl_x = tx + (_TILE_W - lvl_tw) * 0.5
-    lvl_y = ty + 40
-    out_u = imgui.get_color_u32_rgba(0.0, 0.0, 0.0, 0.30)
-    for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-        dl.add_text(lvl_x + dx, lvl_y + dy, out_u, level_text)
-    dl.add_text(lvl_x, lvl_y, imgui.get_color_u32_rgba(base_color[0] * 0.45, base_color[1] * 0.45, base_color[2] * 0.45, 1.0), level_text)
-
-    bar_x = tx + 10
-    bar_y = ty + _TILE_H - 22
-    bar_w = _TILE_W - 20
-    bar_h = 8.0
-    if needed == 0:
-        overlay = "MAX"
-        frac = 1.0
-    else:
-        overlay = f"{into:,} / {needed:,}"
-        frac = into / needed
-    _draw_track(dl, bar_x, bar_y, bar_w, bar_h, frac, bg=(0.80, 0.80, 0.74), fill=base_color, overlay=overlay)
