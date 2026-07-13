@@ -340,7 +340,7 @@ class SegmentationEditor:
             # living background: GL pre-pass, drawn behind the tomogram
             _bg = None
             if not cfg.settings.get("PROGRESSION_HIDE", False):
-                _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera, self.window.cursor_pos)
+                _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera, self.window.cursor_pos, imgui.is_mouse_down(0))
             if _bg is not None:
                 SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
             else:

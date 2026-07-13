@@ -33,7 +33,7 @@ from . import cosmetics
 
 Color = Tuple[float, float, float]
 
-PARALLAX = 0.15
+PARALLAX = 0.075        # subtle scene parallax (halved)
 _SHAPE = {"blob": 0, "bokeh": 2}
 
 # --- spawn behaviour (tunable) ---------------------------------------------
@@ -45,12 +45,16 @@ _HUE_JITTER = 0.04       # per-shape hue wander around its colour
 _LIFE = (4.0, 9.0)       # base life in seconds (multiplied by the cosmetic's life_mul)
 _FADE_IN = 0.5           # ease-in time (s) - the shape appears gradually
 _FADE_OUT_FRAC = 0.35    # the last this-fraction of life eases back out
+_FADE_OUT_SHRINK = 1.0 / 3.0   # radius shrinks to this fraction across the fade-out
+_TAU_RECOLOR = 0.67      # ~2s transition when a level-up recolours the field
 
 # --- bokeh cursor avoidance (a gentle, heavily damped push - calm) ---------
 _AVOID_R = 200.0
 _AVOID_R2 = _AVOID_R * _AVOID_R
 _AVOID_ACCEL = 350.0
-_AVOID_DAMP = 0.02       # per-second velocity retention (heavy)
+_AVOID_DAMP = 0.02           # per-second velocity retention (heavy)
+_AVOID_BRUSH_RANGE = 5.0     # while the LMB is held (brushing): range x5
+_AVOID_BRUSH_STRENGTH = 3.0  # ...and strength x3
 
 
 @dataclass
@@ -61,6 +65,7 @@ class _Blob:
     vy: float
     r: float
     color: Color
+    color_target: Color
     angle: float
     spin: float
     breathe: float
@@ -156,6 +161,7 @@ def spawn(active_colour, throttle: bool = True) -> None:
         vy=random.uniform(-vlim, vlim),
         r=random.uniform(rmin, rmax),
         color=col,
+        color_target=col,
         angle=random.uniform(-0.6, 0.6),
         spin=random.uniform(-0.25, 0.25),
         breathe=random.uniform(0.15, 0.4),
@@ -176,7 +182,12 @@ def pulse(kind: str, colour) -> None:
 
 
 def notify_levelup(ev) -> None:
-    return   # level-ups no longer change the background
+    # A level-up sends every live shape drifting to a NEW RANDOM hue over ~2s (the
+    # transition is the colour lerp in frame()). New shapes still spawn in the
+    # active colour, so the field drifts back over time.
+    for b in _blobs:
+        b.color_target = _soft_color(colorsys.hsv_to_rgb(
+            random.random(), random.uniform(0.6, 0.9), random.uniform(0.85, 1.0)))
 
 
 def _alpha(age: float, life: float) -> float:
@@ -188,10 +199,11 @@ def _alpha(age: float, life: float) -> float:
     return 1.0
 
 
-def frame(dt: float, w: int, h: int, camera, cursor=None):
+def frame(dt: float, w: int, h: int, camera, cursor=None, brushing: bool = False):
     """Advance the field and return (blobs, base_colour, intensity, shape) for the
     GL renderer, or None when disabled. blobs = [(x, y, radius, rgb, angle, alpha)].
-    cursor is the mouse position in screen px (bokeh discs avoid it)."""
+    cursor is the mouse position in screen px (bokeh discs avoid it); brushing is
+    True while the LMB is held (a stronger, wider cursor push)."""
     global _screen_w, _screen_h, _cur_style, _bt
     _screen_w, _screen_h = w, h
     prm = _params()
@@ -212,18 +224,26 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     py = -camera.position[1] * camera.zoom * PARALLAX
     cursor_bs = (cursor[0] - px, cursor[1] - py) if (cursor is not None and lifecycle) else None
     damp = _AVOID_DAMP ** dt
+    kc = 1.0 - math.exp(-dt / _TAU_RECOLOR)   # level-up hue transition (~2s)
+    # while the LMB is held (brushing), the cursor pushes discs harder and farther
+    avoid_r = _AVOID_R * (_AVOID_BRUSH_RANGE if brushing else 1.0)
+    avoid_r2 = avoid_r * avoid_r
+    avoid_accel = _AVOID_ACCEL * (_AVOID_BRUSH_STRENGTH if brushing else 1.0)
 
     alive: List[_Blob] = []
     for b in _blobs:
         b.age += dt
         if b.age >= b.life:
             continue
+        b.color = (b.color[0] + (b.color_target[0] - b.color[0]) * kc,
+                   b.color[1] + (b.color_target[1] - b.color[1]) * kc,
+                   b.color[2] + (b.color_target[2] - b.color[2]) * kc)
         if cursor_bs is not None:
             dx, dy = b.x - cursor_bs[0], b.y - cursor_bs[1]
             d2 = dx * dx + dy * dy
-            if 1.0 < d2 < _AVOID_R2:
+            if 1.0 < d2 < avoid_r2:
                 d = math.sqrt(d2)
-                push = (1.0 - d / _AVOID_R) * _AVOID_ACCEL
+                push = (1.0 - d / avoid_r) * avoid_accel
                 b.vx += (dx / d) * push * dt
                 b.vy += (dy / d) * push * dt
         b.x += b.vx * dt
@@ -247,6 +267,11 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
             rad = b.r
         else:
             rad = b.r * (1.0 + amp * math.sin(_bt * b.breathe + b.phase))
+        # shrink toward _FADE_OUT_SHRINK (x1/3) gradually across the fade-out
+        fade_out = _FADE_OUT_FRAC * b.life
+        if b.age > b.life - fade_out:
+            fo = (b.life - b.age) / max(fade_out, 1e-4)   # 1 -> 0 during fade-out
+            rad *= _FADE_OUT_SHRINK + (1.0 - _FADE_OUT_SHRINK) * fo
         out.append((b.x + px, b.y + py, rad, b.color, b.angle, a))
     base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
     return out, base, intensity, _SHAPE.get(style, 0)
