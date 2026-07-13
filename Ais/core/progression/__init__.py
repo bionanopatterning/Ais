@@ -27,6 +27,7 @@ from .profile import (
 from .background import (
     frame as background_frame,
     pulse as background_pulse,
+    spawn as background_spawn,
 )
 from .ui import (
     BIG_FONT_PX,
@@ -79,6 +80,7 @@ __all__ = [
     "PERK_UNLOCK_LEVEL",
     "background_frame",
     "background_pulse",
+    "background_spawn",
     "big_font_path",
     "draw_particles",
     "emit_box_burst",

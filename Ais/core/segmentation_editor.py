@@ -483,6 +483,7 @@ class SegmentationEditor:
                             Brush.apply_circular(active_feature, pixel_coordinate, True)
                         progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
                         progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
+                        progression.background_spawn(_ftr_color)   # drop a background shape in the tool's colour
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
                 else:

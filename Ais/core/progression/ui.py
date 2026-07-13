@@ -550,21 +550,21 @@ _debug_open: bool = False
 
 # (background-module attribute, label, min, max, is_int)
 _BG_TUNABLES = (
-    # Bokeh / Aurora feel
-    ("_BOKEH_TURN_IDLE",     "bokeh turnover idle",     0.0,   1.0, False),
-    ("_BOKEH_TURN_ACTIVE",   "bokeh turnover active",   0.2,   3.0, False),
-    ("_BOKEH_TURN_GRACE",    "bokeh turnover grace s",  0.2,   6.0, False),
-    ("_AVOID_ACCEL",         "bokeh cursor push",       0.0, 1200.0, False),
-    ("FILL_UP",              "wake fill-up rate",       0.5,  10.0, False),
-    ("FILL_DOWN",            "wake recede rate",        0.05,  3.0, False),
-    ("A_MAX",                "arousal max",             0.1,   1.0, False),
-    ("TAU_RISE",             "arousal rise tau s",      0.2,   6.0, False),
-    ("TAU_FALL",             "arousal fall tau s",      2.0,  40.0, False),
-    ("PARALLAX",             "parallax",                0.0,   0.6, False),
+    ("_SPAWN_MIN_DT",   "brush spawn interval s",  0.02,  1.0,  False),
+    ("_MAX_BLOBS",      "max live shapes",         20,    600,  True),
+    ("_OTHER_CHANCE",   "sibling-colour chance",   0.0,   0.5,  False),
+    ("_INVERT_CHANCE",  "inverted-colour chance",  0.0,   0.2,  False),
+    ("_HUE_JITTER",     "hue jitter",              0.0,   0.2,  False),
+    ("_FADE_IN",        "fade-in s",               0.05,  3.0,  False),
+    ("_FADE_OUT_FRAC",  "fade-out fraction",       0.05,  0.9,  False),
+    ("_AVOID_ACCEL",    "bokeh cursor push",       0.0, 1200.0, False),
+    ("PARALLAX",        "parallax",                0.0,   0.6,  False),
 )
 
 # 2-tuple (lo, hi) constants -> rendered as two sliders each
-_BG_RANGE_TUNABLES = ()
+_BG_RANGE_TUNABLES = (
+    ("_LIFE", "shape life s", 1.0, 60.0),
+)
 
 
 def toggle_cosmetics_debug() -> None:
