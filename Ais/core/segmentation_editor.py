@@ -342,7 +342,7 @@ class SegmentationEditor:
             if not cfg.settings.get("PROGRESSION_HIDE", False):
                 _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera, self.window.cursor_pos)
             if _bg is not None:
-                SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
+                SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3], self.window.delta_time)
             else:
                 SegmentationEditor.renderer._bg_field = None   # border falls back to black
             self.gui_main()
@@ -484,7 +484,7 @@ class SegmentationEditor:
                         progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
                         progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
                         progression.background_touch(_ftr_color, "brush")
-                        progression.background_stroke(_cx, _cy, _ftr_color)
+                        progression.background_stroke(_cx, _cy, _ftr_color, _brush_radius_world * self.camera.zoom)
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
                         progression.background_touch(tuple(active_feature.colour), "erase")
@@ -3724,9 +3724,14 @@ class Renderer:
         self.edge_shader = Shader(os.path.join(cfg.root, "shaders", "se_depth_edge_detect.glsl"))
         try:
             self.background_blob_shader = Shader(os.path.join(cfg.root, "shaders", "se_background_blobs.glsl"))
+            self.stroke_stamp_shader = Shader(os.path.join(cfg.root, "shaders", "se_stroke_stamp.glsl"))
+            self.stroke_show_shader = Shader(os.path.join(cfg.root, "shaders", "se_stroke_show.glsl"))
         except Exception as _e:
-            print(f"Background blob shader failed to load: {_e}")
+            print(f"Background shader failed to load: {_e}")
             self.background_blob_shader = None
+            self.stroke_stamp_shader = None
+            self.stroke_show_shader = None
+        self._stroke_canvas = None      # brushstroke mode: persistent screen-space canvas FBO
         self.line_list = list()
         self.line_list_s = list()
         self.line_va = VertexArray(None, None, attribute_format="xyrgb")
@@ -4288,10 +4293,83 @@ class Renderer:
             self.border_shader.uniform4f(f"uB[{i}]", (bc[0], bc[1], bc[2], bang))
         self._border_field_dirty = False   # uploaded this frame; skip re-uploads
 
-    def render_background(self, blobs, base_col, intensity, res, shape=0):
+    STROKE_CANVAS_FADE_PER_S = 0.985   # brushstroke canvas retains this fraction/s (1.0 = permanent)
+
+    def _render_stroke_canvas(self, segments, base_col, res, strength, dt):
+        # Brushstroke mode: stamp this frame's new brush segments into a persistent
+        # screen-space canvas, fade the whole canvas a touch (phosphor-trail decay,
+        # so older strokes are automatically fainter), then composite it behind the
+        # tomogram. segments = [(x0, y0, x1, y1, r, g, b, radius), ...] in screen px.
+        if self.stroke_stamp_shader is None or self.stroke_show_shader is None:
+            return
+        w, h = int(res[0]), int(res[1])
+        if w < 2 or h < 2:
+            return
+        if self._stroke_canvas is None:
+            self._stroke_canvas = FrameBuffer(w, h, "rgba32f")
+            self._stroke_canvas.clear((0.0, 0.0, 0.0, 0.0))
+        elif self._stroke_canvas.width != w or self._stroke_canvas.height != h:
+            self._stroke_canvas.set_size(w, h)          # resize in place (no FBO leak)
+            self._stroke_canvas.clear((0.0, 0.0, 0.0, 0.0))
+
+        glDisable(GL_DEPTH_TEST)
+        glDepthMask(GL_FALSE)
+        self._stroke_canvas.bind()          # viewport -> (w, h)
+        glEnable(GL_BLEND)
+        self.ndc_screen_va.bind()
+
+        # 1. fade the whole canvas by a uniform factor: new = dst * retain
+        retain = self.STROKE_CANVAS_FADE_PER_S ** max(0.0, min(0.1, dt))
+        glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA)
+        glBlendColor(0.0, 0.0, 0.0, retain)
+        self.stroke_show_shader.bind()
+        self.stroke_show_shader.uniform1i("uFade", 1)
+        glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+
+        # 2. stamp this frame's new segments (premultiplied "over")
+        if segments:
+            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+            self.stroke_stamp_shader.bind()
+            self.stroke_stamp_shader.uniform2f("uRes", (float(w), float(h)))
+            self.stroke_stamp_shader.uniform1f("uStrength", float(strength))
+            _count = self.ndc_screen_va.indexBuffer.getCount()
+            for s in segments:
+                self.stroke_stamp_shader.uniform2f("uP0", (s[0], s[1]))
+                self.stroke_stamp_shader.uniform2f("uP1", (s[2], s[3]))
+                self.stroke_stamp_shader.uniform3f("uCol", (s[4], s[5], s[6]))
+                self.stroke_stamp_shader.uniform1f("uRad", 2.0 * s[7])   # 2x the brush diameter
+                glDrawElements(GL_TRIANGLES, _count, GL_UNSIGNED_SHORT, None)
+
+        self.ndc_screen_va.unbind()
+        self._stroke_canvas.unbind((0, 0, w, h))
+
+        # 3. composite the canvas over the papery base, fullscreen, behind the tomogram
+        glDisable(GL_BLEND)
+        glDisable(GL_DEPTH_TEST)
+        glDepthMask(GL_FALSE)
+        self.stroke_show_shader.bind()
+        self.stroke_show_shader.uniform1i("uFade", 0)
+        self.stroke_show_shader.uniform3f("uBase", base_col)
+        self.stroke_show_shader.uniform1i("uCanvas", 0)
+        self._stroke_canvas.texture.bind(0)
+        self.ndc_screen_va.bind()
+        glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
+        self.ndc_screen_va.unbind()
+        self.stroke_show_shader.unbind()
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)   # restore the default blend
+        glDepthMask(GL_TRUE)
+        glDisable(GL_DEPTH_TEST)   # leave disabled: the 2D pass draws in painter's order
+
+    def render_background(self, blobs, base_col, intensity, res, shape=0, dt=0.0):
         # Fullscreen papery base with soft feature-colour blobs / cards, drawn
         # right after the clear so the tomogram and annotations render on top.
         # blobs = [(x, y, radius, rgb, angle, alpha)]
+        if shape == 1:   # brushstroke: a persistent stamped canvas, not a blob field
+            self._bg_field = None            # chameleon border falls back to black here
+            self._border_field_dirty = True
+            self._render_stroke_canvas(blobs, base_col, res, intensity, dt)
+            return
         self._bg_field = (blobs, res, intensity, shape)   # stash for the chameleon border
         self._border_field_dirty = True                   # new field this frame
         if self.background_blob_shader is None or not blobs:

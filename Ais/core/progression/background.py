@@ -69,19 +69,13 @@ _MOSAIC_FADE_OUT = 9.0       # s to fade back to invisible (the time-gated turn-
 _MOSAIC_PEAK = 0.5           # peak opacity of a tile (higher transparency than solid)
 _MOSAIC_BRUSH_CHANCE = 0.10  # the continuous brush only occasionally lights a tile
 
-# Brushstroke mode: the user's click-hold-drag gesture is captured, then its
-# SHAPE is echoed into the background - rotated, moved elsewhere, and left to
-# linger. Each echo is a chain of big soft wisps tracing the (transformed) path.
-_STROKE_SEG = 7.0            # min gesture point spacing while capturing (px)
-_STROKE_DOT_R = 100.0        # wisp radius - big & bold (~8x the old value)
-_STROKE_MAX_PTS = 22         # wisps per echoed gesture (after downsampling)
-_STROKE_MAX = 480            # total wisp budget (<= shader MAXB); many gestures linger
-_STROKE_SCALE = (0.7, 1.2)   # echo size relative to the drawn gesture (was 0.4-0.7)
-_STROKE_LIFE = (220.0, 450.0)  # linger a very long time
-_STROKE_FADE_IN = 1.5
-_STROKE_FADE_OUT = 4.0
-_STROKE_HUE_JITTER = 0.0     # per-stroke hue wander (0 = faithful feature colour)
-_GESTURE_END_S = 0.2         # a gap this long ends the current gesture
+# Brushstroke mode: the user's click-hold-drag path is stamped, live, into a
+# persistent screen-space canvas texture (managed by the renderer). background.py
+# only turns the stream of background_stroke() calls into line SEGMENTS and hands
+# the renderer the new ones each frame; a gap in the calls lifts the pen.
+_STROKE_MIN_SEG = 3.0        # min cursor move (px) before we emit a new segment
+_STROKE_PEN_UP_S = 0.15      # a gap this long lifts the pen (breaks the stroke)
+_STROKE_MAX_SEGS = 4096      # safety cap on segments buffered in one frame
 
 A_MAX = 0.70
 DRIVE_GRACE = 0.5
@@ -147,10 +141,10 @@ _mosaic_w = 0
 _mosaic_h = 0
 _mosaic_q: List[Tuple[str, Color]] = []   # pending touches: (kind, colour)
 
-_strokes: List[_Blob] = []               # brushstroke mode: echoed-gesture wisps
-_gesture: List[Tuple[float, float]] = []  # the gesture being captured (screen px)
-_gesture_col: Color = (1.0, 1.0, 1.0)
-_gesture_last_t = 0.0                      # monotonic time of the last captured point
+_stroke_segs: List[tuple] = []            # new brush segments to stamp this frame:
+                                          # (x0, y0, x1, y1, r, g, b, radius) in screen px
+_stroke_last_pt: Optional[Tuple[float, float]] = None
+_stroke_last_t = 0.0                       # monotonic time of the last brush call
 
 
 def _soft(v: float) -> float:
@@ -255,89 +249,31 @@ def notify_levelup(ev) -> None:
     _pending.append(("levelup", _soft_color(ev.color)))
 
 
-def stroke(sx: float, sy: float, colour) -> None:
-    # Brushstroke mode: accumulate the current click-hold-drag gesture. Points are
-    # captured whenever the cursor moves far enough (so we record the SHAPE, not
-    # the timing); the gesture is echoed into the background when it ends (see
-    # _finalize_gesture). A no-op unless the Brushstroke background is equipped.
-    global _gesture_col, _gesture_last_t
+def stroke(sx: float, sy: float, colour, radius: float = 8.0) -> None:
+    # Brushstroke mode: turn the live brush path into line segments for the canvas.
+    # Called once per frame while painting; consecutive calls form a segment. A gap
+    # of _STROKE_PEN_UP_S lifts the pen so separate strokes aren't joined. A no-op
+    # unless the Brushstroke background is equipped.
+    global _stroke_last_pt, _stroke_last_t
     prm = _params()
     if prm.get("style") != "brushstroke" or not prm.get("enabled", False):
-        _gesture.clear()
+        _stroke_last_pt = None
         return
-    if _gesture:
-        dx, dy = sx - _gesture[-1][0], sy - _gesture[-1][1]
-        if dx * dx + dy * dy < _STROKE_SEG * _STROKE_SEG:
-            return
-    _gesture.append((float(sx), float(sy)))
-    _gesture_col = _soft_color(colour)
-    _gesture_last_t = time.monotonic()
-
-
-def _finalize_gesture(w: int, h: int) -> None:
-    # Echo the captured gesture's shape into the background: recentre it, rotate
-    # by a random angle, scale it, and drop it somewhere else on screen as a chain
-    # of big soft wisps that linger. Colour is the faithful feature colour (no
-    # hue jitter unless _STROKE_HUE_JITTER is raised). Then clear the gesture.
-    pts = list(_gesture)
-    _gesture.clear()
-    if len(pts) < 2:
-        return
-    # downsample to at most _STROKE_MAX_PTS, keeping endpoints
-    if len(pts) > _STROKE_MAX_PTS:
-        step = len(pts) / float(_STROKE_MAX_PTS)
-        pts = [pts[min(len(pts) - 1, int(i * step))] for i in range(_STROKE_MAX_PTS)]
-    cx = sum(p[0] for p in pts) / len(pts)
-    cy = sum(p[1] for p in pts) / len(pts)
-    theta = random.uniform(0.0, 2.0 * math.pi)
-    ct, st = math.cos(theta), math.sin(theta)
-    scale = random.uniform(*_STROKE_SCALE)
-    margin = 120.0
-    tx = random.uniform(margin, max(margin + 1.0, w - margin))
-    ty = random.uniform(margin, max(margin + 1.0, h - margin))
-    life = random.uniform(*_STROKE_LIFE)
-    col = _hue_jitter(_gesture_col, amp=_STROKE_HUE_JITTER) if _STROKE_HUE_JITTER > 0.0 else _gesture_col
-    placed = []
-    for px, py in pts:
-        rx, ry = (px - cx) * scale, (py - cy) * scale
-        placed.append((tx + rx * ct - ry * st, ty + rx * st + ry * ct))
-    for i, (x, y) in enumerate(placed):
-        j = min(i + 1, len(placed) - 1)
-        k = max(i - 1, 0)
-        ang = math.atan2(placed[j][1] - placed[k][1], placed[j][0] - placed[k][0])
-        _strokes.append(_Blob(
-            x=x, y=y, vx=0.0, vy=0.0,
-            r=_STROKE_DOT_R, color=col, color_target=col,
-            phase=0.0, breathe=0.0,
-            angle=ang, spin=0.0,
-            alpha=0.0, life_age=0.0, life_span=life,
-        ))
-    if len(_strokes) > _STROKE_MAX:
-        del _strokes[: len(_strokes) - _STROKE_MAX]
-
-
-def _stroke_alpha(age: float, life: float) -> float:
-    if age < _STROKE_FADE_IN:
-        return age / _STROKE_FADE_IN
-    if age > life - _STROKE_FADE_OUT:
-        return max(0.0, (life - age) / _STROKE_FADE_OUT)
-    return 1.0
-
-
-def _tick_strokes(dt: float, w: int, h: int) -> None:
-    if dt > 0.1:
-        dt = 0.1
-    _pending.clear()   # ambient pulses aren't used in this mode; don't accumulate
-    if _gesture and (time.monotonic() - _gesture_last_t) > _GESTURE_END_S:
-        _finalize_gesture(w, h)
-    alive: List[_Blob] = []
-    for b in _strokes:
-        b.life_age += dt
-        if b.life_age >= b.life_span:
-            continue
-        b.alpha = _stroke_alpha(b.life_age, b.life_span)
-        alive.append(b)
-    _strokes[:] = alive
+    now = time.monotonic()
+    sx, sy = float(sx), float(sy)
+    if _stroke_last_pt is not None and (now - _stroke_last_t) < _STROKE_PEN_UP_S:
+        dx, dy = sx - _stroke_last_pt[0], sy - _stroke_last_pt[1]
+        if dx * dx + dy * dy >= _STROKE_MIN_SEG * _STROKE_MIN_SEG:
+            c = _soft_color(colour)
+            _stroke_segs.append((_stroke_last_pt[0], _stroke_last_pt[1], sx, sy,
+                                 c[0], c[1], c[2], float(radius)))
+            if len(_stroke_segs) > _STROKE_MAX_SEGS:
+                del _stroke_segs[: len(_stroke_segs) - _STROKE_MAX_SEGS]
+            _stroke_last_pt = (sx, sy)
+        # else: keep the old anchor so tiny moves accumulate into one segment
+    else:
+        _stroke_last_pt = (sx, sy)   # pen down (new stroke): no connecting segment
+    _stroke_last_t = now
 
 
 def touch(colour, kind: str = "box") -> None:
@@ -567,7 +503,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
         if _pending:
             _pending.clear()   # nothing consumes events while disabled; don't accumulate
         _mosaic_q.clear()
-        _gesture.clear()
+        _stroke_segs.clear()
         return None
     style = prm.get("style", "blob")
     px = camera.position[0] * camera.zoom * PARALLAX
@@ -578,17 +514,18 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
             _blobs.clear()          # the ambient pool isn't used in this mode
         if _mosaic:
             _mosaic.clear()
-        _tick_strokes(dt, w, h)
-        out = [(b.x + px, b.y + py, b.r, b.color, b.angle, b.alpha) for b in _strokes]
+        _pending.clear()            # ambient pulses aren't used in this mode
+        segs = list(_stroke_segs)   # hand the renderer this frame's new brush segments
+        _stroke_segs.clear()
         base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
-        return out, base, prm.get("intensity", 0.7), _SHAPE["brushstroke"]
+        # Segments (not blobs) ride in slot 0; the renderer stamps them into a
+        # persistent canvas. Returned every frame (even empty) so it keeps decaying.
+        return segs, base, prm.get("intensity", 0.85), _SHAPE["brushstroke"]
 
     if style == "mosaic":
         if _blobs:
             _blobs.clear()          # the ambient pool isn't used in this mode
-        if _strokes:
-            _strokes.clear()
-        _gesture.clear()
+        _stroke_segs.clear()
         _tick_mosaic(dt, w, h)
         # radius slot carries half-width, angle slot carries half-height (the
         # mosaic shader reads them as a rectangle so tiles fill their cells)
@@ -601,9 +538,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if _mosaic:
         _mosaic.clear()
     _mosaic_q.clear()
-    if _strokes:
-        _strokes.clear()
-    _gesture.clear()
+    _stroke_segs.clear()
     n = int(prm.get("n", 8))
     rmin = prm.get("rmin", 320.0)
     rmax = prm.get("rmax", 720.0)
@@ -647,13 +582,13 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
 
 def clear() -> None:
     global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake
-    global _mosaic_cols, _mosaic_rows, _mosaic_w, _mosaic_h
+    global _mosaic_cols, _mosaic_rows, _mosaic_w, _mosaic_h, _stroke_last_pt
+    _stroke_last_pt = None
     _blobs.clear()
     _mosaic.clear()
     _mosaic_q.clear()
     _mosaic_cols = _mosaic_rows = _mosaic_w = _mosaic_h = 0
-    _strokes.clear()
-    _gesture.clear()
+    _stroke_segs.clear()
     _bt = 0.0
     _energy = 0.0
     _event = 0.0
