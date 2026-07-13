@@ -5,7 +5,6 @@
 # Styles (from the equipped cosmetic's params):
 #   "blob"    - soft drifting gaussian washes (Aurora)
 #   "bokeh"   - crisp discs that fade in/out in place and gently avoid the cursor
-#   "mosaic"  - a coarse grid of tiles; annotating lights one in the feature
 #               colour, and lit tiles fade back out over time
 #
 # It starts EMPTY (like plain paper) and fills in as you annotate: a "wake"
@@ -39,7 +38,7 @@ Color = Tuple[float, float, float]
 PARALLAX = 0.15
 FILL_UP = 3.2            # how fast shapes wake with activity (scaled by energy)
 FILL_DOWN = 0.4         # how fast they recede when idle
-_SHAPE = {"blob": 0, "brushstroke": 1, "bokeh": 2, "mosaic": 3}
+_SHAPE = {"blob": 0, "brushstroke": 1, "bokeh": 2}
 
 # Bokeh cursor avoidance: a gentle push away, heavily damped so blobs drift a
 # little then quickly come to rest (peaceful & calm).
@@ -54,20 +53,6 @@ _AVOID_DAMP = 0.02       # per-second velocity retention (heavy)
 _BOKEH_TURN_IDLE = 0.08
 _BOKEH_TURN_ACTIVE = 1.2
 _BOKEH_TURN_GRACE = 1.5
-
-# Mosaic mode: a fine grid of exactly-touching tiles behind the data. Each
-# annotation interaction lights one random tile in the feature colour; lit tiles
-# fade IN slowly, hold, then fade back out (the time-gated turn-off), so the
-# mosaic fills up under sustained annotation and empties when you stop. Tiles
-# have no outline. At most _MOSAIC_MAX_LIT are lit at once (<= shader budget).
-_MOSAIC_CELL_PX = 60.0       # target tile size in px (smaller -> finer mosaic)
-_MOSAIC_OVERLAP = 0.0        # tiles fill their cell exactly; hard shader edges -> perfect touch
-_MOSAIC_MAX_LIT = 90         # max simultaneously-lit tiles (< shader MAXB=96)
-_MOSAIC_FADE_IN = 1.8        # s to fade in to peak (slow appearance)
-_MOSAIC_HOLD = 22.0          # s a lit tile holds at peak before fading
-_MOSAIC_FADE_OUT = 9.0       # s to fade back to invisible (the time-gated turn-off)
-_MOSAIC_PEAK = 0.5           # peak opacity of a tile (higher transparency than solid)
-_MOSAIC_BRUSH_CHANCE = 0.10  # the continuous brush only occasionally lights a tile
 
 # Brushstroke mode: the user's click-hold-drag path is stamped, live, into a
 # persistent screen-space canvas texture (managed by the renderer). background.py
@@ -121,25 +106,6 @@ _E = 0.0
 _awake = 0.0             # how many shapes have woken up (grows with activity)
 _pending: List[Tuple[str, Color]] = []
 
-@dataclass
-class _Tile:
-    cx: float
-    cy: float
-    hw: float                  # half-width  (fills the cell -> tiles exactly touch)
-    hh: float                  # half-height
-    color: Color
-    alpha: float = 0.0
-    age: float = 0.0
-    lit: bool = False
-    fading: bool = False       # forced off early by an erase
-
-
-_mosaic: List[_Tile] = []
-_mosaic_cols = 0
-_mosaic_rows = 0
-_mosaic_w = 0
-_mosaic_h = 0
-_mosaic_q: List[Tuple[str, Color]] = []   # pending touches: (kind, colour)
 
 _stroke_segs: List[tuple] = []            # new brush segments to stamp this frame:
                                           # (x0, y0, x1, y1, r, g, b, radius) in screen px
@@ -274,93 +240,6 @@ def stroke(sx: float, sy: float, colour, radius: float = 8.0) -> None:
     else:
         _stroke_last_pt = (sx, sy)   # pen down (new stroke): no connecting segment
     _stroke_last_t = now
-
-
-def touch(colour, kind: str = "box") -> None:
-    # Mosaic mode: queue a tile change from an annotation interaction. kind is
-    # "box"/"brush" (light a tile in the feature colour) or "erase" (clear a lit
-    # tile). A no-op unless the Mosaic background is equipped.
-    prm = _params()
-    if prm.get("style") != "mosaic" or not prm.get("enabled", False):
-        return
-    col = _soft_color(colour) if colour is not None else (1.0, 1.0, 1.0)
-    _mosaic_q.append((kind, col))
-
-
-def _ensure_mosaic(w: int, h: int) -> None:
-    # Build (or rescale) the invisible tile grid: cells ~_MOSAIC_CELL_PX across,
-    # each tile filling its cell exactly (+_MOSAIC_OVERLAP) so neighbours touch.
-    global _mosaic_cols, _mosaic_rows, _mosaic_w, _mosaic_h
-    if w <= 0 or h <= 0:
-        return
-    cols = max(1, int(round(w / _MOSAIC_CELL_PX)))
-    rows = max(1, int(round(h / _MOSAIC_CELL_PX)))
-    if _mosaic and _mosaic_cols == cols and _mosaic_rows == rows and _mosaic_w == w and _mosaic_h == h:
-        return
-    cw, ch = w / cols, h / rows
-    hw, hh = 0.5 * cw + _MOSAIC_OVERLAP, 0.5 * ch + _MOSAIC_OVERLAP
-    _mosaic.clear()
-    for r in range(rows):
-        for c in range(cols):
-            _mosaic.append(_Tile(cx=(c + 0.5) * cw, cy=(r + 0.5) * ch, hw=hw, hh=hh, color=(1.0, 1.0, 1.0)))
-    _mosaic_cols, _mosaic_rows, _mosaic_w, _mosaic_h = cols, rows, w, h
-
-
-def _mosaic_light(col: Color) -> None:
-    # Prefer an unlit tile so the field fills out. Cap the number lit at once at
-    # _MOSAIC_MAX_LIT (<= shader budget): once at the cap, refresh a random lit
-    # tile instead so the upload count never overflows.
-    lit = [t for t in _mosaic if t.lit]
-    if len(lit) >= _MOSAIC_MAX_LIT:
-        t = random.choice(lit) if lit else None
-    else:
-        unlit = [t for t in _mosaic if not t.lit]
-        t = random.choice(unlit) if unlit else (random.choice(_mosaic) if _mosaic else None)
-    if t is None:
-        return
-    t.color = col
-    t.age = 0.0
-    t.lit = True
-    t.fading = False
-
-
-def _mosaic_clear() -> None:
-    # Erase: start fading a random currently-solid tile back to invisible.
-    lit = [t for t in _mosaic if t.lit and not t.fading]
-    if lit:
-        random.choice(lit).fading = True
-
-
-def _tick_mosaic(dt: float, w: int, h: int) -> None:
-    if dt > 0.1:
-        dt = 0.1
-    _pending.clear()   # ambient pulses aren't used in this mode; don't accumulate
-    _ensure_mosaic(w, h)
-    while _mosaic_q:
-        kind, col = _mosaic_q.pop(0)
-        if kind == "brush" and random.random() > _MOSAIC_BRUSH_CHANCE:
-            continue
-        if kind == "erase":
-            _mosaic_clear()
-        else:
-            _mosaic_light(col)
-    peak = _MOSAIC_PEAK
-    for t in _mosaic:
-        if not t.lit:
-            continue
-        t.age += dt
-        if t.fading:
-            t.alpha -= (dt / _MOSAIC_FADE_OUT) * peak
-        elif t.age < _MOSAIC_FADE_IN:
-            t.alpha = max(t.alpha, (t.age / _MOSAIC_FADE_IN) * peak)   # only ramp up (no flicker on refresh)
-        elif t.age > _MOSAIC_HOLD:
-            t.alpha = (1.0 - (t.age - _MOSAIC_HOLD) / _MOSAIC_FADE_OUT) * peak
-        else:
-            t.alpha = peak
-        if t.alpha <= 0.0:
-            t.alpha = 0.0
-            t.lit = False
-            t.fading = False
 
 
 def _params() -> dict:
@@ -502,7 +381,6 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if not prm.get("enabled", False):
         if _pending:
             _pending.clear()   # nothing consumes events while disabled; don't accumulate
-        _mosaic_q.clear()
         _stroke_segs.clear()
         return None
     style = prm.get("style", "blob")
@@ -512,8 +390,6 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if style == "brushstroke":
         if _blobs:
             _blobs.clear()          # the ambient pool isn't used in this mode
-        if _mosaic:
-            _mosaic.clear()
         _pending.clear()            # ambient pulses aren't used in this mode
         segs = list(_stroke_segs)   # hand the renderer this frame's new brush segments
         _stroke_segs.clear()
@@ -522,22 +398,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
         # persistent canvas. Returned every frame (even empty) so it keeps decaying.
         return segs, base, prm.get("intensity", 0.85), _SHAPE["brushstroke"]
 
-    if style == "mosaic":
-        if _blobs:
-            _blobs.clear()          # the ambient pool isn't used in this mode
-        _stroke_segs.clear()
-        _tick_mosaic(dt, w, h)
-        # radius slot carries half-width, angle slot carries half-height (the
-        # mosaic shader reads them as a rectangle so tiles fill their cells)
-        out = [(t.cx + px, t.cy + py, t.hw, t.color, t.hh, t.alpha)
-               for t in _mosaic if t.alpha > 0.001]
-        base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
-        return out, base, prm.get("intensity", 0.9), _SHAPE["mosaic"]
-
     # ambient modes (aurora / bokeh): drop any leftover special-mode state
-    if _mosaic:
-        _mosaic.clear()
-    _mosaic_q.clear()
     _stroke_segs.clear()
     n = int(prm.get("n", 8))
     rmin = prm.get("rmin", 320.0)
@@ -582,12 +443,9 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
 
 def clear() -> None:
     global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake
-    global _mosaic_cols, _mosaic_rows, _mosaic_w, _mosaic_h, _stroke_last_pt
+    global _stroke_last_pt
     _stroke_last_pt = None
     _blobs.clear()
-    _mosaic.clear()
-    _mosaic_q.clear()
-    _mosaic_cols = _mosaic_rows = _mosaic_w = _mosaic_h = 0
     _stroke_segs.clear()
     _bt = 0.0
     _energy = 0.0

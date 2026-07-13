@@ -550,22 +550,6 @@ _debug_open: bool = False
 
 # (background-module attribute, label, min, max, is_int)
 _BG_TUNABLES = (
-    # Mosaic
-    ("_MOSAIC_CELL_PX",      "mosaic cell px",         20.0, 220.0, False),
-    ("_MOSAIC_MAX_LIT",      "mosaic max lit",         10,   400,   True),
-    ("_MOSAIC_FADE_IN",      "mosaic fade-in s",        0.1,   6.0, False),
-    ("_MOSAIC_HOLD",         "mosaic hold s",           1.0,  60.0, False),
-    ("_MOSAIC_FADE_OUT",     "mosaic fade-out s",       1.0,  30.0, False),
-    ("_MOSAIC_PEAK",         "mosaic peak alpha",       0.05,  1.0, False),
-    ("_MOSAIC_BRUSH_CHANCE", "mosaic brush chance",     0.01,  1.0, False),
-    # Brushstroke
-    ("_STROKE_DOT_R",        "stroke wisp size",       10.0, 400.0, False),
-    ("_STROKE_MAX",          "stroke max wisps",       22,   480,   True),
-    ("_STROKE_MAX_PTS",      "stroke wisps/gesture",    4,    48,   True),
-    ("_STROKE_SEG",          "stroke capture spacing", 2.0,  30.0, False),
-    ("_STROKE_FADE_IN",      "stroke fade-in s",        0.2,  10.0, False),
-    ("_STROKE_FADE_OUT",     "stroke fade-out s",       0.5,  20.0, False),
-    ("_STROKE_HUE_JITTER",   "stroke hue jitter",       0.0,   0.2, False),
     # Bokeh / Aurora feel
     ("_BOKEH_TURN_IDLE",     "bokeh turnover idle",     0.0,   1.0, False),
     ("_BOKEH_TURN_ACTIVE",   "bokeh turnover active",   0.2,   3.0, False),
@@ -580,10 +564,7 @@ _BG_TUNABLES = (
 )
 
 # 2-tuple (lo, hi) constants -> rendered as two sliders each
-_BG_RANGE_TUNABLES = (
-    ("_STROKE_SCALE",  "stroke echo scale",  0.1,   5.0),
-    ("_STROKE_LIFE",   "stroke echo life s", 5.0, 600.0),
-)
+_BG_RANGE_TUNABLES = ()
 
 
 def toggle_cosmetics_debug() -> None:

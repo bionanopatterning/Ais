@@ -17,8 +17,8 @@ void main()
     vec2 axis = (len > 1e-4) ? d / len : vec2(1.0, 0.0);
     vec2 perp = vec2(-axis.y, axis.x);
     vec2 center = 0.5 * (uP0 + uP1);
-    float halfLen = 0.5 * len + uRad + 1.0;   // extend for round caps (+1px margin)
-    float halfWid = uRad + 1.0;
+    float halfLen = 0.5 * len + uRad * 1.9 + 1.0;   // room for the soft gaussian tail
+    float halfWid = uRad * 1.9 + 1.0;
     vec2 p = center + pos.x * halfLen * axis + pos.y * halfWid * perp;
     vPx = p;
     // screen px (top-left origin) -> clip space (y up)
@@ -43,8 +43,8 @@ void main()
     vec2 ba = uP1 - uP0;
     float t = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-4), 0.0, 1.0);
     float dist = length(pa - ba * t);          // distance to the segment
-    float soft = max(1.5, uRad * 0.5);         // soft band toward the edge
-    float a = smoothstep(uRad, uRad - soft, dist) * uStrength;
-    if (a <= 0.001) discard;
+    float x = dist / max(uRad, 1.0);
+    float a = exp(-x * x * 1.6) * uStrength;   // soft gaussian falloff -> strong blur
+    if (a <= 0.003) discard;
     fragColour = vec4(uCol * a, a);            // premultiplied alpha
 }

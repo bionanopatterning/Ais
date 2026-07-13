@@ -20,7 +20,7 @@ in vec2 uv;
 out vec4 fragColour;
 
 uniform int uN;
-uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh), 3 = mosaic tile
+uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh)
 uniform vec2 uRes;          // screen size in px
 uniform vec3 uBase;         // papery base colour
 uniform float uIntensity;
@@ -58,14 +58,6 @@ void main()
             float rr = max(pRad, 1.0);
             vec2 nrm = vec2(lo.x / (rr * 1.9), lo.y / (rr * 0.7));
             w = exp(-dot(nrm, nrm) * 1.6) * uIntensity * pAlp;
-        }
-        else if (uShape == 3)
-        {
-            // mosaic tile: filled rectangle (half-width in z, half-height in w),
-            // hard axis-aligned edges so neighbours touch exactly, no outline
-            vec2 rel = abs(frag - pPos);
-            float inside = step(rel.x, pRad) * step(rel.y, pAng);
-            w = inside * uIntensity * pAlp;
         }
         else
         {

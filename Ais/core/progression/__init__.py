@@ -28,7 +28,6 @@ from .background import (
     frame as background_frame,
     pulse as background_pulse,
     stroke as background_stroke,
-    touch as background_touch,
 )
 from .ui import (
     BIG_FONT_PX,
@@ -82,7 +81,6 @@ __all__ = [
     "background_frame",
     "background_pulse",
     "background_stroke",
-    "background_touch",
     "big_font_path",
     "draw_particles",
     "emit_box_burst",

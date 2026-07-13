@@ -483,11 +483,9 @@ class SegmentationEditor:
                             Brush.apply_circular(active_feature, pixel_coordinate, True)
                         progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
                         progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
-                        progression.background_touch(_ftr_color, "brush")
                         progression.background_stroke(_cx, _cy, _ftr_color, _brush_radius_world * self.camera.zoom)
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
-                        progression.background_touch(tuple(active_feature.colour), "erase")
                 else:
                     if not SegmentationEditor.is_ctrl_down():
                         if imgui.is_mouse_clicked(0):
@@ -496,10 +494,8 @@ class SegmentationEditor:
                             progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
                             progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
                             progression.background_pulse("box", tuple(active_feature.colour))
-                            progression.background_touch(tuple(active_feature.colour), "box")
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)
-                            progression.background_touch(tuple(active_feature.colour), "erase")
             if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
                 if imgui.is_mouse_clicked(0):
                     cursor_world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
@@ -4294,6 +4290,8 @@ class Renderer:
         self._border_field_dirty = False   # uploaded this frame; skip re-uploads
 
     STROKE_CANVAS_FADE_PER_S = 0.985   # brushstroke canvas retains this fraction/s (1.0 = permanent)
+    STROKE_CANVAS_SPREAD = 1.8         # scale the cursor path out from the viewport centre
+                                       # (the tomogram is usually much smaller than the screen)
 
     def _render_stroke_canvas(self, segments, base_col, res, strength, dt):
         # Brushstroke mode: stamp this frame's new brush segments into a persistent
@@ -4320,25 +4318,33 @@ class Renderer:
 
         # 1. fade the whole canvas by a uniform factor: new = dst * retain
         retain = self.STROKE_CANVAS_FADE_PER_S ** max(0.0, min(0.1, dt))
+        glBlendEquation(GL_FUNC_ADD)
         glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA)
         glBlendColor(0.0, 0.0, 0.0, retain)
         self.stroke_show_shader.bind()
         self.stroke_show_shader.uniform1i("uFade", 1)
         glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
 
-        # 2. stamp this frame's new segments (premultiplied "over")
+        # 2. stamp this frame's new segments with MAX (lighten) blending: a stroke caps
+        #    at its per-stamp alpha instead of building up to opaque, so it stays half-
+        #    translucent and overlaps show through. Positions are spread out from the
+        #    viewport centre so a small tomogram's strokes fill more of the background.
         if segments:
-            glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+            glBlendEquation(GL_MAX)
             self.stroke_stamp_shader.bind()
             self.stroke_stamp_shader.uniform2f("uRes", (float(w), float(h)))
             self.stroke_stamp_shader.uniform1f("uStrength", float(strength))
+            spread = self.STROKE_CANVAS_SPREAD
+            cx = 0.5 * (SegmentationEditor.MAIN_WINDOW_WIDTH + w)
+            cy = 0.5 * h
             _count = self.ndc_screen_va.indexBuffer.getCount()
             for s in segments:
-                self.stroke_stamp_shader.uniform2f("uP0", (s[0], s[1]))
-                self.stroke_stamp_shader.uniform2f("uP1", (s[2], s[3]))
+                self.stroke_stamp_shader.uniform2f("uP0", (cx + (s[0] - cx) * spread, cy + (s[1] - cy) * spread))
+                self.stroke_stamp_shader.uniform2f("uP1", (cx + (s[2] - cx) * spread, cy + (s[3] - cy) * spread))
                 self.stroke_stamp_shader.uniform3f("uCol", (s[4], s[5], s[6]))
                 self.stroke_stamp_shader.uniform1f("uRad", 2.0 * s[7])   # 2x the brush diameter
                 glDrawElements(GL_TRIANGLES, _count, GL_UNSIGNED_SHORT, None)
+            glBlendEquation(GL_FUNC_ADD)   # restore for the composite and the rest of the app
 
         self.ndc_screen_va.unbind()
         self._stroke_canvas.unbind((0, 0, w, h))
