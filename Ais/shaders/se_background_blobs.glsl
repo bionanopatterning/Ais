@@ -20,7 +20,7 @@ in vec2 uv;
 out vec4 fragColour;
 
 uniform int uN;
-uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh)
+uniform int uShape;         // 0 = soft blob (Aurora), 2 = disc (bokeh)
 uniform vec2 uRes;          // screen size in px
 uniform vec3 uBase;         // papery base colour
 uniform float uIntensity;
@@ -47,17 +47,6 @@ void main()
             float d = distance(frag, pPos);
             float soft = max(6.0, pRad * 0.30);
             w = smoothstep(pRad + soft, pRad - soft, d) * uIntensity * pAlp;
-        }
-        else if (uShape == 1)
-        {
-            // brushstroke: large, soft, elongated & rotated gaussian wisp
-            vec2 rel = frag - pPos;
-            float c = cos(pAng);
-            float s = sin(pAng);
-            vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
-            float rr = max(pRad, 1.0);
-            vec2 nrm = vec2(lo.x / (rr * 1.9), lo.y / (rr * 0.7));
-            w = exp(-dot(nrm, nrm) * 1.6) * uIntensity * pAlp;
         }
         else
         {

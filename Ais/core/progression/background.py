@@ -5,7 +5,6 @@
 # Styles (from the equipped cosmetic's params):
 #   "blob"    - soft drifting gaussian washes (Aurora)
 #   "bokeh"   - crisp discs that fade in/out in place and gently avoid the cursor
-#               colour, and lit tiles fade back out over time
 #
 # It starts EMPTY (like plain paper) and fills in as you annotate: a "wake"
 # counter grows with activity, revealing shapes one by one. Colour follows the
@@ -38,7 +37,7 @@ Color = Tuple[float, float, float]
 PARALLAX = 0.15
 FILL_UP = 3.2            # how fast shapes wake with activity (scaled by energy)
 FILL_DOWN = 0.4         # how fast they recede when idle
-_SHAPE = {"blob": 0, "brushstroke": 1, "bokeh": 2}
+_SHAPE = {"blob": 0, "bokeh": 2}
 
 # Bokeh cursor avoidance: a gentle push away, heavily damped so blobs drift a
 # little then quickly come to rest (peaceful & calm).
@@ -53,14 +52,6 @@ _AVOID_DAMP = 0.02       # per-second velocity retention (heavy)
 _BOKEH_TURN_IDLE = 0.08
 _BOKEH_TURN_ACTIVE = 1.2
 _BOKEH_TURN_GRACE = 1.5
-
-# Brushstroke mode: the user's click-hold-drag path is stamped, live, into a
-# persistent screen-space canvas texture (managed by the renderer). background.py
-# only turns the stream of background_stroke() calls into line SEGMENTS and hands
-# the renderer the new ones each frame; a gap in the calls lifts the pen.
-_STROKE_MIN_SEG = 3.0        # min cursor move (px) before we emit a new segment
-_STROKE_PEN_UP_S = 0.15      # a gap this long lifts the pen (breaks the stroke)
-_STROKE_MAX_SEGS = 4096      # safety cap on segments buffered in one frame
 
 A_MAX = 0.70
 DRIVE_GRACE = 0.5
@@ -105,12 +96,6 @@ _wash_color: Color = (1.0, 1.0, 1.0)
 _E = 0.0
 _awake = 0.0             # how many shapes have woken up (grows with activity)
 _pending: List[Tuple[str, Color]] = []
-
-
-_stroke_segs: List[tuple] = []            # new brush segments to stamp this frame:
-                                          # (x0, y0, x1, y1, r, g, b, radius) in screen px
-_stroke_last_pt: Optional[Tuple[float, float]] = None
-_stroke_last_t = 0.0                       # monotonic time of the last brush call
 
 
 def _soft(v: float) -> float:
@@ -213,33 +198,6 @@ def pulse(kind: str, color) -> None:
 
 def notify_levelup(ev) -> None:
     _pending.append(("levelup", _soft_color(ev.color)))
-
-
-def stroke(sx: float, sy: float, colour, radius: float = 8.0) -> None:
-    # Brushstroke mode: turn the live brush path into line segments for the canvas.
-    # Called once per frame while painting; consecutive calls form a segment. A gap
-    # of _STROKE_PEN_UP_S lifts the pen so separate strokes aren't joined. A no-op
-    # unless the Brushstroke background is equipped.
-    global _stroke_last_pt, _stroke_last_t
-    prm = _params()
-    if prm.get("style") != "brushstroke" or not prm.get("enabled", False):
-        _stroke_last_pt = None
-        return
-    now = time.monotonic()
-    sx, sy = float(sx), float(sy)
-    if _stroke_last_pt is not None and (now - _stroke_last_t) < _STROKE_PEN_UP_S:
-        dx, dy = sx - _stroke_last_pt[0], sy - _stroke_last_pt[1]
-        if dx * dx + dy * dy >= _STROKE_MIN_SEG * _STROKE_MIN_SEG:
-            c = _soft_color(colour)
-            _stroke_segs.append((_stroke_last_pt[0], _stroke_last_pt[1], sx, sy,
-                                 c[0], c[1], c[2], float(radius)))
-            if len(_stroke_segs) > _STROKE_MAX_SEGS:
-                del _stroke_segs[: len(_stroke_segs) - _STROKE_MAX_SEGS]
-            _stroke_last_pt = (sx, sy)
-        # else: keep the old anchor so tiny moves accumulate into one segment
-    else:
-        _stroke_last_pt = (sx, sy)   # pen down (new stroke): no connecting segment
-    _stroke_last_t = now
 
 
 def _params() -> dict:
@@ -381,25 +339,11 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if not prm.get("enabled", False):
         if _pending:
             _pending.clear()   # nothing consumes events while disabled; don't accumulate
-        _stroke_segs.clear()
         return None
     style = prm.get("style", "blob")
     px = camera.position[0] * camera.zoom * PARALLAX
     py = -camera.position[1] * camera.zoom * PARALLAX
 
-    if style == "brushstroke":
-        if _blobs:
-            _blobs.clear()          # the ambient pool isn't used in this mode
-        _pending.clear()            # ambient pulses aren't used in this mode
-        segs = list(_stroke_segs)   # hand the renderer this frame's new brush segments
-        _stroke_segs.clear()
-        base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
-        # Segments (not blobs) ride in slot 0; the renderer stamps them into a
-        # persistent canvas. Returned every frame (even empty) so it keeps decaying.
-        return segs, base, prm.get("intensity", 0.85), _SHAPE["brushstroke"]
-
-    # ambient modes (aurora / bokeh): drop any leftover special-mode state
-    _stroke_segs.clear()
     n = int(prm.get("n", 8))
     rmin = prm.get("rmin", 320.0)
     rmax = prm.get("rmax", 720.0)
@@ -443,10 +387,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
 
 def clear() -> None:
     global _bt, _energy, _event, _wash, _cur_style, _cur_n, _cur_w, _cur_h, _awake
-    global _stroke_last_pt
-    _stroke_last_pt = None
     _blobs.clear()
-    _stroke_segs.clear()
     _bt = 0.0
     _energy = 0.0
     _event = 0.0

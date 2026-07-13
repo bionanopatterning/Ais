@@ -28,7 +28,7 @@ uniform float alpha;
 // field is recomputed here from the same (packed) blob uniforms the background
 // uses - two vec4s per blob to stay under the constant-register limit.
 uniform int uN;             // 0 -> plain black border
-uniform int uShape;         // 0 = soft blob, 1 = brushstroke, 2 = disc (bokeh), 3 = mosaic tile
+uniform int uShape;         // 0 = soft blob (Aurora), 2 = disc (bokeh)
 uniform vec2 uRes;          // screen size in px
 uniform float uIntensity;
 uniform vec4 uA[MAXB];      // xy = centre px, z = radius / half-width, w = alpha
@@ -51,23 +51,6 @@ void main()
             float d = distance(frag, pPos);
             float soft = max(6.0, pRad * 0.30);
             w = smoothstep(pRad + soft, pRad - soft, d) * uIntensity * pAlp;
-        }
-        else if (uShape == 1)
-        {
-            vec2 rel = frag - pPos;
-            float c = cos(pAng);
-            float s = sin(pAng);
-            vec2 lo = vec2(rel.x * c + rel.y * s, -rel.x * s + rel.y * c);
-            float rr = max(pRad, 1.0);
-            vec2 nrm = vec2(lo.x / (rr * 1.9), lo.y / (rr * 0.7));
-            w = exp(-dot(nrm, nrm) * 1.6) * uIntensity * pAlp;
-        }
-        else if (uShape == 3)
-        {
-            // mosaic tile: filled rectangle (half-width z, half-height w), hard edges
-            vec2 rel = abs(frag - pPos);
-            float inside = step(rel.x, pRad) * step(rel.y, pAng);
-            w = inside * uIntensity * pAlp;
         }
         else
         {
