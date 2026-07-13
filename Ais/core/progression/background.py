@@ -37,7 +37,7 @@ PARALLAX = 0.15
 _SHAPE = {"blob": 0, "bokeh": 2}
 
 # --- spawn behaviour (tunable) ---------------------------------------------
-_SPAWN_MIN_DT = 0.18     # throttle continuous (brush) spawns; discrete actions bypass it
+_SPAWN_MIN_DT = 0.25     # min seconds between brush spawns; discrete actions (box/copy) bypass it
 _MAX_BLOBS = 200         # safety cap on live shapes
 _OTHER_CHANCE = 0.05     # spawn in a sibling feature's colour instead of the active one
 _INVERT_CHANCE = 0.01    # spawn in the inverted active colour
@@ -51,9 +51,6 @@ _AVOID_R = 200.0
 _AVOID_R2 = _AVOID_R * _AVOID_R
 _AVOID_ACCEL = 350.0
 _AVOID_DAMP = 0.02       # per-second velocity retention (heavy)
-
-# --- transient level-up wash (a brief whole-field tint) --------------------
-_TAU_WASH = 6.0
 
 
 @dataclass
@@ -78,8 +75,6 @@ _screen_w = 1
 _screen_h = 1
 _last_spawn_t = 0.0
 _bt = 0.0                 # time accumulator for the aurora "breathe"
-_wash = 0.0
-_wash_color: Color = (1.0, 1.0, 1.0)
 
 
 def _soft(v: float) -> float:
@@ -173,20 +168,15 @@ def spawn(active_colour, throttle: bool = True) -> None:
 
 
 def pulse(kind: str, colour) -> None:
-    # Discrete-action hook. A level-up briefly washes the whole field; box / copy
-    # just drop a shape (unthrottled) in that colour.
-    global _wash, _wash_color
-    if colour is None:
+    # Discrete-action hook: box / copy drop a shape (unthrottled) in that colour.
+    # Level-ups deliberately do NOT touch the background.
+    if colour is None or kind == "levelup":
         return
-    if kind == "levelup":
-        _wash = 1.0
-        _wash_color = _soft_color(colour)
-    else:
-        spawn(colour, throttle=False)
+    spawn(colour, throttle=False)
 
 
 def notify_levelup(ev) -> None:
-    pulse("levelup", ev.color)
+    return   # level-ups no longer change the background
 
 
 def _alpha(age: float, life: float) -> float:
@@ -202,7 +192,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     """Advance the field and return (blobs, base_colour, intensity, shape) for the
     GL renderer, or None when disabled. blobs = [(x, y, radius, rgb, angle, alpha)].
     cursor is the mouse position in screen px (bokeh discs avoid it)."""
-    global _screen_w, _screen_h, _cur_style, _bt, _wash
+    global _screen_w, _screen_h, _cur_style, _bt
     _screen_w, _screen_h = w, h
     prm = _params()
     if not prm.get("enabled", False):
@@ -217,7 +207,6 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
     if dt > 0.1:
         dt = 0.1
     _bt += dt
-    _wash *= math.exp(-dt / _TAU_WASH)
 
     px = camera.position[0] * camera.zoom * PARALLAX
     py = -camera.position[1] * camera.zoom * PARALLAX
@@ -246,8 +235,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
         alive.append(b)
     _blobs[:] = alive
 
-    intensity = prm.get("intensity", 0.4) + 0.12 * _wash
-    wmix = 0.22 * _wash
+    intensity = prm.get("intensity", 0.4)
     amp = 0.08
 
     out = []
@@ -259,17 +247,13 @@ def frame(dt: float, w: int, h: int, camera, cursor=None):
             rad = b.r
         else:
             rad = b.r * (1.0 + amp * math.sin(_bt * b.breathe + b.phase))
-        col = (b.color[0] + (_wash_color[0] - b.color[0]) * wmix,
-               b.color[1] + (_wash_color[1] - b.color[1]) * wmix,
-               b.color[2] + (_wash_color[2] - b.color[2]) * wmix)
-        out.append((b.x + px, b.y + py, rad, col, b.angle, a))
+        out.append((b.x + px, b.y + py, rad, b.color, b.angle, a))
     base = tuple(cfg.COLOUR_WINDOW_BACKGROUND[:3])
     return out, base, intensity, _SHAPE.get(style, 0)
 
 
 def clear() -> None:
-    global _cur_style, _bt, _wash
+    global _cur_style, _bt
     _blobs.clear()
     _cur_style = ""
     _bt = 0.0
-    _wash = 0.0
