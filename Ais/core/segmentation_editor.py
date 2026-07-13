@@ -354,8 +354,8 @@ class SegmentationEditor:
             if not _prog_hidden:
                 progression.render_xp_hud(self.window.width, self.window.height)
                 progression.render_level_up(self.window.width, self.window.height)
-            progression.render_profile_panel()
-            if not _prog_hidden:
+                progression.render_skills_panel()
+                progression.render_cosmetics_debug()
                 progression.draw_particles(self.camera, self.window.height)
             self.render_party_buttons()
             progression.maybe_save()
@@ -483,9 +483,11 @@ class SegmentationEditor:
                             Brush.apply_circular(active_feature, pixel_coordinate, True)
                         progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
                         progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
+                        progression.background_touch(_ftr_color, "brush")
                         progression.background_stroke(_cx, _cy, _ftr_color)
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
+                        progression.background_touch(tuple(active_feature.colour), "erase")
                 else:
                     if not SegmentationEditor.is_ctrl_down():
                         if imgui.is_mouse_clicked(0):
@@ -494,8 +496,10 @@ class SegmentationEditor:
                             progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
                             progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
                             progression.background_pulse("box", tuple(active_feature.colour))
+                            progression.background_touch(tuple(active_feature.colour), "box")
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)
+                            progression.background_touch(tuple(active_feature.colour), "erase")
             if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
                 if imgui.is_mouse_clicked(0):
                     cursor_world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
@@ -2302,18 +2306,37 @@ class SegmentationEditor:
                             cfg.edit_setting("DEBUG_C", not cfg.settings["DEBUG_C"])
                         imgui.end_menu()
 
-                    if imgui.begin_menu("Progression"):
-                        if imgui.menu_item("Show profile panel")[0]:
-                            progression.toggle_panel()
-                        if imgui.menu_item("Hide all", None, cfg.settings["PROGRESSION_HIDE"])[0]:
-                            cfg.edit_setting("PROGRESSION_HIDE", not cfg.settings["PROGRESSION_HIDE"])
-                        imgui.end_menu()
-
                     imgui.end_menu()
 
                 if imgui.begin_menu("Controls"):
                     imgui.text(cfg.controls_info_text)
                     imgui.end_menu()
+
+                # Party mode lives in its own top-level menu, shown only while
+                # party mode is on (the sparkle glass button toggles it).
+                if not cfg.settings.get("PROGRESSION_HIDE", False):
+                    if imgui.begin_menu("Party mode"):
+                        if imgui.begin_menu("Background"):
+                            _eqbg = progression.equipped_background_id()
+                            for _bid, _bname in progression.background_choices():
+                                if imgui.menu_item(_bname, None, _bid == _eqbg)[0]:
+                                    progression.equip_background(_bid)
+                            imgui.end_menu()
+                        if imgui.begin_menu("Effects"):
+                            for _pk, _pl in progression.EFFECT_TOGGLES:
+                                _cur = bool(cfg.settings.get(_pk, True))
+                                if imgui.menu_item(_pl, None, _cur)[0]:
+                                    cfg.edit_setting(_pk, not _cur)
+                            imgui.end_menu()
+                        imgui.separator()
+                        if imgui.menu_item("Skills & levels", None, progression.is_skills_open())[0]:
+                            progression.toggle_skills_panel()
+                        if imgui.menu_item("Cosmetics debug", None, progression.is_cosmetics_debug_open())[0]:
+                            progression.toggle_cosmetics_debug()
+                        imgui.separator()
+                        if imgui.menu_item("Turn off party mode")[0]:
+                            cfg.edit_setting("PROGRESSION_HIDE", True)
+                        imgui.end_menu()
                 SegmentationEditor.MENU_BAR_END_X = imgui.get_cursor_screen_pos()[0]
                 SegmentationEditor.MENU_BAR_H = imgui.get_window_height()
                 imgui.end_main_menu_bar()
@@ -2984,7 +3007,7 @@ class SegmentationEditor:
         imgui.push_style_var(imgui.STYLE_WINDOW_BORDERSIZE, 0.0)
         # top-left, just right of the main menu bar items but never over the left panel
         win_x = max(SegmentationEditor.MENU_BAR_END_X + 14.0, SegmentationEditor.MAIN_WINDOW_WIDTH + 14.0)
-        imgui.set_next_window_position(win_x, SegmentationEditor.MENU_BAR_H + 4.0, imgui.ALWAYS)
+        imgui.set_next_window_position(win_x, SegmentationEditor.MENU_BAR_H + 14.0, imgui.ALWAYS)
         imgui.set_next_window_size(win_w, win_h)
         imgui.begin("##party_buttons", False,
                     imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE
@@ -4248,25 +4271,29 @@ class Renderer:
         if not field or not field[0]:
             self.border_shader.uniform1i("uN", 0)
             return
+        # The field is the same for all border draws in a frame, and uniforms
+        # persist on the program object, so upload the (up to 96) blobs only once
+        # per frame - the three border-draw methods otherwise re-upload identically.
+        if not getattr(self, "_border_field_dirty", True):
+            return
         blobs, res, intensity, shape = field
         self.border_shader.uniform2f("uRes", res)
         self.border_shader.uniform1f("uIntensity", intensity)
         self.border_shader.uniform1i("uShape", shape)
-        n = min(48, len(blobs))
+        n = min(480, len(blobs))
         self.border_shader.uniform1i("uN", n)
         for i in range(n):
             bx, by, br, bc, bang, balp = blobs[i]
-            self.border_shader.uniform2f(f"uPos[{i}]", (bx, by))
-            self.border_shader.uniform1f(f"uRad[{i}]", br)
-            self.border_shader.uniform3f(f"uCol[{i}]", bc)
-            self.border_shader.uniform1f(f"uAng[{i}]", bang)
-            self.border_shader.uniform1f(f"uAlp[{i}]", balp)
+            self.border_shader.uniform4f(f"uA[{i}]", (bx, by, br, balp))
+            self.border_shader.uniform4f(f"uB[{i}]", (bc[0], bc[1], bc[2], bang))
+        self._border_field_dirty = False   # uploaded this frame; skip re-uploads
 
     def render_background(self, blobs, base_col, intensity, res, shape=0):
         # Fullscreen papery base with soft feature-colour blobs / cards, drawn
         # right after the clear so the tomogram and annotations render on top.
         # blobs = [(x, y, radius, rgb, angle, alpha)]
         self._bg_field = (blobs, res, intensity, shape)   # stash for the chameleon border
+        self._border_field_dirty = True                   # new field this frame
         if self.background_blob_shader is None or not blobs:
             return
         glDisable(GL_DEPTH_TEST)
@@ -4277,15 +4304,12 @@ class Renderer:
         self.background_blob_shader.uniform3f("uBase", base_col)
         self.background_blob_shader.uniform1f("uIntensity", intensity)
         self.background_blob_shader.uniform1i("uShape", shape)
-        n = min(48, len(blobs))
+        n = min(480, len(blobs))
         self.background_blob_shader.uniform1i("uN", n)
         for i in range(n):
             bx, by, br, bc, bang, balp = blobs[i]
-            self.background_blob_shader.uniform2f(f"uPos[{i}]", (bx, by))
-            self.background_blob_shader.uniform1f(f"uRad[{i}]", br)
-            self.background_blob_shader.uniform3f(f"uCol[{i}]", bc)
-            self.background_blob_shader.uniform1f(f"uAng[{i}]", bang)
-            self.background_blob_shader.uniform1f(f"uAlp[{i}]", balp)
+            self.background_blob_shader.uniform4f(f"uA[{i}]", (bx, by, br, balp))
+            self.background_blob_shader.uniform4f(f"uB[{i}]", (bc[0], bc[1], bc[2], bang))
         self.ndc_screen_va.bind()
         glDrawElements(GL_TRIANGLES, self.ndc_screen_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.ndc_screen_va.unbind()

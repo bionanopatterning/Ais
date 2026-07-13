@@ -6,7 +6,7 @@ import colorsys
 import math
 import random
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import imgui
 
@@ -175,35 +175,17 @@ def emit_box_outline_burst(
     _clamp_pool()
 
 
-def emit_confetti(screen_w: int, color: Color, n: int = 55, palette: str = "feature",
-                  shape: str = "rect", size_mul: float = 1.0) -> None:
-    kind = "confetti_dot" if shape == "dot" else "confetti"
-    for _ in range(n * CONFETTI_COUNT_MUL):
-        x = random.uniform(0.0, max(1.0, screen_w))
-        _particles.append(Particle(
-            x=x,
-            y=-12.0 + random.uniform(-30, 30),
-            vx=random.uniform(-60.0, 60.0),
-            vy=random.uniform(36.0, 140.0),          # slight drop-speed variation
-            age=0.0,
-            lifetime=random.uniform(7.2, 12.6) * CONFETTI_LIFETIME_MUL,
-            color=_jitter_color(palette_color(palette, color), h_amp=0.10),
-            size=random.uniform(3.2, 6.4) * CONFETTI_SIZE_MUL * size_mul,
-            gravity=random.uniform(120.0, 165.0),    # varies fall a little over time
-            drag=0.25,
-            spin=random.uniform(-6.0, 6.0),
-            angle=random.uniform(0.0, 2 * math.pi),
-            kind=kind,
-            fade_bias=random.uniform(-0.09, 0.09),   # each fades at a slightly different height
-        ))
-    _clamp_pool()
-
-
-def emit_confetti_burst(cx: float, cy: float, n: int = 40) -> None:
-    """Multicolour confetti popping outward from a screen point (e.g. a button)."""
+def emit_confetti_burst(cx: float, cy: float, n: int = 40, color: Optional[Color] = None) -> None:
+    """Confetti popping outward from a screen point, then falling under gravity
+    (party-mode button and level-up). color=None -> multicolour; otherwise a
+    jittered version of the given feature colour."""
     for _ in range(n):
         ang = random.uniform(0.0, 2.0 * math.pi)
         spd = random.uniform(80.0, 340.0)
+        if color is not None:
+            col = _jitter_color(color, h_amp=0.10)
+        else:
+            col = colorsys.hsv_to_rgb(random.random(), random.uniform(0.75, 0.95), 1.0)  # all colours
         _particles.append(Particle(
             x=cx,
             y=cy,
@@ -211,7 +193,7 @@ def emit_confetti_burst(cx: float, cy: float, n: int = 40) -> None:
             vy=math.sin(ang) * spd - 70.0,          # bias the pop upward
             age=0.0,
             lifetime=random.uniform(1.1, 2.4) * CONFETTI_LIFETIME_MUL,
-            color=colorsys.hsv_to_rgb(random.random(), random.uniform(0.75, 0.95), 1.0),  # all colours
+            color=col,
             size=random.uniform(3.0, 6.0) * CONFETTI_SIZE_MUL,
             gravity=random.uniform(180.0, 260.0),
             drag=0.35,

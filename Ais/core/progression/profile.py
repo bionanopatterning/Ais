@@ -50,30 +50,9 @@ class Profile:
     skills: Dict[str, int] = field(default_factory=dict)
     colors: Dict[str, Color] = field(default_factory=dict)
     hidden: Set[str] = field(default_factory=set)
-    coins: int = 0
-    coin_fraction: float = 0.0          # sub-coin accumulator (coins accrue from XP)
-    owned: Set[str] = field(default_factory=set)     # purchased/unlocked cosmetic ids
     equipped: Dict[str, str] = field(default_factory=dict)   # category -> cosmetic id
     created_at: float = 0.0
     schema_version: int = SCHEMA_VERSION
-
-    def add_coins(self, amount: float) -> int:
-        """Accrue (possibly fractional) coins; returns whole coins gained."""
-        self.coin_fraction += amount
-        whole = int(self.coin_fraction)
-        if whole:
-            self.coin_fraction -= whole
-            self.coins += whole
-        return whole
-
-    def can_afford(self, price: int) -> bool:
-        return self.coins >= price
-
-    def spend(self, price: int) -> bool:
-        if self.coins < price:
-            return False
-        self.coins -= price
-        return True
 
     def skill_xp(self, name: str) -> int:
         return self.skills.get(name, 0)
@@ -114,9 +93,6 @@ class Profile:
             "skills": dict(self.skills),
             "colors": {k: [float(v[0]), float(v[1]), float(v[2])] for k, v in self.colors.items()},
             "hidden": sorted(self.hidden),
-            "coins": self.coins,
-            "coin_fraction": self.coin_fraction,
-            "owned": sorted(self.owned),
             "equipped": dict(self.equipped),
         }
 
@@ -134,9 +110,6 @@ class Profile:
             skills=dict(data.get("skills", {})),
             colors=colors,
             hidden=set(hidden_list),
-            coins=int(data.get("coins", 0)),
-            coin_fraction=float(data.get("coin_fraction", 0.0)),
-            owned=set(data.get("owned", []) or []),
             equipped=dict(data.get("equipped", {}) or {}),
             created_at=float(data.get("created_at", time.time())),
             schema_version=int(data.get("schema_version", SCHEMA_VERSION)),

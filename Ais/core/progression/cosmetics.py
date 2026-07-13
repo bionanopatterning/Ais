@@ -1,11 +1,11 @@
-# Deterministic cosmetic catalogue + purchase/equip logic. Cosmetics are pure
-# visual parameter packs applied to the everyday effects (cursor trail, XP orbs,
-# box burst, confetti, HUD), so buying one changes the daily feel, not only the
-# rare level-up. Earned with coins, or level-gated for prestige. No randomness.
+# Cosmetic catalogue + equip logic. Cosmetics are pure visual parameter packs
+# applied to the everyday effects (cursor trail, XP orbs, box burst) and the
+# living background. Everything is free and directly selectable; there is no
+# shop or currency. One item is equipped per category.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from . import profile as _profile
 
@@ -14,16 +14,12 @@ from . import profile as _profile
 CURSOR = "cursor_trail"
 ORB = "xp_orb"
 BURST = "box_burst"
-CONFETTI = "confetti"
-HUD = "hud_theme"
 BACKGROUND = "background"
 
 CATEGORY_LABELS = {
     CURSOR: "Cursor trail",
     ORB: "XP orbs",
     BURST: "Box burst",
-    CONFETTI: "Confetti",
-    HUD: "HUD theme",
     BACKGROUND: "Background",
 }
 
@@ -33,42 +29,31 @@ class Cosmetic:
     id: str
     category: str
     name: str
-    price: int          # coins (0 for defaults and level-unlocks)
-    min_level: int      # total-level gate (0 = none)
     params: dict
 
 
-def _c(id, category, name, price, min_level, **params):
-    return Cosmetic(id, category, name, price, min_level, params)
+def _c(id, category, name, **params):
+    return Cosmetic(id, category, name, params)
 
 
 CATALOG: Dict[str, List[Cosmetic]] = {
     CURSOR: [
         # Particle colour always follows the feature; level-based hue jitter is
-        # handled by the perk tiers, so the shop offers no colour swaps here.
-        _c("cursor.spark",  CURSOR, "Sparks",  0,   0,  palette="feature", size_mul=1.0),
+        # handled by the perk tiers, so there are no colour swaps here.
+        _c("cursor.spark",  CURSOR, "Sparks",  palette="feature", size_mul=1.0),
     ],
     ORB: [
-        _c("orb.default",   ORB, "Orbs",      0,   0,  palette="feature", size_mul=1.0),
+        _c("orb.default",   ORB, "Orbs",      palette="feature", size_mul=1.0),
     ],
     BURST: [
-        _c("burst.default", BURST, "Burst",   0,   0,  palette="feature", size_mul=1.0),
-    ],
-    CONFETTI: [
-        _c("conf.default",  CONFETTI, "Confetti",  0,  0,  palette="feature", shape="rect", size_mul=1.0),
-        _c("conf.bubbles",  CONFETTI, "Bubbles",   50, 0,  palette="feature", shape="dot",  size_mul=1.15),
-    ],
-    HUD: [
-        _c("hud.slate",  HUD, "Slate",  0,  0,  track=(0.18, 0.18, 0.20), track_alpha=0.9,  backdrop=0.55),
-        _c("hud.cream",  HUD, "Cream",  70, 0,  track=(0.80, 0.80, 0.74), track_alpha=0.85, backdrop=0.25),
-        _c("hud.mint",   HUD, "Mint",   70, 0,  track=(0.16, 0.34, 0.30), track_alpha=0.9,  backdrop=0.5),
-        _c("hud.ink",    HUD, "Ink",    0,  10, track=(0.05, 0.05, 0.07), track_alpha=0.95, backdrop=0.7),
+        _c("burst.default", BURST, "Burst",   palette="feature", size_mul=1.0),
     ],
     BACKGROUND: [
-        _c("bg.paper",    BACKGROUND, "Basic",       0,   0,  enabled=False),
-        _c("bg.aurora",   BACKGROUND, "Aurora",      0,   0,  enabled=True, style="blob",        n=22, rmin=340, rmax=760, intensity=0.38),
-        _c("bg.bokeh",    BACKGROUND, "Bokeh",       90,  0,  enabled=True, style="bokeh",       n=44, rmin=30,  rmax=130, intensity=0.5, life_mul=3.0),
-        _c("bg.brush",    BACKGROUND, "Brushstroke", 120, 0,  enabled=True, style="brushstroke", intensity=0.7),
+        _c("bg.paper",    BACKGROUND, "Basic",       enabled=False),
+        _c("bg.aurora",   BACKGROUND, "Aurora",      enabled=True, style="blob",        n=40, rmin=340, rmax=760, intensity=0.05),
+        _c("bg.bokeh",    BACKGROUND, "Bokeh",       enabled=True, style="bokeh",       n=44, rmin=30,  rmax=130, intensity=0.34, life_mul=3.0),
+        _c("bg.mosaic",   BACKGROUND, "Mosaic",      enabled=True, style="mosaic",       intensity=0.34),
+        _c("bg.brush",    BACKGROUND, "Brushstroke", enabled=True, style="brushstroke", intensity=0.05),
     ],
 }
 
@@ -85,24 +70,12 @@ def get(item_id: str) -> Optional[Cosmetic]:
     return None
 
 
-def is_default(item: Cosmetic) -> bool:
-    return item.price == 0 and item.min_level == 0
-
-
-def is_owned(p: "_profile.Profile", item: Cosmetic) -> bool:
-    return is_default(item) or item.id in p.owned
-
-
-def is_unlocked(p: "_profile.Profile", item: Cosmetic) -> bool:
-    return p.overall_level() >= item.min_level
-
-
 def equipped_id(p: "_profile.Profile", category: str) -> str:
     chosen = p.equipped.get(category)
     it = get(chosen) if chosen else None
-    if it is not None and it.category == category and is_owned(p, it):
+    if it is not None and it.category == category:
         return chosen
-    return default_id(category)
+    return default_id(category)   # falls back if the equipped id was removed
 
 
 def equipped_item(p: "_profile.Profile", category: str) -> Cosmetic:
@@ -115,21 +88,22 @@ def params(category: str) -> dict:
 
 
 def equip(p: "_profile.Profile", item: Cosmetic) -> bool:
-    if not is_owned(p, item) or not is_unlocked(p, item):
-        return False
     p.equipped[item.category] = item.id
     _profile.mark_dirty()
     return True
 
 
-def buy(p: "_profile.Profile", item: Cosmetic) -> bool:
-    # Acquire a non-default item: needs its level gate met and coins for its price
-    # (price 0 level-unlocks are simply claimed). Auto-equips on acquire.
-    if is_owned(p, item) or not is_unlocked(p, item):
-        return False
-    if not p.spend(item.price):
-        return False
-    p.owned.add(item.id)
-    p.equipped[item.category] = item.id
-    _profile.mark_dirty()
-    return True
+# --- Background selection (surfaced directly in the Party-mode menu) ---
+
+def background_choices() -> List[Tuple[str, str]]:
+    return [(it.id, it.name) for it in CATALOG[BACKGROUND]]
+
+
+def equipped_background_id() -> str:
+    return equipped_id(_profile.get_profile(), BACKGROUND)
+
+
+def equip_background(item_id: str) -> None:
+    it = get(item_id)
+    if it is not None and it.category == BACKGROUND:
+        equip(_profile.get_profile(), it)
