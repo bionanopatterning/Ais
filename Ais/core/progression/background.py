@@ -55,6 +55,8 @@ _AVOID_ACCEL = 350.0
 _AVOID_DAMP = 0.02           # per-second velocity retention (heavy)
 _AVOID_BRUSH_RANGE = 2.0     # while the LMB is held (brushing): range x5
 _AVOID_BRUSH_STRENGTH = 2.0  # ...and strength x1.5
+_DRIFT = (3.0, 7.0)          # bokeh baseline drift speed (px/s); also the per-blob
+                             # damping threshold - only speed ABOVE it is damped away
 
 
 @dataclass
@@ -69,9 +71,10 @@ class _Blob:
     angle: float
     spin: float
     breathe: float
-    phase: float        # random [0, 2pi); also the cursor flee/chase coin (phase < pi)
+    phase: float        # random [0, 2pi) - aurora breathe offset
     age: float
     life: float
+    drift: float        # bokeh baseline drift speed / damping threshold (px/s)
 
 
 _blobs: List[_Blob] = []
@@ -145,7 +148,6 @@ def spawn(active_colour, throttle: bool = True, count: int = 1, siblings=None) -
     rmin = prm.get("rmin", 30.0)
     rmax = prm.get("rmax", 130.0)
     life_mul = prm.get("life_mul", 1.0)
-    vlim = 6.0 if lifecycle else 16.0
     for _ in range(max(1, int(count))):
         rr = random.random()
         if rr < _INVERT_CHANCE:
@@ -156,11 +158,19 @@ def spawn(active_colour, throttle: bool = True, count: int = 1, siblings=None) -
         else:
             base = active
         col = _hue_jitter(_soft_color(base))
+        if lifecycle:
+            # a gentle baseline drift in a random direction; drift is also the
+            # per-blob speed threshold above which motion gets damped
+            drift = random.uniform(*_DRIFT)
+            ang0 = random.uniform(0.0, 2.0 * math.pi)
+            vx, vy = math.cos(ang0) * drift, math.sin(ang0) * drift
+        else:
+            vx, vy, drift = random.uniform(-16, 16), random.uniform(-16, 16), 0.0
         _blobs.append(_Blob(
             x=random.uniform(0.0, _screen_w),
             y=random.uniform(0.0, _screen_h),
-            vx=random.uniform(-vlim, vlim),
-            vy=random.uniform(-vlim, vlim),
+            vx=vx,
+            vy=vy,
             r=random.uniform(rmin, rmax),
             color=col,
             color_target=col,
@@ -170,6 +180,7 @@ def spawn(active_colour, throttle: bool = True, count: int = 1, siblings=None) -
             phase=random.uniform(0.0, 6.28),
             age=0.0,
             life=random.uniform(*_LIFE) * life_mul,
+            drift=drift,
         ))
     if len(_blobs) > _MAX_BLOBS:
         del _blobs[: len(_blobs) - _MAX_BLOBS]
@@ -257,15 +268,19 @@ def frame(dt: float, w: int, h: int, camera, cursor=None, brushing: bool = False
             d2 = dx * dx + dy * dy
             if 1.0 < d2 < avoid_r2:
                 d = math.sqrt(d2)
-                sign = 1.0 if b.phase < math.pi else -1.0   # ~half flee, ~half chase
-                push = (1.0 - d / avoid_r) * avoid_accel * sign
+                push = (1.0 - d / avoid_r) * avoid_accel
                 b.vx += (dx / d) * push * dt
                 b.vy += (dy / d) * push * dt
         b.x += b.vx * dt
         b.y += b.vy * dt
         if lifecycle:
-            b.vx *= damp
-            b.vy *= damp
+            # keep a gentle baseline drift; damp only the speed ABOVE the per-blob
+            # threshold (so a cursor push decays back to a calm drift, not to zero)
+            speed = math.hypot(b.vx, b.vy)
+            if speed > b.drift:
+                scale = (b.drift + (speed - b.drift) * damp) / speed
+                b.vx *= scale
+                b.vy *= scale
         b.angle += b.spin * dt
         alive.append(b)
     _blobs[:] = alive
