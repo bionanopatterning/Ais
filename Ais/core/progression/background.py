@@ -33,7 +33,7 @@ from . import cosmetics
 
 Color = Tuple[float, float, float]
 
-PARALLAX = 0.075        # subtle scene parallax (halved)
+PARALLAX = 0.075        # subtle scene parallax 
 _SHAPE = {"blob": 0, "bokeh": 2}
 
 # --- spawn behaviour (tunable) ---------------------------------------------
@@ -53,8 +53,8 @@ _AVOID_R = 200.0
 _AVOID_R2 = _AVOID_R * _AVOID_R
 _AVOID_ACCEL = 350.0
 _AVOID_DAMP = 0.02           # per-second velocity retention (heavy)
-_AVOID_BRUSH_RANGE = 5.0     # while the LMB is held (brushing): range x5
-_AVOID_BRUSH_STRENGTH = 1.5  # ...and strength x1.5
+_AVOID_BRUSH_RANGE = 3.0     # while the LMB is held (brushing): range x5
+_AVOID_BRUSH_STRENGTH = 2.0  # ...and strength x1.5
 
 
 @dataclass
@@ -123,11 +123,12 @@ def _siblings(active: Color) -> List[Color]:
     return out
 
 
-def spawn(active_colour, throttle: bool = True) -> None:
-    """A user action drops one new shape. Colour is mostly the active tool's, but
-    ~_OTHER_CHANCE of the time a sibling feature's colour and ~_INVERT_CHANCE of
-    the time the inverted colour. No-op unless a background is equipped. The
-    continuous brush passes throttle=True; discrete clicks pass throttle=False."""
+def spawn(active_colour, throttle: bool = True, count: int = 1) -> None:
+    """A user action drops `count` new shapes. Each colour is mostly the active
+    tool's, but ~_OTHER_CHANCE of the time a sibling feature's colour and
+    ~_INVERT_CHANCE of the time the inverted colour. No-op unless a background is
+    equipped. The continuous brush passes throttle=True; discrete clicks pass
+    throttle=False."""
     global _last_spawn_t
     prm = _params()
     if not prm.get("enabled", False) or active_colour is None:
@@ -138,37 +139,37 @@ def spawn(active_colour, throttle: bool = True) -> None:
     _last_spawn_t = now
 
     active = (float(active_colour[0]), float(active_colour[1]), float(active_colour[2]))
-    rr = random.random()
-    if rr < _INVERT_CHANCE:
-        base = (1.0 - active[0], 1.0 - active[1], 1.0 - active[2])
-    elif rr < _INVERT_CHANCE + _OTHER_CHANCE:
-        sib = _siblings(active)
-        base = random.choice(sib) if sib else active
-    else:
-        base = active
-    col = _hue_jitter(_soft_color(base))
-
     style = prm.get("style", "bokeh")
     lifecycle = style == "bokeh"
     rmin = prm.get("rmin", 30.0)
     rmax = prm.get("rmax", 130.0)
     life_mul = prm.get("life_mul", 1.0)
     vlim = 6.0 if lifecycle else 16.0
-    _blobs.append(_Blob(
-        x=random.uniform(0.0, _screen_w),
-        y=random.uniform(0.0, _screen_h),
-        vx=random.uniform(-vlim, vlim),
-        vy=random.uniform(-vlim, vlim),
-        r=random.uniform(rmin, rmax),
-        color=col,
-        color_target=col,
-        angle=random.uniform(-0.6, 0.6),
-        spin=random.uniform(-0.25, 0.25),
-        breathe=random.uniform(0.15, 0.4),
-        phase=random.uniform(0.0, 6.28),
-        age=0.0,
-        life=random.uniform(*_LIFE) * life_mul,
-    ))
+    for _ in range(max(1, int(count))):
+        rr = random.random()
+        if rr < _INVERT_CHANCE:
+            base = (1.0 - active[0], 1.0 - active[1], 1.0 - active[2])
+        elif rr < _INVERT_CHANCE + _OTHER_CHANCE:
+            sib = _siblings(active)
+            base = random.choice(sib) if sib else active
+        else:
+            base = active
+        col = _hue_jitter(_soft_color(base))
+        _blobs.append(_Blob(
+            x=random.uniform(0.0, _screen_w),
+            y=random.uniform(0.0, _screen_h),
+            vx=random.uniform(-vlim, vlim),
+            vy=random.uniform(-vlim, vlim),
+            r=random.uniform(rmin, rmax),
+            color=col,
+            color_target=col,
+            angle=random.uniform(-0.6, 0.6),
+            spin=random.uniform(-0.25, 0.25),
+            breathe=random.uniform(0.15, 0.4),
+            phase=random.uniform(0.0, 6.28),
+            age=0.0,
+            life=random.uniform(*_LIFE) * life_mul,
+        ))
     if len(_blobs) > _MAX_BLOBS:
         del _blobs[: len(_blobs) - _MAX_BLOBS]
 
