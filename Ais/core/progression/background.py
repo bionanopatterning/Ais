@@ -54,7 +54,7 @@ _AVOID_R2 = _AVOID_R * _AVOID_R
 _AVOID_ACCEL = 350.0
 _AVOID_DAMP = 0.02           # per-second velocity retention (heavy)
 _AVOID_BRUSH_RANGE = 5.0     # while the LMB is held (brushing): range x5
-_AVOID_BRUSH_STRENGTH = 3.0  # ...and strength x3
+_AVOID_BRUSH_STRENGTH = 1.5  # ...and strength x1.5
 
 
 @dataclass
