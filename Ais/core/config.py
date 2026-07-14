@@ -151,6 +151,48 @@ def push_recent(key, path, cap=12):
     edit_setting(key, updated[:cap])
 
 
+def _norm_path(path):
+    # Case- and separator-insensitive absolute path for identity comparison.
+    # normcase folds case (and slashes) on Windows, which normpath alone does
+    # not - without it a .mrc and its .scns twin whose stored paths differ only
+    # in casing (e.g. drive Z: vs z:, or Pom-substituted subdirs) look distinct.
+    return os.path.normcase(os.path.normpath(os.path.abspath(path)))
+
+
+def _dataset_stem(path):
+    # Dataset identity independent of its extension: a .mrc and its .scns twin
+    # (same directory + basename) share one identity.
+    stem, _ = os.path.splitext(_norm_path(path))
+    return stem
+
+
+def dedup_recent_datasets(paths):
+    # Drop any .mrc whose same-named .scns is also present: a .scns supersedes
+    # its .mrc twin. Order is preserved.
+    scns_stems = {_dataset_stem(p) for p in paths
+                  if os.path.splitext(p)[1].lower() == filetype_segmentation}
+    return [p for p in paths
+            if not (os.path.splitext(p)[1].lower() == ".mrc" and _dataset_stem(p) in scns_stems)]
+
+
+def push_recent_dataset(path, cap=12):
+    # Move a dataset (.mrc or .scns) to the front of RECENT_DATASETS, keeping at
+    # most one entry per dataset. A .scns supersedes its same-named .mrc: saving
+    # or opening a .scns evicts the .mrc twin, and opening a .mrc whose .scns is
+    # already remembered promotes the .scns instead.
+    key = "RECENT_DATASETS"
+    path = os.path.abspath(path)
+    stem, ext = os.path.splitext(path)
+    current = settings.get(key) or []
+    if ext.lower() == ".mrc":
+        twin = stem + filetype_segmentation
+        if any(_norm_path(p) == _norm_path(twin) for p in current):
+            path = os.path.abspath(twin)
+    updated = [p for p in current if _dataset_stem(p) != _dataset_stem(path)]
+    updated.insert(0, path)
+    edit_setting(key, dedup_recent_datasets(updated)[:cap])
+
+
 if settings["POM_COMMAND_DIR"] == "":
     edit_setting("POM_COMMAND_DIR", os.path.join(os.path.expanduser("~"), ".Ais"))
 

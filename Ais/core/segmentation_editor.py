@@ -571,7 +571,7 @@ class SegmentationEditor:
                         seframe.scns_path = f
                     self.parse_available_features()
                 if ext in (".mrc", cfg.filetype_segmentation):
-                    cfg.push_recent("RECENT_DATASETS", f)
+                    cfg.push_recent_dataset(f)
             except Exception as e:
                 cfg.set_error(e, f"Error importing dataset {f}, see details below:")
 
@@ -672,6 +672,7 @@ class SegmentationEditor:
                 with open(filename, 'wb') as pickle_file:
                     pickle.dump(cfg.se_active_frame, pickle_file)
                     print(f"Saved {filename}")
+                cfg.push_recent_dataset(filename)   # a saved .scns joins the recent datasets (and evicts its .mrc twin)
 
 
         except Exception as e:
@@ -1972,7 +1973,7 @@ class SegmentationEditor:
                         except Exception as e:
                             cfg.set_error(e, "Could not import model group, see details below.")
                     if imgui.begin_menu("Open recent dataset"):
-                        _recents = [p for p in (cfg.settings.get("RECENT_DATASETS") or []) if os.path.exists(p)]
+                        _recents = cfg.dedup_recent_datasets([p for p in (cfg.settings.get("RECENT_DATASETS") or []) if os.path.exists(p)])
                         if not _recents:
                             imgui.menu_item("(none)", None, False, False)
                         for _p in _recents:
