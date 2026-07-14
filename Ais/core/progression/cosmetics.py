@@ -50,7 +50,7 @@ CATALOG: Dict[str, List[Cosmetic]] = {
     ],
     BACKGROUND: [
         _c("bg.paper",    BACKGROUND, "Basic",       enabled=False),
-        _c("bg.aurora",   BACKGROUND, "Aurora",      enabled=True, style="blob",  rmin=340, rmax=760, intensity=0.05, life_mul=2.5),
+        _c("bg.aurora",   BACKGROUND, "Aurora",      enabled=True, style="blob",  rmin=340, rmax=760, intensity=0.05, life_mul=2.5, hidden=True),
         _c("bg.bokeh",    BACKGROUND, "Bokeh",       enabled=True, style="bokeh", rmin=30,  rmax=130, intensity=0.34, life_mul=18.0),
     ],
 }
@@ -74,9 +74,9 @@ def get(item_id: str) -> Optional[Cosmetic]:
 def equipped_id(p: "_profile.Profile", category: str) -> str:
     chosen = p.equipped.get(category)
     it = get(chosen) if chosen else None
-    if it is not None and it.category == category:
+    if it is not None and it.category == category and not it.params.get("hidden"):
         return chosen
-    return default_id(category)   # falls back if the equipped id was removed
+    return default_id(category)   # falls back if the equipped id was removed / hidden
 
 
 def equipped_item(p: "_profile.Profile", category: str) -> Cosmetic:
@@ -97,7 +97,7 @@ def equip(p: "_profile.Profile", item: Cosmetic) -> bool:
 # --- Background selection (surfaced directly in the Party-mode menu) ---
 
 def background_choices() -> List[Tuple[str, str]]:
-    return [(it.id, it.name) for it in CATALOG[BACKGROUND]]
+    return [(it.id, it.name) for it in CATALOG[BACKGROUND] if not it.params.get("hidden")]
 
 
 def equipped_background_id() -> str:

@@ -301,7 +301,9 @@ class SegmentationEditor:
             for model in cfg.se_models:
                 model.set_slice(cfg.se_active_frame.get_slice(model_depth=model.model_depth), cfg.se_active_frame.pixel_size, cfg.se_active_frame.get_roi_indices(), cfg.se_active_frame.data.shape)
                 if model.active and model.compiled:
-                    progression.award_inference(model.title, model.colour)
+                    # applying a model to a new slice: XP orb from the model's panel, and a background shape
+                    progression.award_inference(model.title, model.colour, screen_xy=getattr(model, "_panel_xy", None))
+                    progression.background_spawn(tuple(model.colour), throttle=True, siblings=[tuple(mm.colour) for mm in cfg.se_models if mm is not model])
                 if model.emit:
                     emissions.append(model.data)
                 if model.absorb:
@@ -342,8 +344,6 @@ class SegmentationEditor:
             # living background: GL pre-pass, drawn behind the tomogram
             _bg = None
             if not cfg.settings.get("PROGRESSION_HIDE", False):
-                if self.active_tab == "Models":   # inference on the model tab feeds the field too
-                    progression.background_inference_tick([tuple(m.colour) for m in cfg.se_models if m.active and m.compiled])
                 _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera, self.window.cursor_pos, imgui.is_mouse_down(0))
             if _bg is not None:
                 SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
@@ -468,7 +468,8 @@ class SegmentationEditor:
             if active_feature is not None and not imgui.get_io().want_capture_mouse:
                 cursor_world_position = self.camera.cursor_to_world_position(self.window.cursor_pos)
                 pixel_coordinate = active_feature.parent.world_to_pixel_coordinate(cursor_world_position)
-
+                _pframe = active_feature.parent
+                _inside_frame = (0 <= pixel_coordinate[0] < _pframe.width and 0 <= pixel_coordinate[1] < _pframe.height)
 
                 if not SegmentationEditor.is_shift_down():
                     _cx, _cy = self.window.cursor_pos[0], self.window.cursor_pos[1]
@@ -485,19 +486,21 @@ class SegmentationEditor:
                                 pass  # bit experimental still. TODO: fix error thrown when flood fill ROI partially falls outside image.
                         else:
                             Brush.apply_circular(active_feature, pixel_coordinate, True)
-                        progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
-                        progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
-                        progression.background_spawn(_ftr_color)   # drop a background shape in the tool's colour
+                        if _inside_frame:   # no reward for painting off the tomogram
+                            progression.award(skill=active_feature.title, xp=1, color=_ftr_color, rate_limit=True, cursor_pos=(_cx, _cy), orb_radius=_brush_radius_world * self.camera.zoom)
+                            progression.emit_brush_trail(_wx, _wy, _brush_radius_world, _ftr_color, skill_level=_skill_lvl)
+                            progression.background_spawn(_ftr_color)   # drop a background shape in the tool's colour
                     elif imgui.is_mouse_down(1):
                         Brush.apply_circular(active_feature, pixel_coordinate, False)
                 else:
                     if not SegmentationEditor.is_ctrl_down():
                         if imgui.is_mouse_clicked(0):
                             active_feature.add_box(pixel_coordinate)
-                            _skill_lvl_box = progression.get_profile().skill_level(active_feature.title)
-                            progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
-                            progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
-                            progression.background_pulse("box", tuple(active_feature.colour))
+                            if _inside_frame:   # no reward for boxing off the tomogram
+                                _skill_lvl_box = progression.get_profile().skill_level(active_feature.title)
+                                progression.award(skill=active_feature.title, xp=5, color=tuple(active_feature.colour), cursor_pos=(self.window.cursor_pos[0], self.window.cursor_pos[1]), orb_radius=active_feature.box_size_nm * self.camera.zoom * 0.5)
+                                progression.emit_box_burst(cursor_world_position[0], cursor_world_position[1], active_feature.box_size_nm, tuple(active_feature.colour), skill_level=_skill_lvl_box)
+                                progression.background_pulse("box", tuple(active_feature.colour))
                         elif imgui.is_mouse_clicked(1):
                             active_feature.remove_box(pixel_coordinate)
             if cfg.se_active_frame and SegmentationEditor.is_shift_down() and SegmentationEditor.is_ctrl_down():
@@ -1203,6 +1206,7 @@ class SegmentationEditor:
                     panel_height += 10 if m.background_process_train is not None else 0
                     imgui.begin_child(f"SEModel_{m.uid}", 0.0, panel_height, True, imgui.WINDOW_NO_SCROLLBAR)
                     cw = imgui.get_content_region_available_width()
+                    m._panel_xy = tuple(imgui.get_cursor_screen_pos())   # inference XP orbs fly from here
                     _mgrab = SegmentationEditor._push_slider_grab(m.colour)
 
                     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))

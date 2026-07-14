@@ -203,18 +203,6 @@ def notify_levelup(ev) -> None:
             random.random(), random.uniform(0.6, 0.9), random.uniform(0.85, 1.0)))
 
 
-def inference_tick(colours, chance: float = 0.2) -> None:
-    """Call each frame while model(s) are inferring on the model tab: with
-    probability `chance` (~1 in 5 frames) drop a bokeh in a random one of the
-    inferring models' colours (the others become its sibling pool). `colours` is
-    the list of active models' colours; a no-op if it's empty."""
-    if not colours or random.random() >= chance:
-        return
-    i = random.randrange(len(colours))
-    others = [c for j, c in enumerate(colours) if j != i]
-    spawn(colours[i], throttle=False, siblings=others)
-
-
 def _alpha(age: float, life: float) -> float:
     fade_out = _FADE_OUT_FRAC * life
     if age < _FADE_IN:
