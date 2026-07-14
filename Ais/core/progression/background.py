@@ -69,10 +69,9 @@ class _Blob:
     angle: float
     spin: float
     breathe: float
-    phase: float
+    phase: float        # random [0, 2pi); also the cursor flee/chase coin (phase < pi)
     age: float
     life: float
-    avoid_sign: float   # +1 = repelled by the cursor, -1 = attracted to it
 
 
 _blobs: List[_Blob] = []
@@ -170,7 +169,6 @@ def spawn(active_colour, throttle: bool = True, count: int = 1) -> None:
             phase=random.uniform(0.0, 6.28),
             age=0.0,
             life=random.uniform(*_LIFE) * life_mul,
-            avoid_sign=random.choice((-1.0, 1.0)),   # half flee the cursor, half chase it
         ))
     if len(_blobs) > _MAX_BLOBS:
         del _blobs[: len(_blobs) - _MAX_BLOBS]
@@ -246,7 +244,8 @@ def frame(dt: float, w: int, h: int, camera, cursor=None, brushing: bool = False
             d2 = dx * dx + dy * dy
             if 1.0 < d2 < avoid_r2:
                 d = math.sqrt(d2)
-                push = (1.0 - d / avoid_r) * avoid_accel * b.avoid_sign
+                sign = 1.0 if b.phase < math.pi else -1.0   # ~half flee, ~half chase
+                push = (1.0 - d / avoid_r) * avoid_accel * sign
                 b.vx += (dx / d) * push * dt
                 b.vy += (dy / d) * push * dt
         b.x += b.vx * dt
