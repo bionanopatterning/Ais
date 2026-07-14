@@ -53,7 +53,7 @@ _AVOID_R = 200.0
 _AVOID_R2 = _AVOID_R * _AVOID_R
 _AVOID_ACCEL = 350.0
 _AVOID_DAMP = 0.02           # per-second velocity retention (heavy)
-_AVOID_BRUSH_RANGE = 3.0     # while the LMB is held (brushing): range x5
+_AVOID_BRUSH_RANGE = 2.0     # while the LMB is held (brushing): range x5
 _AVOID_BRUSH_STRENGTH = 2.0  # ...and strength x1.5
 
 
@@ -72,6 +72,7 @@ class _Blob:
     phase: float
     age: float
     life: float
+    avoid_sign: float   # +1 = repelled by the cursor, -1 = attracted to it
 
 
 _blobs: List[_Blob] = []
@@ -169,6 +170,7 @@ def spawn(active_colour, throttle: bool = True, count: int = 1) -> None:
             phase=random.uniform(0.0, 6.28),
             age=0.0,
             life=random.uniform(*_LIFE) * life_mul,
+            avoid_sign=random.choice((-1.0, 1.0)),   # half flee the cursor, half chase it
         ))
     if len(_blobs) > _MAX_BLOBS:
         del _blobs[: len(_blobs) - _MAX_BLOBS]
@@ -244,7 +246,7 @@ def frame(dt: float, w: int, h: int, camera, cursor=None, brushing: bool = False
             d2 = dx * dx + dy * dy
             if 1.0 < d2 < avoid_r2:
                 d = math.sqrt(d2)
-                push = (1.0 - d / avoid_r) * avoid_accel
+                push = (1.0 - d / avoid_r) * avoid_accel * b.avoid_sign
                 b.vx += (dx / d) * push * dt
                 b.vy += (dy / d) * push * dt
         b.x += b.vx * dt
