@@ -123,12 +123,13 @@ def _siblings(active: Color) -> List[Color]:
     return out
 
 
-def spawn(active_colour, throttle: bool = True, count: int = 1) -> None:
+def spawn(active_colour, throttle: bool = True, count: int = 1, siblings=None) -> None:
     """A user action drops `count` new shapes. Each colour is mostly the active
-    tool's, but ~_OTHER_CHANCE of the time a sibling feature's colour and
-    ~_INVERT_CHANCE of the time the inverted colour. No-op unless a background is
-    equipped. The continuous brush passes throttle=True; discrete clicks pass
-    throttle=False."""
+    tool's, but ~_OTHER_CHANCE of the time a sibling's colour and ~_INVERT_CHANCE
+    of the time the inverted colour. `siblings` is the "other" colour pool - the
+    caller passes it on the model tab (other models); it defaults to the other
+    features in the tomogram. No-op unless a background is equipped. The continuous
+    brush passes throttle=True; discrete clicks pass throttle=False."""
     global _last_spawn_t
     prm = _params()
     if not prm.get("enabled", False) or active_colour is None:
@@ -150,7 +151,7 @@ def spawn(active_colour, throttle: bool = True, count: int = 1) -> None:
         if rr < _INVERT_CHANCE:
             base = (1.0 - active[0], 1.0 - active[1], 1.0 - active[2])
         elif rr < _INVERT_CHANCE + _OTHER_CHANCE:
-            sib = _siblings(active)
+            sib = siblings if siblings is not None else _siblings(active)
             base = random.choice(sib) if sib else active
         else:
             base = active
@@ -189,6 +190,18 @@ def notify_levelup(ev) -> None:
     for b in _blobs:
         b.color_target = _soft_color(colorsys.hsv_to_rgb(
             random.random(), random.uniform(0.6, 0.9), random.uniform(0.85, 1.0)))
+
+
+def inference_tick(colours, chance: float = 0.2) -> None:
+    """Call each frame while model(s) are inferring on the model tab: with
+    probability `chance` (~1 in 5 frames) drop a bokeh in a random one of the
+    inferring models' colours (the others become its sibling pool). `colours` is
+    the list of active models' colours; a no-op if it's empty."""
+    if not colours or random.random() >= chance:
+        return
+    i = random.randrange(len(colours))
+    others = [c for j, c in enumerate(colours) if j != i]
+    spawn(colours[i], throttle=False, siblings=others)
 
 
 def _alpha(age: float, life: float) -> float:

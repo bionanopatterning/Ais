@@ -26,6 +26,7 @@ from .profile import (
 )
 from .background import (
     frame as background_frame,
+    inference_tick as background_inference_tick,
     pulse as background_pulse,
     spawn as background_spawn,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "EFFECT_TOGGLES",
     "PERK_UNLOCK_LEVEL",
     "background_frame",
+    "background_inference_tick",
     "background_pulse",
     "background_spawn",
     "big_font_path",
