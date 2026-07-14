@@ -51,7 +51,7 @@ CATALOG: Dict[str, List[Cosmetic]] = {
     BACKGROUND: [
         _c("bg.paper",    BACKGROUND, "Basic",       enabled=False),
         _c("bg.aurora",   BACKGROUND, "Aurora",      enabled=True, style="blob",  rmin=340, rmax=760, intensity=0.05, life_mul=2.5),
-        _c("bg.bokeh",    BACKGROUND, "Bokeh",       enabled=True, style="bokeh", rmin=30,  rmax=130, intensity=0.34, life_mul=9.0),
+        _c("bg.bokeh",    BACKGROUND, "Bokeh",       enabled=True, style="bokeh", rmin=30,  rmax=130, intensity=0.34, life_mul=18.0),
     ],
 }
 
