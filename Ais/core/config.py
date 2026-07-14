@@ -199,25 +199,90 @@ class FeatureLibraryFeature:
         return ret
 
 
+DEFAULT_FEATURE_LIBRARY_NAME = "Default library"
+
+
 def parse_feature_library():
+    # returns (libraries, active_name): a dict mapping library name -> list of FeatureLibraryFeature, and the name of the active library.
     if not os.path.exists(feature_lib_path):
         shutil.copy(os.path.join(root, "core", "feature_library.txt"), feature_lib_path)
 
     with open(feature_lib_path, 'r') as f:
-        flist = json.load(f)
-    feature_library = list()
-    for f in flist:
-        feature_library.append(FeatureLibraryFeature.from_dict(f))
-    return feature_library
+        data = json.load(f)
+    if isinstance(data, list):  # pre-1.2 format: a single, unnamed, feature collection.
+        data = {"active": DEFAULT_FEATURE_LIBRARY_NAME, "libraries": {DEFAULT_FEATURE_LIBRARY_NAME: data}}
+
+    libraries = dict()
+    for name, flist in data["libraries"].items():
+        libraries[name] = [FeatureLibraryFeature.from_dict(f) for f in flist]
+    if len(libraries) == 0:
+        libraries[DEFAULT_FEATURE_LIBRARY_NAME] = list()
+    active = data.get("active")
+    if active not in libraries:
+        active = list(libraries.keys())[0]
+    return libraries, active
 
 
-feature_library = parse_feature_library()
+feature_libraries, active_feature_library = parse_feature_library()
+feature_library = feature_libraries[active_feature_library]  # the active library; always one of the lists in feature_libraries.
 feature_library_session = dict()
 
 
 def save_feature_library():
+    data = {"active": active_feature_library,
+            "libraries": {name: [f.to_dict() for f in flist] for name, flist in feature_libraries.items()}}
     with open(feature_lib_path, 'w') as f:
-        f.write(json.dumps(feature_library, default=FeatureLibraryFeature.to_dict, indent=2))
+        f.write(json.dumps(data, indent=2))
+
+
+def reload_feature_libraries():
+    global feature_libraries, active_feature_library, feature_library
+    feature_libraries, active_feature_library = parse_feature_library()
+    feature_library = feature_libraries[active_feature_library]
+
+
+def set_active_feature_library(name):
+    global active_feature_library, feature_library
+    if name in feature_libraries:
+        active_feature_library = name
+        feature_library = feature_libraries[name]
+        save_feature_library()
+
+
+def add_feature_library():
+    base = "New library"
+    name = base
+    i = 2
+    while name in feature_libraries:
+        name = f"{base} {i}"
+        i += 1
+    feature_libraries[name] = list()
+    set_active_feature_library(name)
+    return name
+
+
+def rename_feature_library(old_name, new_name):
+    global feature_libraries, active_feature_library
+    new_name = new_name.strip()
+    if old_name not in feature_libraries or new_name == "" or new_name == old_name:
+        return False
+    if new_name in feature_libraries:
+        return False
+    feature_libraries = {new_name if k == old_name else k: v for k, v in feature_libraries.items()}
+    if active_feature_library == old_name:
+        active_feature_library = new_name
+    save_feature_library()
+    return True
+
+
+def delete_feature_library(name):
+    if name not in feature_libraries or len(feature_libraries) <= 1:
+        return
+    feature_libraries.pop(name)
+    if active_feature_library == name:
+        set_active_feature_library(list(feature_libraries.keys())[0])
+    else:
+        save_feature_library()
 
 
 def apply_feature_library():
