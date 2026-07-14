@@ -124,6 +124,8 @@ class SegmentationEditor:
     FEATURE_LIB_HIDE_DEACTIVATED_FEATURES = False
     FEATURE_LIB_HIGHLIGHT_TEXT = ''
     FEATURE_LIB_SORT_MODE = 0  # 0 = Alphabetically, 1 = By Hue
+    FEATURE_LIB_RENAME_TEXT = ''  # edit buffer for renaming the active sub-library.
+    FEATURE_LIB_RENAME_TARGET = None  # which library FEATURE_LIB_RENAME_TEXT applies to; reset when the active library changes.
 
     POM_SYNCHRONIZE_INTERVAL = 0.5  # seconds
     POM_SYNCHRONIZE_TIMER = 0
@@ -2173,6 +2175,12 @@ class SegmentationEditor:
                         if imgui.menu_item("Open library")[0]:
                             SegmentationEditor.FEATURE_LIB_OPEN = True
                             self.parse_available_features()
+                        if imgui.begin_menu("Active library"):
+                            for lib_name in list(cfg.feature_libraries.keys()):
+                                if imgui.menu_item(lib_name, None, lib_name == cfg.active_feature_library)[0]:
+                                    cfg.set_active_feature_library(lib_name)
+                                    self.parse_available_features()
+                            imgui.end_menu()
                         imgui.end_menu()
 
                     if imgui.begin_menu("Pom"):
@@ -2437,8 +2445,45 @@ class SegmentationEditor:
                 imgui.push_style_color(imgui.COLOR_WINDOW_BACKGROUND, cfg.COLOUR_WINDOW_BACKGROUND[0], cfg.COLOUR_WINDOW_BACKGROUND[1], cfg.COLOUR_WINDOW_BACKGROUND[2], 1.0)
                 imgui.push_style_color(imgui.COLOR_RESIZE_GRIP, *cfg.COLOUR_WINDOW_BACKGROUND)
                 _, SegmentationEditor.FEATURE_LIB_OPEN = imgui.begin("Predefined features library", True, imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_COLLAPSE)
+                if SegmentationEditor.FEATURE_LIB_RENAME_TARGET != cfg.active_feature_library:
+                    SegmentationEditor.FEATURE_LIB_RENAME_TARGET = cfg.active_feature_library
+                    SegmentationEditor.FEATURE_LIB_RENAME_TEXT = cfg.active_feature_library
                 imgui.set_cursor_pos_x(12)
-                imgui.text(f"Features from library at {cfg.feature_lib_path}")
+                imgui.align_text_to_frame_padding()
+                imgui.text("Library:")
+                imgui.same_line()
+                imgui.set_next_item_width(180)
+                _lib_names = list(cfg.feature_libraries.keys())
+                _lib_changed, _lib_idx = imgui.combo("##active_flib", _lib_names.index(cfg.active_feature_library), _lib_names)
+                if _lib_changed and _lib_names[_lib_idx] != cfg.active_feature_library:
+                    cfg.set_active_feature_library(_lib_names[_lib_idx])
+                    self.parse_available_features()
+                imgui.same_line(spacing=12)
+                imgui.set_next_item_width(180)
+                _rename_enter, SegmentationEditor.FEATURE_LIB_RENAME_TEXT = imgui.input_text("##rename_flib", SegmentationEditor.FEATURE_LIB_RENAME_TEXT, 128, imgui.INPUT_TEXT_ENTER_RETURNS_TRUE)
+                imgui.same_line()
+                if imgui.button("rename", 55, 0) or _rename_enter:
+                    if cfg.rename_feature_library(cfg.active_feature_library, SegmentationEditor.FEATURE_LIB_RENAME_TEXT):
+                        SegmentationEditor.FEATURE_LIB_RENAME_TARGET = cfg.active_feature_library
+                        SegmentationEditor.FEATURE_LIB_RENAME_TEXT = cfg.active_feature_library
+                imgui.same_line()
+                if imgui.button("new", 45, 0):
+                    cfg.add_feature_library()
+                    self.parse_available_features()
+                if len(cfg.feature_libraries) > 1:
+                    imgui.same_line()
+                    if imgui.button("delete", 55, 0):
+                        imgui.open_popup("##delete_flib")
+                    if imgui.begin_popup("##delete_flib"):
+                        imgui.text(f"Delete library '{cfg.active_feature_library}'?")
+                        if imgui.button("confirm", 65, 0):
+                            cfg.delete_feature_library(cfg.active_feature_library)
+                            self.parse_available_features()
+                            imgui.close_current_popup()
+                        imgui.same_line()
+                        if imgui.button("cancel", 65, 0):
+                            imgui.close_current_popup()
+                        imgui.end_popup()
                 imgui.same_line(position=imgui.get_content_region_available_width() - 181)
                 imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                 imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 10)
@@ -2658,7 +2703,7 @@ class SegmentationEditor:
                 imgui.same_line(position=imgui.get_content_region_available_width() - 175)
 
                 if imgui.button("reset", 55, 25):
-                    cfg.feature_library = cfg.parse_feature_library()
+                    cfg.reload_feature_libraries()
                     self.parse_available_features()
                 imgui.same_line()
                 if imgui.button("apply", 55, 25):
