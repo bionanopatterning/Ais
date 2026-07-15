@@ -43,31 +43,37 @@ The software will work without CUDA, but only on the CPU. This is much slower bu
 ## Features ##
 ### Annotate any number of features ###
 
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/annotation.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/annotation.mp4">Watch: annotation.mp4</a></video>
+https://github.com/user-attachments/assets/7831ad7d-811c-4846-8e0e-002487b54ade
 
 ### Train a network & watch it learn ###
 
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/training_run.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/training_run.mp4">Watch: training_run.mp4</a></video>
+https://github.com/user-attachments/assets/9544569c-15d8-490b-a2fd-cf0f406d0dbd
 
 ### Model-assisted annotation ###
 When networks still need a bit of improvement before you're ready to segment your data, *model assisted annotation* helps you quickly polish the training data. Screen the output of a model, copy it to the training annotations, and edit any mistakes that need fixing. 
 
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/model_assisted_annotation.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/model_assisted_annotation.mp4">Watch: model_assisted_annotation.mp4</a></video>
+https://github.com/user-attachments/assets/8333d05d-aa60-4e04-bf65-e147dc4ef05c
+
+### Active contouring brush ###
+<active_contouring.mp4>
 
 ### Segment with multiple models ###
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/models.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/models.mp4">Watch: models.mp4</a></video>
+https://github.com/user-attachments/assets/69b40bc2-04f3-4c77-b1ad-9c5d07f40f9d
 
 ### Inspect results ###
 
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/rendering.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/rendering.mp4">Watch: rendering.mp4</a></video>
+https://github.com/user-attachments/assets/12aa1ea4-38eb-465c-8443-72f863a9c0bd
 
 ### Connect Ais to a Pom database ###
 Ais integrates with [Pom](https://github.com/bionanopatterning/Pom), a tool to present large cryoET datasets as searchable databases. Use Pom to organise the data, and Ais to mine it.
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/pom_database.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/pom_database.mp4">Watch: pom_database.mp4</a></video>
+https://github.com/user-attachments/assets/32febf3e-fcba-4850-81ca-c4140a84b9d8
 
-### Organise your features ###
+### A feature library helps you consistently annotate ###
 
-<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/feature_library.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/feature_library.mp4">Watch: feature_library.mp4</a></video>
+https://github.com/user-attachments/assets/7c8060ae-6a22-412e-b7d4-e5f430bf1524
+
+
+###  ###
 
 ## See our other tools ##
 
