@@ -58,7 +58,8 @@ https://github.com/user-attachments/assets/8333d05d-aa60-4e04-bf65-e147dc4ef05c
 
 ### Active contouring brush ###
 Before using model-assisted annotation, turn on _flood_ mode to use the active contouring brush. Then play around with the filters and sensitivity, and watch the brush snap to the edges of your features automatically. 
-<active_contouring.mp4>
+
+https://github.com/user-attachments/assets/89519081-1eb0-4ff3-adb5-b2b3aad6ed3c
 
 ### Segment with multiple models ###
 https://github.com/user-attachments/assets/69b40bc2-04f3-4c77-b1ad-9c5d07f40f9d
