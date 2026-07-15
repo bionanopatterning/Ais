@@ -42,10 +42,12 @@ The software will work without CUDA, but only on the CPU. This is much slower bu
 
 ## Features ##
 ### Annotate any number of features ###
+Open any number of tomograms and define any features you want to eventually segment. Step one is to annotate - very sparsely - in order to prepare training data for your networks. Usually, 5 to 10 minutes of annotation is enough to get started. After that, train an initial net, and check what needs further improvement.
 
 https://github.com/user-attachments/assets/7831ad7d-811c-4846-8e0e-002487b54ade
 
 ### Train a network & watch it learn ###
+All steps other than annotation can be done in the CLI. When training in the GUI, though, you can keep an eye on the network output as the training progresses. Not as fast as it would be in the CLI, but a nice way to see how the network is learning.
 
 https://github.com/user-attachments/assets/9544569c-15d8-490b-a2fd-cf0f406d0dbd
 
@@ -55,12 +57,14 @@ When networks still need a bit of improvement before you're ready to segment you
 https://github.com/user-attachments/assets/8333d05d-aa60-4e04-bf65-e147dc4ef05c
 
 ### Active contouring brush ###
+Before using model-assisted annotation, turn on _flood_ mode to use the active contouring brush. Then play around with the filters and sensitivity, and watch the brush snap to the edges of your features automatically. 
 <active_contouring.mp4>
 
 ### Segment with multiple models ###
 https://github.com/user-attachments/assets/69b40bc2-04f3-4c77-b1ad-9c5d07f40f9d
 
 ### Inspect results ###
+After segmenting your data, you can visualize the results the Ais _rendering tab_. You can also set up picking jobs here, or if you've already ran 'ais pick' in the terminal you can inspect the resulting particle coordinates in the context of the tomograms.
 
 https://github.com/user-attachments/assets/12aa1ea4-38eb-465c-8443-72f863a9c0bd
 
@@ -69,7 +73,8 @@ Ais integrates with [Pom](https://github.com/bionanopatterning/Pom), a tool to p
 
 https://github.com/user-attachments/assets/32febf3e-fcba-4850-81ca-c4140a84b9d8
 
-### A feature library helps you consistently annotate ###
+### A feature library helps you organise your work ###
+If you're using Ais often, or are setting up a large new project where you plan to segment many different features, the _feature library_ is a useful way to organise your work. Name and style a feature once, then automatically grab those settings whenever you create a new annotation for that feature.
 
 https://github.com/user-attachments/assets/7c8060ae-6a22-412e-b7d4-e5f430bf1524
 
