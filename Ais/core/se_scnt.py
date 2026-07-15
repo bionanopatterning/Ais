@@ -368,7 +368,24 @@ def _normalize(arr):
 
 
 def open_training_set(path):
-    """Open a .scnt file, auto-detecting the new (tar) or legacy (TIFF) format."""
+    """Open a .scnt training set.
+
+    `path` may be a single path (str) or a list/tuple of paths. Given several
+    paths, their samples are pooled behind one training-set interface (see
+    PooledTrainingSet); given one, the single set is returned directly.
+    """
+    if isinstance(path, (list, tuple)):
+        paths = list(path)
+        if len(paths) == 0:
+            raise ValueError("open_training_set called with an empty list of paths.")
+        if len(paths) == 1:
+            return _open_single_training_set(paths[0])
+        return PooledTrainingSet(paths)
+    return _open_single_training_set(path)
+
+
+def _open_single_training_set(path):
+    """Open one .scnt file, auto-detecting the new (tar) or legacy (TIFF) format."""
     if tarfile.is_tarfile(path):
         return ScntTrainingSet(path)
     return LegacyTiffTrainingSet(path)
@@ -475,6 +492,78 @@ class ScntTrainingSet:
         if self._tmp and os.path.isdir(self._tmp):
             shutil.rmtree(self._tmp, ignore_errors=True)
             self._tmp = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
+
+class PooledTrainingSet:
+    """Pools the samples of several .scnt training sets behind the single
+    training-set interface (n_samples, box_shape, box_depth, apix, input_flavours,
+    positive_indices, get_sample, source_records, close).
+
+    A global sample index maps to a (sub-set, local index) pair. Every pooled set
+    must share box_size and box_depth, since those fix the model input shape; a
+    differing pixel size is warned about but tolerated. Flavour mixing stays within
+    each sub-set (see ScntTrainingSet.get_sample), so the pooled sets may carry
+    different input flavours - the pooled input_flavours is just their union, for
+    reporting."""
+
+    def __init__(self, paths):
+        self.path = list(paths)
+        self.sets = [_open_single_training_set(p) for p in paths]
+
+        box_shapes = {s.box_shape for s in self.sets}
+        box_depths = {s.box_depth for s in self.sets}
+        if len(box_shapes) > 1 or len(box_depths) > 1:
+            dims = ', '.join(f"{os.path.basename(p)}: {s.box_shape}x{s.box_shape}x{s.box_depth}"
+                             for s, p in zip(self.sets, paths))
+            for s in self.sets:
+                s.close()
+            raise ValueError("Cannot pool training sets with different box dimensions "
+                             f"({dims}). Re-extract them with matching --box-size and --box-depth.")
+        self.box_shape = self.sets[0].box_shape
+        self.box_depth = self.sets[0].box_depth
+
+        apixes = [s.apix for s in self.sets]
+        self.apix = apixes[0]
+        if any(a > 0 and abs(a - self.apix) > 1e-3 for a in apixes):
+            print(f"Warning: pooling training sets with differing pixel sizes {apixes}; "
+                  f"using {self.apix} A/px for the model.")
+
+        # global index -> (set index, local index), in set order then local order
+        self._index = [(si, li) for si, s in enumerate(self.sets) for li in range(s.n_samples)]
+        self.n_samples = len(self._index)
+
+        flavours = set()
+        for s in self.sets:
+            flavours.update(s.input_flavours)
+        self.input_flavours = sorted(flavours)
+
+    def positive_indices(self):
+        out = []
+        offset = 0
+        for s in self.sets:
+            out.extend(offset + li for li in s.positive_indices())
+            offset += s.n_samples
+        return out
+
+    def get_sample(self, index, training=True):
+        si, li = self._index[index]
+        return self.sets[si].get_sample(li, training=training)
+
+    def source_records(self):
+        records = []
+        for s in self.sets:
+            records.extend(s.source_records())
+        return records
+
+    def close(self):
+        for s in self.sets:
+            s.close()
 
     def __del__(self):
         try:

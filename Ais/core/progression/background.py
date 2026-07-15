@@ -37,10 +37,10 @@ PARALLAX = 0.075        # subtle scene parallax
 _SHAPE = {"blob": 0, "bokeh": 2}
 
 # --- spawn behaviour (tunable) ---------------------------------------------
-_SPAWN_MIN_DT = 0.25     # min seconds between brush spawns; discrete actions (box/copy) bypass it
+_SPAWN_MIN_DT = 0.5      # min seconds between brush spawns; discrete actions (box/copy) bypass it
 _MAX_BLOBS = 200         # safety cap on live shapes
 _OTHER_CHANCE = 0.05     # spawn in a sibling feature's colour instead of the active one
-_INVERT_CHANCE = 0.01    # spawn in the inverted active colour
+_INVERT_CHANCE = 0.03    # spawn in the inverted active colour
 _HUE_JITTER = 0.04       # per-shape hue wander around its colour
 _LIFE = (4.0, 9.0)       # base life in seconds (multiplied by the cosmetic's life_mul)
 _FADE_IN = 0.5           # ease-in time (s) - the shape appears gradually
@@ -51,7 +51,7 @@ _TAU_RECOLOR = 0.67      # ~2s transition when a level-up recolours the field
 # --- bokeh cursor avoidance (a gentle, heavily damped push - calm) ---------
 _AVOID_R = 200.0
 _AVOID_R2 = _AVOID_R * _AVOID_R
-_AVOID_ACCEL = 350.0
+_AVOID_ACCEL = 90.0
 _AVOID_DAMP = 0.02           # per-second velocity retention (heavy)
 _AVOID_BRUSH_RANGE = 2.0     # while the LMB is held (brushing): range x5
 _AVOID_BRUSH_STRENGTH = 2.0  # ...and strength x1.5

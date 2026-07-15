@@ -13,7 +13,7 @@ glfw_initialized = False
 
 root = os.path.dirname(os.path.dirname(__file__))
 app_name = "Ais"
-version = "1.1.0"
+version = "1.2.0"
 license = "GNU GPL v3"
 log_path = os.path.join(os.path.expanduser("~"), ".Ais", "Ais.log")
 settings_path = os.path.join(os.path.expanduser("~"), ".Ais", "settings.txt")
@@ -212,7 +212,7 @@ class FeatureLibraryFeature:
     def __init__(self):
         self.title = "New feature"
         self.colour = FeatureLibraryFeature.DEFAULT_COLOURS[FeatureLibraryFeature.CLR_COUNTER % len(FeatureLibraryFeature.DEFAULT_COLOURS)]
-        self.box_size = 64
+        self.box_size = 128
         self.brush_size = 10.0 # nm
         self.alpha = 1.0
         self.use = True
@@ -288,7 +288,6 @@ def set_active_feature_library(name):
     if name in feature_libraries:
         active_feature_library = name
         feature_library = feature_libraries[name]
-        save_feature_library()
 
 
 def add_feature_library():
@@ -313,7 +312,6 @@ def rename_feature_library(old_name, new_name):
     feature_libraries = {new_name if k == old_name else k: v for k, v in feature_libraries.items()}
     if active_feature_library == old_name:
         active_feature_library = new_name
-    save_feature_library()
     return True
 
 
@@ -323,8 +321,7 @@ def delete_feature_library(name):
     feature_libraries.pop(name)
     if active_feature_library == name:
         set_active_feature_library(list(feature_libraries.keys())[0])
-    else:
-        save_feature_library()
+
 
 
 def apply_feature_library():

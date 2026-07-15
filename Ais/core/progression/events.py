@@ -76,7 +76,7 @@ def award(
     cursor_pos: Optional[Tuple[float, float]] = None,
     orb_radius: float = 0.0,
 ) -> None:
-    if xp <= 0 or not skill:
+    if xp <= 0 or not skill or _profile.is_placeholder_skill(skill):
         return
 
     # names containing '+' earn 10x XP
@@ -144,6 +144,8 @@ _paced_last_t: Dict[str, float] = {}
 
 def _paced(key: str, skill: str, xp: int, color: Optional[Color], interval: float,
            screen_xy: Optional[Tuple[float, float]], n_orbs: int, radius: float) -> None:
+    if _profile.is_placeholder_skill(skill):
+        return
     now = time.monotonic()
     if now - _paced_last_t.get(key, 0.0) < interval:
         return

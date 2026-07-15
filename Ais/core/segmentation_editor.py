@@ -214,13 +214,13 @@ class SegmentationEditor:
             self.icon_blender.set_linear_interpolation()
 
             self.boot_sprite_texture = Texture(format="rgba32f")
-            pxd = np.asarray(Image.open(os.path.join(icon_dir, "LOGO_Pom_2048.png"))).astype(np.float32) / 255.0
+            pxd = np.asarray(Image.open(os.path.join(icon_dir, "ais_boot_sprite.png"))).astype(np.float32) / 255.0
             self.boot_sprite_texture.update(pxd)
             self.boot_sprite_width, self.boot_sprite_height = pxd.shape[0:2]
             self.boot_sprite_texture.set_linear_interpolation()
 
             self.progression_icon_texture = Texture(format="rgba32f")
-            pxd = np.asarray(Image.open(os.path.join(icon_dir, "LOGO_Pom_128.png"))).astype(np.float32) / 255.0
+            pxd = np.asarray(Image.open(os.path.join(icon_dir, "ais_boot_sprite.png"))).astype(np.float32) / 255.0
             self.progression_icon_texture.update(pxd)
             self.progression_icon_texture.set_linear_interpolation()
             progression.set_panel_icon(self.progression_icon_texture.renderer_id)
@@ -343,23 +343,21 @@ class SegmentationEditor:
             self.camera3d.on_update()
             # living background: GL pre-pass, drawn behind the tomogram
             _bg = None
-            if not cfg.settings.get("PROGRESSION_HIDE", False):
+            if not cfg.settings.get("PROGRESSION_HIDE", True):
                 _bg = progression.background_frame(self.window.delta_time, self.window.width, self.window.height, self.camera, self.window.cursor_pos, imgui.is_mouse_down(0))
             if _bg is not None:
                 SegmentationEditor.renderer.render_background(_bg[0], _bg[1], _bg[2], (self.window.width, self.window.height), _bg[3])
-            else:
-                SegmentationEditor.renderer._bg_field = None   # border falls back to black
             self.gui_main()
             SegmentationEditor.renderer.render_draw_list(self.camera)
             self.input()
 
-            _prog_hidden = cfg.settings.get("PROGRESSION_HIDE", False)
+            _prog_hidden = cfg.settings.get("PROGRESSION_HIDE", True)
+            progression.set_cursor_pos(self.window.cursor_pos[0], self.window.cursor_pos[1])
             progression.tick_particles(self.window.delta_time)
             if not _prog_hidden:
                 progression.render_xp_hud(self.window.width, self.window.height)
                 progression.render_level_up(self.window.width, self.window.height)
                 progression.render_skills_panel()
-                progression.render_cosmetics_debug()
                 progression.draw_particles(self.camera, self.window.height)
             self.render_party_buttons()
             progression.maybe_save()
@@ -718,13 +716,16 @@ class SegmentationEditor:
             if SegmentationEditor.SHOW_BOOT_SPRITE:
                 imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND[0:3], 0.0)
                 imgui.push_style_color(imgui.COLOR_TITLE_BACKGROUND_ACTIVE, *cfg.COLOUR_WINDOW_BACKGROUND[0:3], 0.0)
-                imgui.push_style_color(imgui.COLOR_TEXT, *(0.0, 0.0, 0.0, 1.0))
+                imgui.push_style_color(imgui.COLOR_TEXT, *cfg.COLOUR_TEXT)
 
-                _w = self.boot_sprite_width * 0.25
-                _h = self.boot_sprite_height * 0.25
+                _w = self.boot_sprite_width * 0.325
+                _h = self.boot_sprite_height * 0.325
                 imgui.set_next_window_position(SegmentationEditor.MAIN_WINDOW_WIDTH + (cfg.window_width - SegmentationEditor.MAIN_WINDOW_WIDTH) / 2.0 - (_w / 2.0), (cfg.window_height - _h) / 2.0 - 25)
                 self.show_boot_img = imgui.begin("##boot_sprite", True,imgui.WINDOW_NO_COLLAPSE | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_ALWAYS_AUTO_RESIZE | imgui.WINDOW_NO_BACKGROUND | imgui.WINDOW_NO_SCROLLBAR)[1]
                 imgui.image(self.boot_sprite_texture.renderer_id, _w, _h)
+                _boot_caption = f"{cfg.app_name} {cfg.version}"
+                imgui.set_cursor_pos_x(imgui.get_cursor_pos_x() + (_w - imgui.calc_text_size(_boot_caption)[0]) / 2.0)
+                imgui.text(_boot_caption)
                 imgui.push_style_color(imgui.COLOR_POPUP_BACKGROUND, *cfg.COLOUR_WINDOW_BACKGROUND)
                 if imgui.begin_popup_context_window():
                     imgui.text(f"Welcome to {cfg.app_name}!")
@@ -1207,9 +1208,8 @@ class SegmentationEditor:
                     panel_height += 10 if m.background_process_train is not None else 0
                     imgui.begin_child(f"SEModel_{m.uid}", 0.0, panel_height, True, imgui.WINDOW_NO_SCROLLBAR)
                     cw = imgui.get_content_region_available_width()
-                    m._panel_xy = tuple(imgui.get_cursor_screen_pos())   # inference XP orbs fly from here
                     _mgrab = SegmentationEditor._push_slider_grab(m.colour)
-
+                    
                     imgui.push_style_var(imgui.STYLE_FRAME_PADDING, (0, 0))
                     if m.background_process_train is None:
                         # delete button
@@ -1253,6 +1253,9 @@ class SegmentationEditor:
                         imgui.end_popup()
                     imgui.same_line()
                     _, m.colour = imgui.color_edit3(m.title, *m.colour[:3], imgui.COLOR_EDIT_NO_INPUTS | imgui.COLOR_EDIT_NO_LABEL | imgui.COLOR_EDIT_NO_TOOLTIP | imgui.COLOR_EDIT_NO_DRAG_DROP)
+                    _swatch_min = imgui.get_item_rect_min()   # inference XP orbs fly from the centre of the colour swatch
+                    _swatch_max = imgui.get_item_rect_max()
+                    m._panel_xy = (0.5 * (_swatch_min[0] + _swatch_max[0]), 0.5 * (_swatch_min[1] + _swatch_max[1]))
                     # Title
                     imgui.same_line()
                     imgui.set_next_item_width(cw - 74)
@@ -2325,7 +2328,7 @@ class SegmentationEditor:
 
                 # Party mode lives in its own top-level menu, shown only while
                 # party mode is on (the sparkle glass button toggles it).
-                if not cfg.settings.get("PROGRESSION_HIDE", False):
+                if not cfg.settings.get("PROGRESSION_HIDE", True):
                     if imgui.begin_menu("Party mode"):
                         if imgui.begin_menu("Background"):
                             _eqbg = progression.equipped_background_id()
@@ -2339,12 +2342,8 @@ class SegmentationEditor:
                                 if imgui.menu_item(_pl, None, _cur)[0]:
                                     cfg.edit_setting(_pk, not _cur)
                             imgui.end_menu()
-                        imgui.separator()
-                        if imgui.menu_item("Skills & levels", None, progression.is_skills_open())[0]:
+                        if imgui.menu_item("Levels", None, progression.is_skills_open())[0]:
                             progression.toggle_skills_panel()
-                        if imgui.menu_item("Cosmetics debug", None, progression.is_cosmetics_debug_open())[0]:
-                            progression.toggle_cosmetics_debug()
-                        imgui.separator()
                         if imgui.menu_item("Turn off party mode")[0]:
                             cfg.edit_setting("PROGRESSION_HIDE", True)
                         imgui.end_menu()
@@ -3061,7 +3060,7 @@ class SegmentationEditor:
                     imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_MOVE
                     | imgui.WINDOW_NO_SCROLLBAR | imgui.WINDOW_NO_SAVED_SETTINGS
                     | imgui.WINDOW_NO_FOCUS_ON_APPEARING | imgui.WINDOW_NO_NAV | imgui.WINDOW_NO_BACKGROUND)
-        party_on = not cfg.settings.get("PROGRESSION_HIDE", False)
+        party_on = not cfg.settings.get("PROGRESSION_HIDE", True)
         _px, _py = imgui.get_cursor_screen_pos()
         if self._glass_circle_button("##party_toggle", D, "sparkle", party_on, (0.98, 0.78, 0.30)):
             new_hidden = not cfg.settings["PROGRESSION_HIDE"]
@@ -3076,7 +3075,7 @@ class SegmentationEditor:
             cfg.set_theme(cfg.settings["DARK_MODE"])
         self.tooltip("Dark mode: " + ("on" if dark_on else "off"))
         imgui.same_line(spacing=G)
-        if self._glass_circle_button("##flib_toggle", D, "library", SegmentationEditor.FEATURE_LIB_OPEN, (0.55, 0.78, 1.0)):
+        if self._glass_circle_button("##flib_toggle", D, "library", SegmentationEditor.FEATURE_LIB_OPEN, (0.92, 0.26, 0.26)):
             SegmentationEditor.FEATURE_LIB_OPEN = not SegmentationEditor.FEATURE_LIB_OPEN
             if SegmentationEditor.FEATURE_LIB_OPEN:
                 self.parse_available_features()
@@ -3098,11 +3097,11 @@ class SegmentationEditor:
         if active:
             dl.add_circle(cx, cy, r - 2.5, imgui.get_color_u32_rgba(accent[0], accent[1], accent[2], 0.85), 40, 2.0)
         icol = imgui.get_color_u32_rgba(accent[0], accent[1], accent[2], 1.0) if active else imgui.get_color_u32_rgba(0.82, 0.82, 0.86, 0.9)
-        self._draw_party_icon(dl, icon, cx, cy, r, icol)
+        self._draw_party_icon(dl, icon, cx, cy, r, icol, active)
         return clicked
 
     @staticmethod
-    def _draw_party_icon(dl, icon, cx, cy, r, col):
+    def _draw_party_icon(dl, icon, cx, cy, r, col, active=False):
         if icon == "sparkle":
             def star(ox, oy, s, wv):
                 dl.add_quad_filled(cx + ox, cy + oy - s, cx + ox + wv, cy + oy, cx + ox, cy + oy + s, cx + ox - wv, cy + oy, col)
@@ -3122,10 +3121,17 @@ class SegmentationEditor:
         else:  # "library" - a 2x2 grid of rounded tiles
             g, gap = r * 0.17, r * 0.07
             step = g + gap
-            for sx in (-1, 1):
-                for sy in (-1, 1):
-                    ox, oy = sx * step, sy * step
-                    dl.add_rect_filled(cx + ox - g, cy + oy - g, cx + ox + g, cy + oy + g, col, 2.0, imgui.DRAW_ROUND_CORNERS_ALL)
+            if active:
+                # when the library is open, the four tiles pop in confetti colours
+                tiles = [(-1, -1, imgui.get_color_u32_rgba(0.20, 0.82, 0.38, 1.0)),   # green
+                         ( 1, -1, imgui.get_color_u32_rgba(1.00, 0.85, 0.15, 1.0)),   # yellow
+                         ( 1,  1, imgui.get_color_u32_rgba(0.30, 0.60, 1.00, 1.0)),   # blue-ish
+                         (-1,  1, imgui.get_color_u32_rgba(0.95, 0.25, 0.85, 1.0))]   # magenta
+            else:
+                tiles = [(sx, sy, col) for sx in (-1, 1) for sy in (-1, 1)]
+            for sx, sy, tcol in tiles:
+                ox, oy = sx * step, sy * step
+                dl.add_rect_filled(cx + ox - g, cy + oy - g, cx + ox + g, cy + oy + g, tcol, 2.0, imgui.DRAW_ROUND_CORNERS_ALL)
 
     def _gui_background_process_progress_bar(self, process, colour=cfg.COLOUR_POSITIVE, cancellable=False, height=None, transparent_background=False):
         height = SegmentationEditor.PROGRESS_BAR_HEIGHT if height is None else height
@@ -3969,7 +3975,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", 0)
         self.border_shader.uniform1f("alpha", 1.0)
-        self._apply_border_field()
+        self.border_shader.uniform3f("borderColour", (0.0, 0.0, 0.0))
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -4023,7 +4029,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", 0)
         self.border_shader.uniform1f("alpha", 1.0)
-        self._apply_border_field()
+        self.border_shader.uniform3f("borderColour", (0.0, 0.0, 0.0))
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -4037,7 +4043,7 @@ class Renderer:
         self.border_shader.uniformmat4("modelMatrix", se_frame.transform.matrix)
         self.border_shader.uniform1f("z_pos", (se_frame.current_slice - se_frame.n_slices / 2))
         self.border_shader.uniform1f("alpha", SegmentationEditor.PICKING_FRAME_ALPHA)
-        self._apply_border_field()
+        self.border_shader.uniform3f("borderColour", (0.0, 0.0, 0.0))
         glDrawElements(GL_LINES, se_frame.border_va.indexBuffer.getCount(), GL_UNSIGNED_SHORT, None)
         self.border_shader.unbind()
         se_frame.border_va.unbind()
@@ -4312,36 +4318,10 @@ class Renderer:
     def render_draw_list(self, camera):
         self.render_lines(camera)
 
-    def _apply_border_field(self):
-        # Feed the border shader the current background field so its outline can
-        # chameleon to the colour behind it (uN=0 -> plain black border).
-        field = getattr(self, "_bg_field", None)
-        if not field or not field[0]:
-            self.border_shader.uniform1i("uN", 0)
-            return
-        # The field is the same for all border draws in a frame, and uniforms
-        # persist on the program object, so upload the (up to 96) blobs only once
-        # per frame - the three border-draw methods otherwise re-upload identically.
-        if not getattr(self, "_border_field_dirty", True):
-            return
-        blobs, res, intensity, shape = field
-        self.border_shader.uniform2f("uRes", res)
-        self.border_shader.uniform1f("uIntensity", intensity)
-        self.border_shader.uniform1i("uShape", shape)
-        n = min(480, len(blobs))
-        self.border_shader.uniform1i("uN", n)
-        for i in range(n):
-            bx, by, br, bc, bang, balp = blobs[i]
-            self.border_shader.uniform4f(f"uA[{i}]", (bx, by, br, balp))
-            self.border_shader.uniform4f(f"uB[{i}]", (bc[0], bc[1], bc[2], bang))
-        self._border_field_dirty = False   # uploaded this frame; skip re-uploads
-
     def render_background(self, blobs, base_col, intensity, res, shape=0):
         # Fullscreen papery base with soft feature-colour blobs / cards, drawn
         # right after the clear so the tomogram and annotations render on top.
         # blobs = [(x, y, radius, rgb, angle, alpha)]
-        self._bg_field = (blobs, res, intensity, shape)   # stash for the chameleon border
-        self._border_field_dirty = True                   # new field this frame
         if self.background_blob_shader is None or not blobs:
             return
         glDisable(GL_DEPTH_TEST)

@@ -45,6 +45,13 @@ Color = Tuple[float, float, float]
 _DEFAULT_COLOR: Color = (0.55, 0.55, 0.60)
 
 
+def is_placeholder_skill(name: str) -> bool:
+    # Placeholder feature/model names ("Unnamed feature 1", "Unnamed model") are
+    # not real features - a user just hasn't named them yet. They are never
+    # tracked as progression skills.
+    return (not name) or ("unnamed" in name.lower())
+
+
 @dataclass
 class Profile:
     skills: Dict[str, int] = field(default_factory=dict)
@@ -83,8 +90,8 @@ class Profile:
         return {k: v for k, v in self.skills.items() if k in self.hidden}
 
     def overall_level(self) -> int:
-        # Hidden skills still count — hiding is a display preference, not a reset.
-        return sum(level_for_xp(xp) for xp in self.skills.values())
+        # Sum of levels over visible skills only; hidden skills do not count.
+        return sum(level_for_xp(xp) for k, xp in self.skills.items() if k not in self.hidden)
 
     def to_dict(self) -> dict:
         return {

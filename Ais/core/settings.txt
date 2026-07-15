@@ -20,14 +20,15 @@
   "DEBUG_A": false,
   "DEBUG_B": false,
   "DEBUG_C": false,
-  "PROGRESSION_HIDE": false,
+  "PROGRESSION_HIDE": true,
+  "PERK_XP_HUD": true,
   "PERK_CURSOR": true,
   "PERK_XP_ORBS": true,
   "PERK_BOX_BURST": true,
   "PERK_CONFETTI": true,
   "PERK_MILESTONE": true,
   "PERK_COLOR_ANIM": true,
-  "DARK_MODE": false,
+  "DARK_MODE": true,
   "RECENT_DATASETS": [],
   "RECENT_MODELS": []
 }

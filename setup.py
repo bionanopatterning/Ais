@@ -7,7 +7,7 @@ import shutil
 # python setup.py sdist
 # twine upload dist/*
 
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 
 with open("README.md", "r", encoding="utf-8") as f:
     long_description = f.read()
@@ -41,7 +41,8 @@ setup(
         "pyperclip>=1.8.2",
         "scikit-image",
         "matplotlib",
-        "starfile"
+        "starfile",
+        "tqdm"
     ]
 )
 

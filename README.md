@@ -1,3 +1,5 @@
+![Ais](docs/res/ais_banner.png)
+
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://github.com/bionanopatterning/Ais/blob/master/Ais/LICENSE.txt)
 [![Downloads](https://img.shields.io/pypi/dm/Ais-cryoET)](https://pypi.org/project/Ais-cryoET/)
 [![Documentation Status](https://readthedocs.org/projects/ais-cryoet/badge/?version=latest)](https://ais-cryoet.readthedocs.io/en/latest/?badge=latest)
@@ -19,7 +21,7 @@ conda create --name ais
 conda activate ais
 conda install python==3.9
 conda install pip
-pip install ais-cryoet
+pip install git+https://github.com/bionanopatterning/Ais
 ```
 
 Then run using either of the following commands:
@@ -38,35 +40,38 @@ protobuf 3.20.0<br/>
 
 The software will work without CUDA, but only on the CPU. This is much slower but still reasonably interactive if the tomograms aren't too big (in XY). We do recommend installing CUDA and cuDNN in order for tensorflow to be able to use the GPU. See: https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html for help installing CUDA and cuDNN. 
 
-## Gallery ##
-### Annotation ###
-![](Ais/res/scR_segmentation.PNG)
-In this example, four features (membranes, microtubuli, mitochondrial granules, and ribosomes) are concurrently annotated. 
+## Features ##
+### Annotate any number of features ###
 
-### Generating training sets ###
-![](Ais/res/scR_trainset.PNG)
-After preparing some annotations, the user in this example selects positive and negative features before compiling a training dataset for a network that will learn to recognize lipid membranes.
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/annotation.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/annotation.mp4">Watch: annotation.mp4</a></video>
 
-### Training models ###
-![](Ais/res/scR_models_2.PNG)
-Here, four previously prepared training datasets are used to train four segmentation models. The menu on the left shows the set-up for the four models; the first three models have already been trained, while the fourth (microtubuli, orange) is being set up for a second training run.
+### Train a network & watch it learn ###
 
-### Model interactions ###
-![](Ais/res/scR_interactions.png)
-Model interactions add an extra layer of nonlinear filtering to the model outputs, and can aid significantly in reducing false positive predictions. Here, competition between the single and double membrane models enhances the differentiation between these two (similar) features, and a colocalization dependency of the viral pore model conditioned on the double membrane model suppresses spurious false positives by the pore model near biologically non-relevant other features.  
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/training_run.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/training_run.mp4">Watch: training_run.mp4</a></video>
 
-## Exporting segmented volumes ###
-![](Ais/res/scR_export.png)
-An example of the batch processing interface, in the 'Export' tab. Only one tomogram is imported, but any number can be linked into the software and processed in one go (typically, in an overnight process). Six features are being segmented: ribosome, coronaviral replication organelle pores, double membranes, intermediate filaments, microtubuli, and actin filaments.  
+### Model-assisted annotation ###
+When networks still need a bit of improvement before you're ready to segment your data, *model assisted annotation* helps you quickly polish the training data. Screen the output of a model, copy it to the training annotations, and edit any mistakes that need fixing. 
 
-## Built-in rendering to inspect results ## 
-![](Ais/res/scR_render.PNG)
-After processing a volume, the resulting segmented volume datasets are automatically available in the 'Render' tab, where the segmentation results can be interactively viewed. Opening the results in more familiar suites such as Blender or ChimeraX is facilitated in the bottommost 'Export 3D scene' tab.
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/model_assisted_annotation.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/model_assisted_annotation.mp4">Watch: model_assisted_annotation.mp4</a></video>
 
-## Fluorescence-guided segmentation ##
-![](Ais/res/scR_fluo_g_seg.png)
-In [scNodes](github.com/bionanopatterning/scNodes) + Ais, data can be forwarded from the correlation editor into Ais's segmentation editor. In the above image, a tomogram overlayed with a single molecule fluorescence localization map of rsEGFP2-labelled vimentin is being segmented; the fluorescence localizations reveal the location of vimentin filaments surrounded by a bundle of actin filaments an microtubules.
+### Segment with multiple models ###
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/models.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/models.mp4">Watch: models.mp4</a></video>
 
-## 3D ray-traced fluorescence overlays ## 
-![](Ais/res/scR_fluo_overlay.png)
-Rendering in [scNodes](github.com/bionanopatterning/scNodes) + Ais combines the default isosurface viewer with 3D ray-traced fluorescence overlays. Here, a 2D single molecule localization map is projected into the 3D volume of the tomogram. Membranes, ribosomes, and the two vimentin filaments revealed by the fluorescence overlay are segmented and rendered.  
+### Inspect results ###
+
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/rendering.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/rendering.mp4">Watch: rendering.mp4</a></video>
+
+### Connect Ais to a Pom database ###
+Ais integrates with [Pom](https://github.com/bionanopatterning/Pom), a tool to present large cryoET datasets as searchable databases. Use Pom to organise the data, and Ais to mine it.
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/pom_database.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/pom_database.mp4">Watch: pom_database.mp4</a></video>
+
+### Organise your features ###
+
+<video src="https://github.com/bionanopatterning/Ais/raw/master/docs/res/feature_library.mp4" controls muted width="100%"><a href="https://github.com/bionanopatterning/Ais/raw/master/docs/res/feature_library.mp4">Watch: feature_library.mp4</a></video>
+
+## See our other tools ##
+
+<p align="center">
+  <a href="https://github.com/bionanopatterning/Pom"><img src="https://github.com/bionanopatterning/Pom/raw/main/docs/res/pom_banner.png" width="49%"></a>
+  <a href="https://github.com/mgflast/easymode"><img src="https://github.com/mgflast/easymode/raw/master/assets/easymode_banner.png" width="49%"></a>
+</p>

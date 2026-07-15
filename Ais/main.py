@@ -92,7 +92,7 @@ def main():
     train_parser = subparsers.add_parser('train', help='Train a model.')
     train_parser.add_argument('-a', '--model_architecture', required=False, type=int, help="Integer, index of which model architecture to use. Use -models for a list of available architectures.")
     train_parser.add_argument('-m', '--model_path', required=False, type=str, default='', help="(Optional) path to a previously saved model to continue training. Overrides -a argument.")
-    train_parser.add_argument('-t', '--training_data', required=False, type=str, help="Path to the training data (.scnt) file")
+    train_parser.add_argument('-t', '--training_data', required=False, type=str, nargs='+', help="Path(s) to the training data (.scnt) file(s). Multiple files may be given, e.g. '-t a.scnt b.scnt'; their samples are pooled during training. All files must share the same box size and depth.")
     train_parser.add_argument('-ou', '--output_directory', required=False, type=str, default='.', help="Directory to save the output")
     train_parser.add_argument('-gpu', '--gpus', required=False, default="0", type=str, help="Comma-separated list of GPU IDs to use (e.g., 0,1,4,5)")
     train_parser.add_argument('-p', '--parallel', required=False, type=int, default=1, help="Integer 1 (default) or 0: whether to use TensorFlow's distribute.MirroredStrategy() for training in parallel on multiple GPUs, or a single process using all GPUs.")
@@ -120,13 +120,25 @@ def main():
     extract_parsers.add_argument('--easymode', required=False, action='store_true', help=argparse.SUPPRESS)
 
 
-    if os.path.isdir('/cephfs/mlast'):
-        audit_parser = subparsers.add_parser('audit', help='Audit training data against a trained model.')
-        audit_parser.add_argument('-m', '--model', required=True, type=str, help="Path to model file (.scnm)")
-        audit_parser.add_argument('-d', '--data', required=True, type=str, help="Path to training data file (.scnt)")
-        audit_parser.add_argument('-gpu', '--gpu', required=False, type=int, default=0, help="GPU ID to use (default 0)")
-        audit_parser.add_argument('-o', '--out', required=False, type=str, default='audit_output', help="Output directory (default: audit_output)")
-        audit_parser.add_argument('--skip', action='store_true', help="Skip processing, reuse existing results, just launch the app")
+    # feature_visualisation and audit are disabled / not shipped in this release.
+    # fviz_parser = subparsers.add_parser('feature_visualisation', help="Synthesize input images that maximally activate a model's output feature (feature visualization).")
+    # fviz_parser.add_argument('-m', '--model_path', required=True, type=str, help="Path to the model file (.scnm).")
+    # fviz_parser.add_argument('-size', '--size', required=False, type=int, default=64, help="Side length (pixels) of the synthesized square images. Rounded up to a multiple of 32 (min 64). Default 64.")
+    # fviz_parser.add_argument('-n', '--n_images', required=False, type=int, default=9, help="Number of times to synthesize the output neuron, each from a different random init (i.e. different facets of what the network reads as the feature). Default 9.")
+    # fviz_parser.add_argument('-obj', '--objective', required=False, type=str, default='channel', choices=['channel', 'neuron'], help="What to maximize. 'channel' (default): each channel's mean activation over the whole image - uniform texture, no centre hotspot (the standard feature-viz objective). 'neuron': only the channel's centre pixel, so the feature lands at the centre (but the centre is prominent).")
+    # fviz_parser.add_argument('-gpu', '--gpu', required=False, type=str, default="0", help="Comma-separated list of GPU IDs (e.g. 0,1,2,3). Neurons are split across the GPUs, one worker each. Default 0.")
+    # fviz_parser.add_argument('-ou', '--output_directory', required=False, type=str, default='feature_visualisation', help="Directory to save the output .mrc stack and .png montage (default ./feature_visualisation).")
+    # fviz_parser.add_argument('--highpass', required=False, type=float, default=24.0, help=argparse.SUPPRESS)
+    # fviz_parser.add_argument('--iterations', required=False, type=int, default=400, help=argparse.SUPPRESS)
+    # fviz_parser.add_argument('--seed', required=False, type=int, default=None, help=argparse.SUPPRESS)
+
+    # if os.path.isdir('/cephfs/mlast'):
+    #     audit_parser = subparsers.add_parser('audit', help='Audit training data against a trained model.')
+    #     audit_parser.add_argument('-m', '--model', required=True, type=str, help="Path to model file (.scnm)")
+    #     audit_parser.add_argument('-d', '--data', required=True, type=str, help="Path to training data file (.scnt)")
+    #     audit_parser.add_argument('-gpu', '--gpu', required=False, type=int, default=0, help="GPU ID to use (default 0)")
+    #     audit_parser.add_argument('-o', '--out', required=False, type=str, default='audit_output', help="Output directory (default: audit_output)")
+    #     audit_parser.add_argument('--skip', action='store_true', help="Skip processing, reuse existing results, just launch the app")
 
     args, unknown = parser.parse_known_args()
     if args.command is None:
@@ -206,9 +218,21 @@ def main():
                                          coordinates=args.coordinates,
                                          apix=args.apix,
                                          easymode=args.easymode)
-        elif args.command == 'audit':
-            from Ais.core.audit import run_audit
-            run_audit(args.model, args.data, args.gpu, args.out, args.skip)
+        # feature_visualisation and audit are disabled / not shipped in this release.
+        # elif args.command == 'feature_visualisation':
+        #     from Ais.core.feature_vis import run_feature_visualisation
+        #     run_feature_visualisation(model_path=args.model_path,
+        #                               size=args.size,
+        #                               n_images=args.n_images,
+        #                               gpu=args.gpu,
+        #                               output_directory=args.output_directory,
+        #                               iterations=args.iterations,
+        #                               seed=args.seed,
+        #                               highpass=args.highpass,
+        #                               objective=args.objective)
+        # elif args.command == 'audit':
+        #     from Ais.core.audit import run_audit
+        #     run_audit(args.model, args.data, args.gpu, args.out, args.skip)
 
 if __name__ == "__main__":
     main()

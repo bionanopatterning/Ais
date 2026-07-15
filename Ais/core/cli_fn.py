@@ -375,14 +375,23 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
                 self.best_loss = loss
                 self.se_model.save(self.path)
 
-    if not os.path.isabs(training_data):
-        training_data = os.path.join(os.getcwd(), training_data)
+    # training_data may be a single path or several; multiple .scnt files are pooled during training.
+    if isinstance(training_data, (list, tuple)):
+        training_data_paths = list(training_data)
+    else:
+        training_data_paths = [training_data]
+    training_data_paths = [p if os.path.isabs(p) else os.path.join(os.getcwd(), p) for p in training_data_paths]
     if not os.path.isabs(output_directory):
         output_directory = os.path.join(os.getcwd(), output_directory)
     os.makedirs(output_directory, exist_ok=True)
     if model_path and not os.path.isabs(model_path):
         model_path = os.path.join(os.getcwd(), model_path)
-    print(f"training data: {training_data}")
+    if len(training_data_paths) == 1:
+        print(f"training data: {training_data_paths[0]}")
+    else:
+        print(f"training data ({len(training_data_paths)} files, samples pooled):")
+        for p in training_data_paths:
+            print(f"  {p}")
     print(f"output directory: {output_directory}")
     model = SEModel(no_glfw=True)
     model.load_models()
@@ -396,7 +405,7 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
         model.model_enum = architecture
         print(f"using model architecture {architecture}: {SEModel.AVAILABLE_MODELS[architecture]}")
 
-    model.train_data_path = training_data
+    model.train_data_path = training_data_paths if len(training_data_paths) > 1 else training_data_paths[0]
     model.epochs = epochs
     model.batch_size = batch_size
     model.excess_negative = int((100 * negatives) - 100)

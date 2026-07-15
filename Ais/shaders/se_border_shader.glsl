@@ -17,48 +17,12 @@ void main()
 #fragment
 #version 420
 
-#define MAXB 480
-
 out vec4 fragmentColour;
 in vec2 fXY;
 uniform float alpha;
-
-// The border is a hue chameleon: black by default, but wherever the living
-// background field has colour behind it, it takes that colour vibrantly. The
-// field is recomputed here from the same (packed) blob uniforms the background
-// uses - two vec4s per blob to stay under the constant-register limit.
-uniform int uN;             // 0 -> plain black border
-uniform int uShape;         // 0 = soft blob (Aurora), 2 = disc (bokeh)
-uniform vec2 uRes;          // screen size in px
-uniform float uIntensity;
-uniform vec4 uA[MAXB];      // xy = centre px, z = radius / half-width, w = alpha
-uniform vec4 uB[MAXB];      // xyz = colour, w = angle / half-height
+uniform vec3 borderColour;
 
 void main()
 {
-    vec2 frag = vec2(gl_FragCoord.x, uRes.y - gl_FragCoord.y);   // top-left origin
-    vec3 col = vec3(0.0);       // default black
-    for (int i = 0; i < uN; i++)
-    {
-        vec2 pPos = uA[i].xy;
-        float pRad = uA[i].z;
-        float pAlp = uA[i].w;
-        vec3 pCol = uB[i].xyz;
-        float pAng = uB[i].w;
-        float w;
-        if (uShape == 2)
-        {
-            float d = distance(frag, pPos);
-            float soft = max(6.0, pRad * 0.30);
-            w = smoothstep(pRad + soft, pRad - soft, d) * uIntensity * pAlp;
-        }
-        else
-        {
-            float d = distance(frag, pPos) / max(pRad, 1.0);
-            w = exp(-d * d * 2.2) * uIntensity * pAlp;
-        }
-        // steeper than the background so even a faint wash lights the border up
-        col = mix(col, pCol, clamp(w * 1.7, 0.0, 1.0));
-    }
-    fragmentColour = vec4(col, alpha);
+    fragmentColour = vec4(borderColour, alpha);
 }

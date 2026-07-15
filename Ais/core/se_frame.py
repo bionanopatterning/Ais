@@ -416,7 +416,7 @@ class Segmentation:
         self.show_boxes = True
         self.magic = False
         self.magic_strength = 10.0
-        self.box_size = 64
+        self.box_size = 128
         self.box_size_nm = self.box_size * self.parent.pixel_size
         self.slices = dict()
         self.boxes = dict()
