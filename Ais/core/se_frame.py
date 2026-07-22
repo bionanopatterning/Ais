@@ -926,8 +926,13 @@ class SurfaceModelBlob:
 
     def delete(self):
         if self.va.initialized:
-            # TODO: fix issue 'check bool(glDeleteBuffers) before calling'
-            # glDeleteBuffers(1, [self.va.vertexBuffer.vertexBufferObject])
-            # glDeleteBuffers(1, [self.va.indexBuffer.indexBufferObject])
-            # glDeleteVertexArrays(1, [self.va.vertexArrayObject])
+            # free GPU buffers/VAO to avoid leaking VRAM on regeneration. glDelete* becomes a
+            # null wrapper at interpreter shutdown, so guard with bool() to avoid NullFunctionError.
+            if bool(glDeleteBuffers):
+                if self.va.vertexBuffer is not None:
+                    glDeleteBuffers(1, [self.va.vertexBuffer.vertexBufferObject])
+                if self.va.indexBuffer is not None:
+                    glDeleteBuffers(1, [self.va.indexBuffer.indexBufferObject])
+            if bool(glDeleteVertexArrays) and self.va.vertexArrayObject is not None:
+                glDeleteVertexArrays(1, [self.va.vertexArrayObject])
             self.va.initialized = False

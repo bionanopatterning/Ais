@@ -361,7 +361,7 @@ def print_available_model_architectures():
 
 def train_model(training_data, output_directory, architecture=None, epochs=50, batch_size=32, negatives=0.0, copies=4, model_path='', gpus="0", parallel=1, rate=1e-3, name="Unnamed model", extra_augmentations=False):
     import keras.callbacks
-    ## TODO: -m input currently ignored it seems.
+
     class CheckpointCallback(keras.callbacks.Callback):
         def __init__(self, se_model, path):
             super().__init__()
@@ -396,12 +396,17 @@ def train_model(training_data, output_directory, architecture=None, epochs=50, b
     model = SEModel(no_glfw=True)
     model.load_models()
     model.title = name
-    if architecture is None and model_path == '':
-        print(f"using default model architecture: {SEModel.AVAILABLE_MODELS[SEModel.DEFAULT_MODEL_ENUM]}")
-    elif model_path:
-        print(f"loading model {model_path}")
+    if model_path:
+        # continue from a saved model. load() overwrites title too, so re-apply -name if given.
+        print(f"continuing training from {model_path}")
         model.load(model_path)
-    elif model_path == '':
+        if name != "Unnamed model":
+            model.title = name
+        print(f"  architecture: {SEModel.AVAILABLE_MODELS[model.model_enum]}, box {model.box_size}-{model.model_depth}, {model.apix:.1f} A/px")
+    elif architecture is None:
+        model.model_enum = SEModel.DEFAULT_MODEL_ENUM
+        print(f"using default model architecture: {SEModel.AVAILABLE_MODELS[SEModel.DEFAULT_MODEL_ENUM]}")
+    else:
         model.model_enum = architecture
         print(f"using model architecture {architecture}: {SEModel.AVAILABLE_MODELS[architecture]}")
 

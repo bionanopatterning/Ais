@@ -155,8 +155,6 @@ def pick_particles(mrcpath="", threshold=128, margin=16, min_spacing=10.0, min_s
     if data.dtype == np.int8:
         threshold /= 2
     data = data.astype(np.float32)
-    if "0580" in mrcpath:
-        print(np.min(data), np.max(data))
     if binning > 1:
         z, y, x = data.shape
         b = int(binning)
