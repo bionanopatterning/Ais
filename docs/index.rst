@@ -6,6 +6,12 @@
 Welcome to Ais' documentation!
 ===============================
 
+.. attention::
+
+   **The Ais documentation has moved.** These pages are no longer maintained and
+   are kept only so that links in earlier publications keep working. Please visit
+   the new documentation at `mgflast.github.io/Ais <https://mgflast.github.io/Ais/>`_.
+
 Welcome to the user guide of Ais - a segmentation suite for cryo-electron tomography data that was designed to be fast, intuitive, and as easy to use as we could make it.
 
 .. image:: ./res/LOGO_Ais_1024.png
@@ -39,4 +45,4 @@ __________
 Help
 ----------------
 
-Need help? `Please post here <https://github.com/bionanopatterning/Ais/issues>`_.
+Need help? `Please post here <https://github.com/mgflast/Ais/issues>`_.

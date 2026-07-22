@@ -1,0 +1,78 @@
+site_name: Ais
+site_url: https://mgflast.github.io/Ais/
+site_description: Fast and user-friendly segmentation of cryo-electron tomography data using convolutional neural networks.
+repo_name: mgflast/Ais
+repo_url: https://github.com/mgflast/Ais
+copyright: copyright © 2023 - 2025 Mart G. F. Last
+nav:
+   - "🏠 Home": index.md
+   - "📖 User Guide":
+       - installation.md
+       - "<b>Segmentation workflow</b>":
+          - "1. Annotation": annotation.md
+          - "2. Creating models": creating_models.md
+          - "3. Batch processing": batch_processing.md
+          - "4. Rendering": rendering.md
+          - "5. Extracting particles & meshes": extracting_particles_and_meshes.md
+       - "<b>Sharing</b>":
+          - "Sharing models": sharing_models.md
+       - "<b>Scripting</b>":
+          - "Command line interface": command_line_interface.md
+          - "Python module": python_module.md
+   - "🗄️ Model repository": https://www.aiscryoet.org
+   - "🐞 Submit a bug": https://github.com/mgflast/Ais/issues
+theme:
+   name: material
+   logo: res/LOGO_Ais_1024.png
+   favicon: res/LOGO_Ais_1024.png
+   palette:
+      - media: "(prefers-color-scheme: light)"
+        scheme: default
+        primary: deep orange
+        accent: deep orange
+        toggle:
+           icon: material/weather-night
+           name: Switch to dark mode
+      - media: "(prefers-color-scheme: dark)"
+        scheme: slate
+        primary: deep orange
+        accent: deep orange
+        toggle:
+           icon: material/weather-sunny
+           name: Switch to light mode
+   features:
+      - navigation.instant
+      - navigation.tracking
+      - navigation.tabs
+      - navigation.tabs.sticky
+      - navigation.expand
+      - navigation.sections
+      - search.highlight
+      - search.suggest
+      - content.tabs.link
+      - content.code.annotate
+      - content.code.copy
+   icon:
+      annotation: material/plus-circle
+markdown_extensions:
+  - admonition
+  - meta
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - pymdownx.highlight
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - md_in_html
+  - pymdownx.arithmatex:
+      generic: true
+  - toc:
+      toc_depth: 5
+extra_css:
+  - styles/extra.css
+plugins:
+  - search

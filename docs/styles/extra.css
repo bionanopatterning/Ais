@@ -1,0 +1,32 @@
+/* Make bold nav section headers darker */
+.md-nav__link b {
+    color: var(--md-default-fg-color);
+    font-weight: 700;
+}
+
+/* Individual workflow items (3+ levels deep): smaller */
+.md-nav__item--nested .md-nav__item--nested .md-nav__item:not(.md-nav__item--nested) > .md-nav__link {
+    font-size: 0.9em;
+}
+
+/* Give figures a subtle border and center them */
+.with-border {
+    border: 1px solid var(--md-default-fg-color--lightest);
+    border-radius: 4px;
+}
+
+figure {
+    margin: 1.5em auto;
+    text-align: center;
+}
+
+figure img {
+    max-width: 100%;
+}
+
+figcaption {
+    font-size: 0.85em;
+    font-style: italic;
+    color: var(--md-default-fg-color--light);
+    margin-top: 0.5em;
+}
